@@ -11,6 +11,7 @@ This repository is a long-term personal fork of Paseo for Michael's productivity
 - Optimize for Michael's workflows and long-term maintainability. Do not add scope or abstractions solely to prepare changes for upstream acceptance.
 - English is the only language you need to maintain. For new or changed UI copy, update the English resources using the existing i18n conventions; do not create or update other translations unless explicitly requested. This overrides upstream translation requirements, including those in `docs/i18n.md`.
 - Keep the other engineering and safety rules below unless a fork-specific policy explicitly overrides them.
+- Branch roles, the upstream sync procedure, conflict rules, the `FORK(<feature>)` marker convention, and the feature ledger live in [docs/fork.md](docs/fork.md). Run `npm run fork:status` before syncing with upstream.
 
 ## Repository map
 
@@ -31,6 +32,7 @@ At the start of non-trivial work, list `docs/` and skim anything relevant to the
 
 | Doc                                                                  | What's in it                                                                                                                   |
 | -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| [docs/fork.md](docs/fork.md)                                         | Fork maintenance — branch roles, upstream sync, conflict rules, `FORK()` markers, feature ledger                               |
 | [docs/product.md](docs/product.md)                                   | What Paseo is, who it's for, where it's going                                                                                  |
 | [docs/architecture.md](docs/architecture.md)                         | System design, package layering, WebSocket protocol, agent lifecycle, data flow                                                |
 | [docs/agent-lifecycle.md](docs/agent-lifecycle.md)                   | Agent states, parent/child relationships, archive semantics, tabs vs archive, subagents track                                  |
