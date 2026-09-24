@@ -4,6 +4,7 @@ import {
   readToolCallSummary,
   readToolCallSummaryFilePath,
 } from "@getpaseo/protocol/tool-call-summary";
+import type { PlanOutcome } from "@/components/plan-card";
 import type { ComponentType } from "react";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { ToolCallDisplayInput } from "@/utils/tool-call-display";
@@ -41,6 +42,7 @@ export interface ToolCallPresentation {
   canOpenDetails: boolean;
   openFilePath: string | null;
   isPlan: boolean;
+  planOutcome?: PlanOutcome;
 }
 
 export type ToolCallIconResolver = (
@@ -111,6 +113,7 @@ export function buildToolCallPresentation(
     canOpenDetails: hasDetails || isLoadingDetails,
     openFilePath: filePath,
     isPlan: input.detail?.type === "plan",
+    planOutcome: input.detail?.type === "plan" ? resolvePlanOutcome(input) : undefined,
   };
 }
 
@@ -137,5 +140,13 @@ function buildInputLabel({
   if (detail.type === "unknown" || detail.type === "plain_text") {
     return generated ?? i18n.t("message.toolCallLabels.runTool", { tool: displayName });
   }
+  return undefined;
+}
+
+function resolvePlanOutcome(input: BuildToolCallPresentationInput): PlanOutcome | undefined {
+  if (input.status === "canceled") return "canceled";
+  if (input.metadata?.approved === false) return "rejected";
+  if (input.metadata?.approved === true) return "approved";
+  if (input.status === "running" || input.status === "executing") return "pending";
   return undefined;
 }

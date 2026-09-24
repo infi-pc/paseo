@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import Animated from "react-native-reanimated";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { SortableInlineList } from "@/components/sortable-inline-list";
+import { EXPLORER_TAB_RAIL_INSET } from "@/components/explorer-sidebar-layout";
 import type {
   DraggableListDragHandleProps,
   DraggableRenderItemInfo,
@@ -413,7 +414,7 @@ const styles = StyleSheet.create((theme) => ({
   scrollContent: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 4,
+    paddingHorizontal: EXPLORER_TAB_RAIL_INSET,
   },
   trailingAccessory: {
     marginRight: 4,

@@ -18,7 +18,8 @@ import {
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
 import { isAbsolutePath } from "@/utils/path";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { FileFind, FileFindModel } from "../find/index.web";
 import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { getLanguageForFile } from "@getpaseo/highlight";
@@ -77,6 +78,7 @@ export function FileEditorView({
   const path = isAbsolutePath(fileVersion.path)
     ? fileVersion.path
     : `${fileVersion.cwd}/${fileVersion.path}`;
+  const [find] = useState(() => new FileFindModel());
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
@@ -94,6 +96,7 @@ export function FileEditorView({
         extensions: [
           intelligenceCompartment.of([]),
           vimCompartment.of(values.vimEnabled ? vim() : []),
+          find.extension,
           ...editorBaseExtensions(() => void values.model.save()),
           languageCompartment.of(getLanguageForFile(values.filename)?.extension ?? []),
           wrappingCompartment.of(wrappingForFile(values.filename)),
@@ -121,7 +124,7 @@ export function FileEditorView({
       view.destroy();
       viewRef.current = null;
     };
-  }, []);
+  }, [find]);
 
   useEffect(() => {
     const view = viewRef.current;
@@ -240,14 +243,17 @@ export function FileEditorView({
   return (
     <ContextMenu>
       <ContextMenuTrigger contextOnly style={TRIGGER_STYLE}>
-        <div
-          ref={hostRef}
-          data-pmono=""
-          onContextMenuCapture={preserveNativeMenu}
-          data-testid="file-source-editor"
-          aria-label={`Source editor for ${filename}`}
-          style={HOST_STYLE}
-        />
+        <div style={FRAME_STYLE}>
+          <div
+            ref={hostRef}
+            data-pmono=""
+            onContextMenuCapture={preserveNativeMenu}
+            data-testid="file-source-editor"
+            aria-label={`Source editor for ${filename}`}
+            style={HOST_STYLE}
+          />
+          <FileFind model={find} editor={viewRef} />
+        </div>
       </ContextMenuTrigger>
       {actions && (
         <>
@@ -273,6 +279,13 @@ export function FileEditorView({
 const INSPECT_SHORTCUT_KEYS = ["alt", "F12"];
 
 const remoteUpdate = Annotation.define<boolean>();
+const FRAME_STYLE = {
+  display: "flex",
+  position: "relative",
+  flex: 1,
+  minHeight: 0,
+  minWidth: 0,
+} as const;
 const HOST_STYLE = { flex: 1, minHeight: 0, overflow: "hidden" } as const;
 
-const TRIGGER_STYLE = { flex: 1, minHeight: 0 };
+const TRIGGER_STYLE = { flex: 1, minHeight: 0, minWidth: 0 };
