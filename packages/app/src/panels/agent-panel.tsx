@@ -36,6 +36,14 @@ import {
 } from "@/composer/pill-styles";
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
+import {
+  RecommendedPromptActionsProvider,
+  type RecommendedPromptActions,
+} from "@/response-control/recommended-prompt-actions";
+import { dispatchComposerAgentMessage } from "@/composer/actions";
+import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
+import { createMessageSubmissionWriter } from "@/composer/submission/writer";
+import { encodeImages } from "@/utils/encode-images";
 import { getProviderIcon } from "@/components/provider-icons";
 import { useToastHost, type ToastApi, type ToastState } from "@/components/toast-host";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
@@ -1240,6 +1248,56 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       composerState,
     ],
   );
+  const client = useHostRuntimeClient(serverId);
+  const focusComposerRef = useRef<(() => void) | null>(null);
+  const handleFocusInput = useCallback((focus: () => void) => {
+    focusComposerRef.current = focus;
+  }, []);
+  const recommendedPromptActions = useMemo<RecommendedPromptActions>(
+    () => ({
+      send: async (prompt) => {
+        if (!client) {
+          toastApi.error(t("responseControl.recommendedPrompts.sendFailed"));
+          return;
+        }
+        handleMessageSent();
+        try {
+          await dispatchComposerAgentMessage({
+            client,
+            agentId,
+            text: prompt,
+            attachments: [],
+            attachmentSubmitFormat: resolveComposerAttachmentSubmitFormat({}),
+            encodeImages,
+            submission: createMessageSubmissionWriter(serverId),
+            activeTurnBehavior: "interrupt",
+          });
+          onAttentionPromptSend();
+        } catch (error) {
+          console.error("[AgentPanel] Failed to send recommended prompt:", error);
+          toastApi.error(t("responseControl.recommendedPrompts.sendFailed"));
+        }
+      },
+      useEdited: (prompt) => {
+        // The draft exposes a snapshot source rather than a rendered string, so read it at
+        // action time instead of tracking it in a ref.
+        const current = textSource.getSnapshot();
+        replaceText(current.trim() ? `${current.trimEnd()}\n\n${prompt}` : prompt);
+        focusComposerRef.current?.();
+      },
+    }),
+    [
+      agentId,
+      client,
+      handleMessageSent,
+      onAttentionPromptSend,
+      replaceText,
+      serverId,
+      t,
+      textSource,
+      toastApi,
+    ],
+  );
   const composerSection = (
     <RenderProfile id={`AgentComposerSection:${agentId}`}>
       <AgentComposerSection
@@ -1255,6 +1313,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         onAttentionPromptSend={onAttentionPromptSend}
         onComposerHeightChange={handleComposerHeightChange}
         onMessageSent={handleMessageSent}
+        onFocusInput={handleFocusInput}
       />
     </RenderProfile>
   );
@@ -1314,12 +1373,20 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   );
 
   const dock = (
-    <ChatSurface disabled={isArchivingCurrentAgent}>
+    <ChatSurface disabled={isArchivingCurrentAgent} promptActions={recommendedPromptActions}>
       {dockContent}
       {composerSection}
       {dockOverlay}
     </ChatSurface>
   );
+
+  const archivingOverlay = isArchivingCurrentAgent ? (
+    <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
+      <ThemedLoadingSpinner size="large" uniProps={foregroundColorMapping} />
+      <Text style={styles.archivingTitle}>{t("agentPanel.states.archivingTitle")}</Text>
+      <Text style={styles.archivingSubtitle}>{t("agentPanel.states.archivingSubtitle")}</Text>
+    </View>
+  ) : null;
 
   return (
     <RewindComposerRestoreProvider
@@ -1329,14 +1396,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     >
       <View style={styles.root}>
         {dock}
-
-        {isArchivingCurrentAgent ? (
-          <View style={styles.archivingOverlay} testID="agent-archiving-overlay">
-            <ThemedLoadingSpinner size="large" uniProps={foregroundColorMapping} />
-            <Text style={styles.archivingTitle}>{t("agentPanel.states.archivingTitle")}</Text>
-            <Text style={styles.archivingSubtitle}>{t("agentPanel.states.archivingSubtitle")}</Text>
-          </View>
-        ) : null}
+        {archivingOverlay}
       </View>
     </RewindComposerRestoreProvider>
   );
@@ -1345,14 +1405,20 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
 function ChatSurface({
   children,
   disabled,
+  promptActions,
 }: {
   children: [ReactNode, ReactNode, ReactNode];
   disabled: boolean;
+  promptActions: RecommendedPromptActions;
 }) {
+  // FORK(response-control): recommended prompts render in turn footers inside the dock and
+  // send through the composer, so the provider scopes the whole chat surface.
   return (
-    <FileDropZone style={styles.container} disabled={disabled}>
-      <ComposerDock>{children}</ComposerDock>
-    </FileDropZone>
+    <RecommendedPromptActionsProvider value={promptActions}>
+      <FileDropZone style={styles.container} disabled={disabled}>
+        <ComposerDock>{children}</ComposerDock>
+      </FileDropZone>
+    </RecommendedPromptActionsProvider>
   );
 }
 
@@ -1502,6 +1568,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
+  onFocusInput,
 }: {
   agentId?: string;
   serverId: string;
@@ -1515,6 +1582,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
+  onFocusInput: (focus: () => void) => void;
 }) {
   if (!agentId) {
     return null;
@@ -1538,6 +1606,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
       onAttentionPromptSend={onAttentionPromptSend}
       onComposerHeightChange={onComposerHeightChange}
       onMessageSent={onMessageSent}
+      onFocusInput={onFocusInput}
     />
   );
 });
@@ -1553,6 +1622,7 @@ function ActiveAgentComposer({
   onAttentionPromptSend,
   onComposerHeightChange,
   onMessageSent,
+  onFocusInput,
 }: {
   agentId: string;
   serverId: string;
@@ -1564,6 +1634,7 @@ function ActiveAgentComposer({
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
   onMessageSent: () => void;
+  onFocusInput: (focus: () => void) => void;
 }) {
   const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
@@ -1663,6 +1734,7 @@ function ActiveAgentComposer({
         onAttentionPromptSend={onAttentionPromptSend}
         onComposerHeightChange={onComposerHeightChange}
         onMessageSent={onMessageSent}
+        onFocusInput={onFocusInput}
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
       />
