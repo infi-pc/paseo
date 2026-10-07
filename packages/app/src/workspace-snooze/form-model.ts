@@ -1,8 +1,21 @@
-import type { WorkspaceSnooze, WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
+import {
+  statusWatchKey,
+  isStatusSnooze,
+  type AnyWorkspaceSnooze,
+  type StatusSnoozeInput,
+  type StatusWatchSnapshot,
+} from "@getpaseo/protocol/workspace-status-snooze";
+import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
 
 export type TimePreset = "hour" | "day" | "tomorrow" | "monday" | "custom";
 export interface SnoozeFormState {
-  mode: "time" | "ai";
+  mode: "time" | "ai" | "status";
+  statusLoad: "idle" | "loading" | "ready" | "error";
+  candidates: StatusWatchSnapshot[];
+  selected: string[];
+  intervalMinutes: 5 | 60;
+  discoveryErrors: string[];
+  autoArchiveAfterMerge: boolean;
   preset: TimePreset;
   date: string;
   time: string;
@@ -14,10 +27,15 @@ export interface SnoozeFormState {
   checked: boolean;
 }
 interface Options {
-  snooze: WorkspaceSnooze | null;
+  snooze: AnyWorkspaceSnooze | null;
+  discover?: () => Promise<{
+    candidates: StatusWatchSnapshot[];
+    errors: string[];
+    autoArchiveAfterMerge: boolean;
+  }>;
   timezone: string;
   now: () => Date;
-  save: (input: WorkspaceSnoozeInput | null) => Promise<void>;
+  save: (input: WorkspaceSnoozeInput | StatusSnoozeInput | null) => Promise<void>;
   check: () => Promise<void>;
   saved: () => void;
 }
@@ -63,6 +81,12 @@ export function openSnoozeForm(options: Options) {
     config?.mode === "time" ? new Date(config.wakeAt) : presetDate("tomorrow", options.now());
   let state: SnoozeFormState = {
     mode: config?.mode ?? "time",
+    statusLoad: "idle",
+    candidates: isStatusSnooze(options.snooze) ? options.snooze.baseline : [],
+    selected: config?.mode === "status" ? config.targets.map(statusWatchKey) : [],
+    intervalMinutes: config?.mode === "status" ? config.intervalMinutes : 5,
+    discoveryErrors: [],
+    autoArchiveAfterMerge: false,
     preset: config?.mode === "time" ? "custom" : "hour",
     date: dateText(initialDate),
     time: `${pad(initialDate.getHours())}:${pad(initialDate.getMinutes())}`,
@@ -74,6 +98,7 @@ export function openSnoozeForm(options: Options) {
     checked: false,
   };
   let closed = false;
+  let statusLoaded = config?.mode === "status";
   const listeners = new Set<() => void>();
   function publish(patch: Partial<SnoozeFormState>) {
     if (closed) return;
@@ -94,6 +119,27 @@ export function openSnoozeForm(options: Options) {
       publish({ pending: false });
     }
   }
+  async function loadStatus() {
+    if (!options.discover || state.statusLoad === "loading" || closed) return;
+    const first = !statusLoaded;
+    publish({ statusLoad: "loading", discoveryErrors: [] });
+    try {
+      const result = await options.discover();
+      statusLoaded ||= result.candidates.length > 0;
+      publish({
+        statusLoad: "ready",
+        candidates: result.candidates,
+        discoveryErrors: result.errors,
+        autoArchiveAfterMerge: result.autoArchiveAfterMerge,
+        selected: first ? result.candidates.map((s) => statusWatchKey(s.target)) : state.selected,
+      });
+    } catch (error) {
+      publish({
+        statusLoad: "error",
+        discoveryErrors: [error instanceof Error ? error.message : String(error)],
+      });
+    }
+  }
   return {
     getState: () => state,
     subscribe(listener: () => void) {
@@ -106,8 +152,21 @@ export function openSnoozeForm(options: Options) {
       closed = true;
       listeners.clear();
     },
+    loadStatus,
+    toggleTarget(key: string) {
+      publish({
+        selected: state.selected.includes(key)
+          ? state.selected.filter((k) => k !== key)
+          : [...state.selected, key],
+        error: null,
+      });
+    },
+    setStatusInterval(intervalMinutes: 5 | 60) {
+      publish({ intervalMinutes });
+    },
     setMode(mode: SnoozeFormState["mode"]) {
       publish({ mode, error: null });
+      if (mode === "status" && state.statusLoad === "idle") void loadStatus();
     },
     setPreset(preset: TimePreset) {
       publish({ preset, error: null });
@@ -129,6 +188,16 @@ export function openSnoozeForm(options: Options) {
     },
     submit() {
       return perform(async () => {
+        if (state.mode === "status") {
+          if (state.statusLoad !== "ready")
+            throw new Error("Load connected statuses before saving");
+          const targets = state.candidates
+            .filter((s) => state.selected.includes(statusWatchKey(s.target)))
+            .map((s) => s.target);
+          if (!targets.length) throw new Error("Choose at least one status to watch");
+          await options.save({ mode: "status", targets, intervalMinutes: state.intervalMinutes });
+          return;
+        }
         if (state.mode === "ai") {
           if (!state.prompt.trim()) throw new Error("Enter an unsnooze condition");
           await options.save({

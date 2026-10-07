@@ -547,6 +547,78 @@ describe("ForgeService", () => {
     vi.useRealTimers();
   });
 
+  it("batches fixed snooze targets by PR number without branch lookup or checks", async () => {
+    const runner = createRunner([
+      batchPollStatusJson({
+        t0: batchPollRepositoryJson([], { pullRequest: batchPollPrNodeJson({ number: 42 }) }),
+        t1: batchPollRepositoryJson([], { pullRequest: batchPollPrNodeJson({ number: 43 }) }),
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => "different/checkout",
+    });
+    try {
+      const a = service.readFixedPullRequestStatus({
+        cwd: "/ws",
+        url: "https://github.com/acme/widgets/pull/42",
+      });
+      const b = service.readFixedPullRequestStatus({
+        cwd: "/ws",
+        url: "https://github.com/acme/widgets/pull/43",
+      });
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(GITHUB_POLL_ALIGNMENT_MS);
+      expect((await a).number).toBe(42);
+      expect((await b).number).toBe(43);
+      expect(runner.calls).toHaveLength(1);
+      const query = runner.calls[0].args.join(" ");
+      expect(query).toContain('repository(owner: "acme", name: "widgets")');
+      expect(query).toContain("pullRequest(number: 42)");
+      expect(query).toContain("pullRequest(number: 43)");
+      expect(query).not.toContain("statusCheckRollup");
+      expect(query).not.toContain("headRefName:");
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(runner.calls).toHaveLength(1);
+    } finally {
+      service.dispose?.();
+    }
+  });
+
+  it("a missing fixed PR fails without redirecting to a fork parent", async () => {
+    const runner = createRunner([
+      batchPollStatusJson({
+        t0: batchPollRepositoryJson([], {
+          pullRequest: null,
+          isFork: true,
+          parent: { owner: { login: "parent" }, name: "repo" },
+        }),
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => "acme/widgets",
+    });
+    try {
+      const result = expect(
+        service.readFixedPullRequestStatus({
+          cwd: "/ws",
+          url: "https://github.com/acme/widgets/pull/42",
+        }),
+      ).rejects.toThrow("unavailable");
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(GITHUB_POLL_ALIGNMENT_MS);
+      await result;
+      expect(runner.calls).toHaveLength(1);
+    } finally {
+      service.dispose?.();
+    }
+  });
+
   it.each([
     ["merge", ["pr", "merge", "42", "--merge"]],
     ["squash", ["pr", "merge", "42", "--squash"]],

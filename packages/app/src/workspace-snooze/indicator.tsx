@@ -1,7 +1,7 @@
 import { Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import type { WorkspaceSnooze } from "@getpaseo/protocol/workspace-snooze";
+import type { AnyWorkspaceSnooze as WorkspaceSnooze } from "@getpaseo/protocol/workspace-status-snooze";
 
 export function WorkspaceSnoozeIndicator({ snooze }: { snooze: WorkspaceSnooze }) {
   const { t } = useTranslation();

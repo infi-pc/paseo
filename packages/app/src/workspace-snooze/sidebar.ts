@@ -1,4 +1,4 @@
-import type { WorkspaceSnooze } from "@getpaseo/protocol/workspace-snooze";
+import type { AnyWorkspaceSnooze as WorkspaceSnooze } from "@getpaseo/protocol/workspace-status-snooze";
 
 interface Snoozable {
   workspaceKey: string;

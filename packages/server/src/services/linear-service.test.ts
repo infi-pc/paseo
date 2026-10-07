@@ -30,6 +30,28 @@ function linked(nodes = [{ issue }]) {
 beforeEach(() => vi.resetAllMocks());
 
 describe("LinearService", () => {
+  it("reads fixed issue IDs in one query and keeps successful aliases on partial failure", async () => {
+    const id = "6e22bbbf-7d65-4463-8c1e-9ea7f8914abc";
+    const missing = "6e22bbbf-7d65-4463-8c1e-9ea7f8914abd";
+    command.mockResolvedValue({
+      stdout: JSON.stringify({
+        data: {
+          i0: { id, identifier: "APP-1", state: { id: "state-1", name: "In Review" } },
+          i1: null,
+        },
+        errors: [{ message: "Missing issue" }],
+      }),
+      stderr: "",
+    });
+    const result = await new LinearService().readIssueStates(target.cwd, [id, missing]);
+    expect(result).toEqual([
+      { id, issue: { id, identifier: "APP-1", state: { id: "state-1", name: "In Review" } } },
+      { id: missing, issue: null },
+    ]);
+    expect(command).toHaveBeenCalledTimes(1);
+    expect(command.mock.calls[0][1].join(" ")).not.toContain("attachmentsForURL");
+  });
+
   it("looks up PR attachments and preserves workflow color and ordered progress", async () => {
     command.mockResolvedValue(linked([{ issue }, { issue }]));
     const service = new LinearService();

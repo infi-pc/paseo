@@ -7,6 +7,14 @@ export const en = {
     save: "Save snooze",
     time: "Time",
     ai: "AI",
+    statusChange: "Status change",
+    statusRule: "Wake when any selected status changes from the snapshot captured on save.",
+    loadingStatuses: "Loading connected statuses…",
+    noStatuses: "No linked PR or Linear issues found.",
+    refreshStatuses: "Refresh statuses",
+    fiveMinutes: "5 minutes",
+    archivePrecedence:
+      "Auto-archive after merge is enabled. Eligible merged workspaces will be archived instead of returning to the sidebar.",
     condition: "Unsnooze when…",
     placeholder: "PR #123 is merged and the latest deployment succeeds",
     interval: "Check every",
@@ -20,6 +28,7 @@ export const en = {
     checkTitle: "Workspace snooze check",
     snoozed: "Snoozed",
     nextCheck: "Next check: {{time}}",
+    lastCheck: "Last check: {{time}}",
     presets: {
       hour: "In 1 hour",
       day: "In 1 day",

@@ -60,7 +60,12 @@ function validateLookup({ cwd, prUrl }: PullRequestLookup): void {
   if (url.protocol !== "https:") throw new LinearServiceError("Pull request URL must use HTTPS");
 }
 
-async function queryLinear(cwd: string, query: string, variables: Record<string, string>) {
+async function queryLinear(
+  cwd: string,
+  query: string,
+  variables: Record<string, string>,
+  allowPartial = false,
+) {
   let stdout: string;
   try {
     ({ stdout } = await execCommand(
@@ -78,7 +83,7 @@ async function queryLinear(cwd: string, query: string, variables: Record<string,
     );
   }
   const envelope = EnvelopeSchema.parse(JSON.parse(stdout));
-  if (envelope.errors?.length) {
+  if (envelope.errors?.length && (!allowPartial || !envelope.data)) {
     throw new LinearServiceError(envelope.errors.map((error) => error.message).join("; "));
   }
   return envelope.data;
@@ -113,11 +118,11 @@ interface CacheEntry {
 export class LinearService {
   private readonly cache = new Map<string, CacheEntry>();
 
-  async getIssues(input: PullRequestLookup): Promise<LinearIssue[]> {
+  async getIssues(input: PullRequestLookup & { force?: boolean }): Promise<LinearIssue[]> {
     validateLookup(input);
     const key = JSON.stringify({ cwd: input.cwd, prUrl: input.prUrl });
     const cached = this.cache.get(key);
-    if (cached && cached.expiresAt > Date.now()) return cached.result;
+    if (!input.force && cached && cached.expiresAt > Date.now()) return cached.result;
 
     const result = queryLinear(input.cwd, LINKED_ISSUES_QUERY, { url: input.prUrl }).then(
       (data) => {
@@ -136,6 +141,32 @@ export class LinearService {
       if (this.cache.get(key) === entry) this.cache.delete(key);
       throw error;
     }
+  }
+
+  // FORK(workspace-snooze): stable issue/state identities, independent of attachment changes.
+  async readIssueStates(cwd: string, issueIds: string[]) {
+    const ids = [...new Set(issueIds)];
+    if (!ids.length) return [];
+    if (!isAbsolute(cwd) || ids.length > 50)
+      throw new LinearServiceError("Invalid Linear watch request");
+    const variables = Object.fromEntries(
+      ids.map((id, i) => [`id${i}`, z.string().uuid().parse(id)]),
+    );
+    const query = `query PaseoWatchIssues(${ids.map((_, i) => `$id${i}: String!`).join(", ")}) {
+      ${ids.map((_, i) => `i${i}: issue(id: $id${i}) { id identifier state { id name } }`).join("\n")}
+    }`;
+    const data = z
+      .record(z.string(), z.unknown())
+      .parse(await queryLinear(cwd, query, variables, true));
+    const schema = z.object({
+      id: z.string(),
+      identifier: z.string(),
+      state: z.object({ id: z.string(), name: z.string() }),
+    });
+    return ids.map((id, i) => {
+      const parsed = schema.safeParse(data[`i${i}`]);
+      return { id, issue: parsed.success && parsed.data.id === id ? parsed.data : null };
+    });
   }
 
   async linkIssue(input: PullRequestLookup & { identifier: string }): Promise<void> {

@@ -1,5 +1,5 @@
 // FORK(workspace-snooze): workspace-owned state survives daemon restarts.
-import { WorkspaceSnoozeSchema } from "@getpaseo/protocol/workspace-snooze";
+import { AnyWorkspaceSnoozeSchema } from "@getpaseo/protocol/workspace-status-snooze";
 import { promises as fs } from "node:fs";
 
 import type { Logger } from "pino";
@@ -98,7 +98,7 @@ const PersistedWorkspaceRecordSchema = z.object({
     .optional()
     .transform((value) => value ?? null),
   // FORK(workspace-snooze): absent on pre-snoozing records.
-  snooze: WorkspaceSnoozeSchema.nullable().optional(),
+  snooze: AnyWorkspaceSnoozeSchema.nullable().optional(),
   pinnedAt: z
     .string()
     .nullable()

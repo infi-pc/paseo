@@ -1,3 +1,4 @@
+import type { StatusSnoozeInput } from "@getpaseo/protocol/workspace-status-snooze";
 import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
 import type {
   LinearGetIssuesRequest,
@@ -3099,13 +3100,31 @@ export class DaemonClient {
   // FORK(workspace-snooze): workspace-owned scheduling RPCs.
   async setWorkspaceSnooze(
     workspaceId: string,
-    snooze: WorkspaceSnoozeInput | null,
+    snooze: WorkspaceSnoozeInput | StatusSnoozeInput | null,
   ): Promise<void> {
+    if (snooze?.mode === "status") {
+      const payload =
+        await this.sendNamespacedCorrelatedSessionRequest<"workspace.snooze.status.set.response">({
+          message: { type: "workspace.snooze.status.set.request", workspaceId, snooze },
+          timeout: 120_000,
+        });
+      if (!payload.success) throw new Error(payload.error ?? "Could not save snooze");
+      return;
+    }
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"workspace.snooze.set.response">({
         message: { type: "workspace.snooze.set.request", workspaceId, snooze },
       });
     if (!payload.success) throw new Error(payload.error ?? "Could not save snooze");
+  }
+
+  async discoverWorkspaceStatusSnooze(workspaceId: string) {
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.snooze.status.discover.response">(
+      {
+        message: { type: "workspace.snooze.status.discover.request", workspaceId },
+        timeout: 180_000,
+      },
+    );
   }
 
   async checkWorkspaceSnooze(workspaceId: string): Promise<void> {

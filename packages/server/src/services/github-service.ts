@@ -693,6 +693,17 @@ const BatchPollRepositorySchema = z.object({
   rebaseMergeAllowed: z.boolean().optional().catch(false),
   viewerDefaultMergeMethod: z.string().nullable().optional().catch(null),
   pullRequests: z.object({ nodes: z.array(BatchPollPrNodeSchema) }),
+  // FORK(workspace-snooze): exact PR reads share this batch.
+  pullRequest: BatchPollPrNodeSchema.extend({
+    state: z.enum(["OPEN", "CLOSED", "MERGED"]),
+    isDraft: z.boolean(),
+    reviewDecision: z.enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"]).nullable(),
+  })
+    .nullable()
+    .optional(),
+});
+const FixedPollRepositorySchema = BatchPollRepositorySchema.extend({
+  pullRequests: z.object({ nodes: z.array(BatchPollPrNodeSchema) }).default({ nodes: [] }),
 });
 
 const GitHubGraphqlRateLimitSchema = z.object({
@@ -803,7 +814,7 @@ function graphqlString(value: string): string {
 }
 
 function buildBatchPullRequestStatusQuery(
-  entries: Array<{ owner: string; name: string; headRef: string }>,
+  entries: Array<{ owner: string; name: string; headRef: string; number?: number }>,
 ): string {
   const aliases = entries.map(
     (entry, index) => `  ${batchAlias(index)}: repository(owner: ${graphqlString(
@@ -824,13 +835,18 @@ function buildBatchPullRequestStatusQuery(
     squashMergeAllowed
     rebaseMergeAllowed
     viewerDefaultMergeMethod
-    pullRequests(headRefName: ${graphqlString(
-      entry.headRef,
-    )}, first: ${BATCH_PR_CANDIDATE_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) {
+    ${
+      entry.number !== undefined
+        ? `pullRequest(number: ${entry.number}) { ...PaseoPollPullRequest }`
+        : `pullRequests(headRefName: ${graphqlString(
+            entry.headRef,
+          )}, first: ${BATCH_PR_CANDIDATE_LIMIT}, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes {
         ...PaseoPollPullRequest
       }
+    }`
     }
+
   }`,
   );
   return `query PaseoBatchPullRequestStatus {
@@ -1021,6 +1037,12 @@ export interface SearchGitHubRepositoriesOptions {
 }
 
 export interface GitHubService extends ForgeService {
+  // FORK(workspace-snooze): read-only exact identity, through the shared poll budget.
+  readFixedPullRequestStatus(input: {
+    cwd: string;
+    url: string;
+    signal?: AbortSignal;
+  }): Promise<CurrentPullRequestStatus>;
   searchRepositories(options: SearchGitHubRepositoriesOptions): Promise<GitHubRepositorySummary[]>;
 }
 
@@ -1095,7 +1117,13 @@ interface InFlightCacheEntry {
   force: boolean;
 }
 
+interface FixedPullRequest {
+  owner: string;
+  name: string;
+  number: number;
+}
 interface GitHubPollTarget {
+  fixedPr?: FixedPullRequest;
   cwd: string;
   headRef: string;
   headSha?: string;
@@ -1400,7 +1428,9 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     headRef: string;
     headSha?: string;
     headRepositoryOwner?: string;
+    fixedPr?: FixedPullRequest;
   }): string {
+    if (target.fixedPr) return `${target.cwd}:fixed-pr:${JSON.stringify(target.fixedPr)}`;
     return buildCacheKey({
       cwd: target.cwd,
       method: "getCurrentPullRequestStatus",
@@ -1623,7 +1653,9 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         });
         continue;
       }
-      const [owner, name, extra] = slug.value?.split("/") ?? [];
+      const [owner, name, extra] = target.fixedPr
+        ? [target.fixedPr.owner, target.fixedPr.name]
+        : (slug.value?.split("/") ?? []);
       // A cwd with no origin slug polls through the legacy per-target path;
       // batch grouping needs a complete owner/name identity.
       if (!owner || !name || extra !== undefined) {
@@ -1732,6 +1764,78 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     return pending;
   }
 
+  // FORK(workspace-snooze): both branch subscriptions and one-shot fixed reads share targets.
+  function retainPollTarget(
+    input: Parameters<NonNullable<ForgeService["retainCurrentPullRequestStatusPoll"]>>[0] & {
+      fixedPr?: FixedPullRequest;
+    },
+  ) {
+    const key = getPollTargetKey(input);
+    let target = pollTargets.get(key);
+    if (!target) {
+      target = {
+        fixedPr: input.fixedPr,
+        cwd: input.cwd,
+        headRef: input.headRef,
+        headSha: input.headSha,
+        headRepositoryOwner: input.headRepositoryOwner,
+        retainCount: 0,
+        nextDueAt: null,
+        pollCycleStartedAt: null,
+        headFirstSeenAt: deps.now(),
+        lastChecksRollup: null,
+        lastChecksHeadRefOid: null,
+        lastChecksLoadedAt: 0,
+        latestStatus: null,
+        consecutiveErrors: 0,
+        callbacks: new Set(),
+        errorCallbacks: new Set(),
+      };
+      pollTargets.set(key, target);
+      // Warm the host and slug caches so the first poll flush can already
+      // batch this target instead of taking the legacy per-target path.
+      void resolveRepoHostCached(input.cwd).catch(() => {});
+      void resolveRepoSlugCached(input.cwd);
+    }
+
+    const isNewlyRetained = target.retainCount === 0;
+    target.retainCount += 1;
+    if (input.onStatus) {
+      target.callbacks.add(input.onStatus);
+    }
+    if (input.onError) {
+      target.errorCallbacks.add(input.onError);
+    }
+    if (isNewlyRetained) {
+      scheduleImmediateGitHubPoll(target);
+    } else {
+      scheduleGitHubPoll(target);
+    }
+
+    let unsubscribed = false;
+    return {
+      unsubscribe: () => {
+        if (unsubscribed) {
+          return;
+        }
+        unsubscribed = true;
+        if (input.onStatus) {
+          target.callbacks.delete(input.onStatus);
+        }
+        if (input.onError) {
+          target.errorCallbacks.delete(input.onError);
+        }
+        target.retainCount -= 1;
+        if (target.retainCount > 0) {
+          return;
+        }
+        closeGitHubPollTarget(target);
+        pollTargets.delete(key);
+        armGitHubPollTimer();
+      },
+    };
+  }
+
   async function runGitHubPollBatch(
     entries: GitHubBatchPollEntry[],
     startedAt: number,
@@ -1745,6 +1849,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         owner: entry.owner,
         name: entry.name,
         headRef: entry.target.headRef,
+        number: entry.target.fixedPr?.number,
       })),
     );
     const args = ["api", "graphql", "-f", `query=${query}`];
@@ -1805,6 +1910,26 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     }
   }
 
+  function finalizeFixedPollTarget(
+    entry: GitHubBatchPollEntry,
+    node: BatchPollPrNode | null,
+    repository: BatchPollRepository,
+    startedAt: number,
+  ): void {
+    if (
+      !node ||
+      !["OPEN", "CLOSED", "MERGED"].includes(node.state) ||
+      node.reviewDecision === undefined
+    ) {
+      updatePollTargetAfterError(
+        entry.target,
+        new Error("Watched GitHub PR is unavailable or incomplete"),
+      );
+      return;
+    }
+    finalizeBatchPollTarget({ entry, node, repository, rollup: [], startedAt });
+  }
+
   function distributeGitHubPollBatch(input: {
     entries: GitHubBatchPollEntry[];
     aliases: Record<string, unknown>;
@@ -1818,7 +1943,8 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     };
     for (const [index, entry] of input.entries.entries()) {
       const aliasValue = input.aliases[batchAlias(index)];
-      const repository = aliasValue ? BatchPollRepositorySchema.safeParse(aliasValue) : null;
+      const schema = entry.target.fixedPr ? FixedPollRepositorySchema : BatchPollRepositorySchema;
+      const repository = aliasValue ? schema.safeParse(aliasValue) : null;
       if (!repository?.success) {
         updatePollTargetAfterError(
           entry.target,
@@ -1832,6 +1958,11 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         continue;
       }
       const node = selectBatchPollNode(entry, repository.data);
+      // FORK(workspace-snooze): fixed watches never redirect, follow branches, or fetch CI.
+      if (entry.target.fixedPr) {
+        finalizeFixedPollTarget(entry, node, repository.data, input.startedAt);
+        continue;
+      }
       if (!node) {
         // A fork's own PR list is checked first and only a miss goes to the
         // parent: a long-lived personal fork opens PRs against itself, and gh's
@@ -1947,6 +2078,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     entry: GitHubBatchPollEntry,
     repository: BatchPollRepository,
   ): BatchPollPrNode | null {
+    if (entry.target.fixedPr) return repository.pullRequest ?? null;
     // Prefer the canonical owner from the response: the origin slug can carry
     // stale casing or a pre-transfer owner that repository() redirects from.
     const selfOwner = (repository.owner?.login ?? entry.owner).toLowerCase();
@@ -2104,9 +2236,16 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       };
       const built = toCurrentPullRequestStatus(
         toBatchCurrentPullRequestItem(node, input.rollup ?? undefined),
-        entry.target.headRef,
+        entry.target.fixedPr ? node.headRefName : entry.target.headRef,
       );
       status = built ? { ...built, forgeSpecific: { forge: "github", ...facts } } : null;
+    }
+    if (entry.target.fixedPr) {
+      entry.target.latestStatus = status;
+      entry.target.consecutiveErrors = 0;
+      for (const callback of entry.target.callbacks) callback(status);
+      scheduleGitHubPoll(entry.target);
+      return;
     }
     const cacheKey = buildCacheKey({
       cwd: entry.target.cwd,
@@ -2730,70 +2869,45 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       });
     },
 
-    retainCurrentPullRequestStatusPoll(input) {
-      const key = getPollTargetKey(input);
-      let target = pollTargets.get(key);
-      if (!target) {
-        target = {
-          cwd: input.cwd,
-          headRef: input.headRef,
-          headSha: input.headSha,
-          headRepositoryOwner: input.headRepositoryOwner,
-          retainCount: 0,
-          nextDueAt: null,
-          pollCycleStartedAt: null,
-          headFirstSeenAt: deps.now(),
-          lastChecksRollup: null,
-          lastChecksHeadRefOid: null,
-          lastChecksLoadedAt: 0,
-          latestStatus: null,
-          consecutiveErrors: 0,
-          callbacks: new Set(),
-          errorCallbacks: new Set(),
+    retainCurrentPullRequestStatusPoll: retainPollTarget,
+    async readFixedPullRequestStatus(input) {
+      const url = new URL(input.url);
+      const match = url.pathname.match(/^\/([^/]+)\/([^/]+)\/pull\/(\d+)\/?$/);
+      const host = await resolveRepoHostCached(input.cwd);
+      if (
+        url.protocol !== "https:" ||
+        url.username ||
+        url.password ||
+        url.port ||
+        url.hostname !== (host ?? "github.com") ||
+        !match
+      ) {
+        throw new Error("Watched PR must belong to the workspace's authenticated GitHub host");
+      }
+      const number = Number(match[3]);
+      if (!Number.isSafeInteger(number) || number < 1) throw new Error("Invalid PR number");
+      const signal = AbortSignal.any([
+        input.signal ?? new AbortController().signal,
+        AbortSignal.timeout(60_000),
+      ]);
+      signal.throwIfAborted();
+      return new Promise<CurrentPullRequestStatus>((resolve, reject) => {
+        const done = (error: unknown, status?: CurrentPullRequestStatus | null) => {
+          subscription.unsubscribe();
+          signal.removeEventListener("abort", abort);
+          if (error || !status) reject(error ?? new Error("Watched PR is unavailable"));
+          else resolve(status);
         };
-        pollTargets.set(key, target);
-        // Warm the host and slug caches so the first poll flush can already
-        // batch this target instead of taking the legacy per-target path.
-        void resolveRepoHostCached(input.cwd).catch(() => {});
-        void resolveRepoSlugCached(input.cwd);
-      }
-
-      const isNewlyRetained = target.retainCount === 0;
-      target.retainCount += 1;
-      if (input.onStatus) {
-        target.callbacks.add(input.onStatus);
-      }
-      if (input.onError) {
-        target.errorCallbacks.add(input.onError);
-      }
-      if (isNewlyRetained) {
-        scheduleImmediateGitHubPoll(target);
-      } else {
-        scheduleGitHubPoll(target);
-      }
-
-      let unsubscribed = false;
-      return {
-        unsubscribe: () => {
-          if (unsubscribed) {
-            return;
-          }
-          unsubscribed = true;
-          if (input.onStatus) {
-            target.callbacks.delete(input.onStatus);
-          }
-          if (input.onError) {
-            target.errorCallbacks.delete(input.onError);
-          }
-          target.retainCount -= 1;
-          if (target.retainCount > 0) {
-            return;
-          }
-          closeGitHubPollTarget(target);
-          pollTargets.delete(key);
-          armGitHubPollTimer();
-        },
-      };
+        const abort = () => done(new Error("GitHub check delayed or interrupted; will retry"));
+        const subscription = retainPollTarget({
+          cwd: input.cwd,
+          headRef: "",
+          fixedPr: { owner: match[1], name: match[2], number },
+          onStatus: (status) => done(null, status),
+          onError: (error) => done(error),
+        });
+        signal.addEventListener("abort", abort, { once: true });
+      });
     },
 
     pollRetainedPullRequestStatusesNow() {

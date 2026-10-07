@@ -113,11 +113,37 @@ test("custom date validates time and stays usable at compact width", async ({ pa
     await page.getByTestId("snooze-custom-time").fill("10:30");
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(page.getByTestId("snooze-custom-time")).toHaveValue("10:30");
-    await page.getByTestId("snooze-custom-time").scrollIntoViewIfNeeded();
+    // The adaptive dialog remounts its contents when crossing the compact breakpoint.
+    await expect(async () => {
+      await page.getByTestId("snooze-custom-time").scrollIntoViewIfNeeded();
+    }).toPass();
     await expect(page.getByTestId("workspace-snooze-submit")).toBeInViewport();
     await page.screenshot({ path: testInfo.outputPath("snooze-custom-compact.png") });
     await page.getByTestId("workspace-snooze-submit").click();
     await expect(page.getByTestId("workspace-snooze-dialog")).toBeHidden();
+  } finally {
+    await workspace.cleanup();
+  }
+});
+
+test("status change explains missing links and does not hide a workspace without a selection", async ({
+  page,
+}, testInfo) => {
+  const workspace = await seedWorkspace({ repoPrefix: "snooze-status-" });
+  try {
+    await gotoAppShell(page);
+    await openSnooze(page, workspace.workspaceId);
+    await page.getByTestId("snooze-mode-status").click();
+    await expect(page.getByText("No linked PR or Linear issues found.")).toBeVisible();
+    await page.getByTestId("workspace-snooze-submit").click();
+    await expect(page.getByTestId("snooze-error")).toHaveText(
+      "Choose at least one status to watch",
+    );
+    await page.screenshot({ path: testInfo.outputPath("snooze-status-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.getByTestId("snooze-mode-status")).toBeVisible();
+    await expect(page.getByTestId("workspace-snooze-submit")).toBeInViewport();
+    await page.screenshot({ path: testInfo.outputPath("snooze-status-compact.png") });
   } finally {
     await workspace.cleanup();
   }

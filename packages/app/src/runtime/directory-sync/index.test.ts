@@ -1,3 +1,4 @@
+import { workspaceSnoozePayload } from "@getpaseo/protocol/workspace-status-snooze";
 import { DatabaseSync } from "node:sqlite";
 import { ReplicaCache } from "@/runtime/replica-cache";
 import {
@@ -1437,7 +1438,13 @@ it("fills every cached workspace beneath live updates received during the SQLite
       type: "workspace_update",
       payload: {
         kind: "upsert",
-        workspace: { ...workspaces[0], name: "Live", activityAt: null, statusEnteredAt: null },
+        workspace: {
+          ...workspaces[0],
+          ...workspaceSnoozePayload(workspaces[0].snooze),
+          name: "Live",
+          activityAt: null,
+          statusEnteredAt: null,
+        },
       },
     });
   });

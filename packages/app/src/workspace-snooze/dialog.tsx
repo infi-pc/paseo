@@ -1,3 +1,5 @@
+import { StatusSnoozeFields } from "./status-fields";
+import { useSessionStore } from "@/stores/session-store";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { View, Text } from "react-native";
@@ -37,6 +39,11 @@ function useSnoozeForm(target: SnoozeTarget, onClose: () => void) {
         if (!client) throw new Error("Host disconnected");
         await client.setWorkspaceSnooze(target.workspaceId, input);
       },
+      discover: async () => {
+        const client = getHostRuntimeStore().getClient(target.serverId);
+        if (!client) throw new Error("Host disconnected");
+        return client.discoverWorkspaceStatusSnooze(target.workspaceId);
+      },
       check: async () => {
         const client = getHostRuntimeStore().getClient(target.serverId);
         if (!client) throw new Error("Host disconnected");
@@ -44,13 +51,21 @@ function useSnoozeForm(target: SnoozeTarget, onClose: () => void) {
       },
     }),
   );
-  useEffect(() => () => model.close(), [model]);
+  useEffect(() => {
+    if (model.getState().mode === "status") void model.loadStatus();
+    return () => model.close();
+  }, [model]);
   return model;
 }
 function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () => void }) {
   const { t } = useTranslation();
   const size = useIsCompactFormFactor() ? "md" : "sm";
   const model = useSnoozeForm(target, onClose);
+  // COMPAT(statusSnoozing): added in v0.11, remove gate after 2027-04-06.
+  const statusSupported = useSessionStore(
+    (store) =>
+      store.sessions[target.serverId]?.serverInfo?.features?.workspaceStatusSnoozing === true,
+  );
   const state = useSyncExternalStore(model.subscribe, model.getState);
   const latest = useWorkspaceFields(target.serverId, target.workspaceId, (workspace) => ({
     snooze: workspace.snooze,
@@ -116,6 +131,15 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
           options={[
             { value: "time", label: t("workspaceSnooze.time"), testID: "snooze-mode-time" },
             { value: "ai", label: t("workspaceSnooze.ai"), testID: "snooze-mode-ai" },
+            ...(statusSupported
+              ? [
+                  {
+                    value: "status" as const,
+                    label: t("workspaceSnooze.statusChange"),
+                    testID: "snooze-mode-status",
+                  },
+                ]
+              : []),
           ]}
         />
         {state.mode === "time" ? (
@@ -202,7 +226,11 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
             ) : null}
             <Text style={styles.muted}>{getDeviceTimeZone()}</Text>
           </>
-        ) : (
+        ) : null}
+        {state.mode === "status" ? (
+          <StatusSnoozeFields model={model} state={state} size={size} />
+        ) : null}
+        {state.mode === "ai" ? (
           <>
             <Field label={t("workspaceSnooze.condition")}>
               <FormTextInput
@@ -226,17 +254,28 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
                 ]}
               />
             </Field>
+          </>
+        ) : null}
+        {state.mode !== "time" ? (
+          <>
             {lastCheck ? (
-              <Text style={styles.text}>
-                {t(`workspaceSnooze.result.${lastCheck.status}`)} · {lastCheck.reason}
-              </Text>
+              <>
+                <Text style={styles.muted}>
+                  {t("workspaceSnooze.lastCheck", {
+                    time: new Date(lastCheck.checkedAt).toLocaleString(),
+                  })}
+                </Text>
+                <Text style={styles.text}>
+                  {t(`workspaceSnooze.result.${lastCheck.status}`)} · {lastCheck.reason}
+                </Text>
+              </>
             ) : null}
             {nextCheckAt ? (
               <Text style={styles.muted}>
                 {t("workspaceSnooze.nextCheck", { time: new Date(nextCheckAt).toLocaleString() })}
               </Text>
             ) : null}
-            {target.snooze?.config.mode === "ai" ? (
+            {target.snooze && target.snooze.config.mode !== "time" ? (
               <Button variant="secondary" onPress={check} testID="snooze-check-now">
                 {t("workspaceSnooze.checkNow")}
               </Button>
@@ -245,7 +284,7 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
               <Text style={styles.muted}>{t("workspaceSnooze.checkQueued")}</Text>
             ) : null}
           </>
-        )}
+        ) : null}
         {state.error ? (
           <Text accessibilityRole="alert" style={styles.error} testID="snooze-error">
             {state.error}

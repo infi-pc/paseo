@@ -1,3 +1,11 @@
+// FORK(workspace-snooze): deterministic status watches use additive wire fields.
+import {
+  StatusSnoozeSchema,
+  StatusSnoozeDiscoverRequestSchema,
+  StatusSnoozeDiscoverResponseSchema,
+  StatusSnoozeSetRequestSchema,
+  StatusSnoozeSetResponseSchema,
+} from "./workspace-status-snooze.js";
 // FORK(workspace-snooze): durable workspace snoozing and opt-in wake events.
 import {
   WorkspaceSnoozeSchema,
@@ -3427,6 +3435,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   // FORK(workspace-snooze): snooze control RPCs.
   WorkspaceSnoozeSetRequestSchema,
   WorkspaceSnoozeCheckRequestSchema,
+  StatusSnoozeDiscoverRequestSchema,
+  StatusSnoozeSetRequestSchema,
   WorkspaceLabelListRequestSchema,
   WorkspaceLabelAssignmentSetRequestSchema,
   WorkspaceLabelUpdateRequestSchema,
@@ -3916,6 +3926,7 @@ export const ServerInfoStatusPayloadSchema = z
         workspacePinning: z.boolean().optional(),
         // FORK(workspace-snooze): one feature gate for clients.
         workspaceSnoozing: z.boolean().optional(),
+        workspaceStatusSnoozing: z.boolean().optional(),
         // COMPAT(workspaceMarkUnread): added in v0.5.0, remove after 2027-08-20.
         workspaceMarkUnread: z.boolean().optional(),
         // COMPAT(hubRelationship): added in v0.1.X, drop the gate when floor >= v0.1.X.
@@ -4290,6 +4301,7 @@ export const WorkspaceDescriptorPayloadSchema = z
     pinnedAt: z.string().nullable().optional(),
     // FORK(workspace-snooze): optional for older daemon descriptors.
     snooze: WorkspaceSnoozeSchema.nullable().optional(),
+    statusSnooze: StatusSnoozeSchema.nullable().optional(),
     // COMPAT(workspaceLabels): added in v0.5.0, remove optional after 2027-08-14.
     labels: z.array(z.string()).optional(),
     archivingAt: z.string().nullable().optional().default(null),
@@ -7190,6 +7202,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   WorkspaceSnoozeSetResponseSchema,
   WorkspaceSnoozeCheckResponseSchema,
   WorkspaceSnoozeWokeSchema,
+  StatusSnoozeDiscoverResponseSchema,
+  StatusSnoozeSetResponseSchema,
   WorkspaceRecoveryInspectResponseSchema,
   WorkspaceRecoveryRestoreResponseSchema,
   WaitForFinishResponseMessageSchema,

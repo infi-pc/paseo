@@ -1,3 +1,9 @@
+import {
+  StatusSnoozeInputSchema,
+  type StatusSnoozeInput,
+  type StatusSnooze,
+} from "@getpaseo/protocol/workspace-status-snooze";
+import type { WorkspaceStatusSnoozeChecker } from "./status.js";
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
 import {
@@ -9,6 +15,7 @@ import type { WorkspaceRegistry, PersistedWorkspaceRecord } from "../workspace-r
 
 interface Options {
   registry: WorkspaceRegistry;
+  statusChecker?: Pick<WorkspaceStatusSnoozeChecker, "discover" | "capture" | "check">;
   logger: Logger;
   check: (
     workspace: PersistedWorkspaceRecord,
@@ -28,6 +35,10 @@ export class WorkspaceSnoozeService {
     controller: AbortController;
     task: Promise<void>;
   } | null = null;
+  private readonly statusChecks = new Map<
+    string,
+    { controller: AbortController; task: Promise<void>; snoozeId: string }
+  >();
   private stopped = false;
   private readonly now: () => number;
 
@@ -39,10 +50,17 @@ export class WorkspaceSnoozeService {
     if (this.timer) return;
     this.stopped = false;
     this.unsubscribe = this.options.registry.subscribeToMutations?.((mutation) => {
-      const active = this.active;
-      if (active?.workspaceId !== mutation.workspaceId) return;
-      if (mutation.workspace?.archivedAt || mutation.workspace?.snooze?.id !== active.snoozeId)
-        active.controller.abort();
+      const checks = [
+        this.active?.workspaceId === mutation.workspaceId ? this.active : null,
+        this.statusChecks.get(mutation.workspaceId),
+      ];
+      for (const active of checks) {
+        if (
+          active &&
+          (mutation.workspace?.archivedAt || mutation.workspace?.snooze?.id !== active.snoozeId)
+        )
+          active.controller.abort();
+      }
     });
     this.timer = setInterval(() => this.runInBackground(), 10_000);
     this.timer.unref();
@@ -82,12 +100,48 @@ export class WorkspaceSnoozeService {
     this.runInBackground();
   }
 
+  async discoverStatus(workspaceId: string) {
+    const workspace = await this.options.registry.get(workspaceId);
+    if (!workspace || workspace.archivedAt) throw new Error("Workspace is unavailable");
+    if (!this.options.statusChecker) throw new Error("Status snoozing unavailable");
+    return this.options.statusChecker.discover(workspace);
+  }
+
+  async setStatus(workspaceId: string, input: StatusSnoozeInput): Promise<void> {
+    const config = StatusSnoozeInputSchema.parse(input);
+    const workspace = await this.options.registry.get(workspaceId);
+    if (!workspace || workspace.archivedAt) throw new Error("Workspace is unavailable");
+    if (!this.options.statusChecker) throw new Error("Status snoozing unavailable");
+    const baseline = await this.options.statusChecker.capture(workspace, config);
+    const stamp = new Date(this.now()).toISOString();
+    const snooze: StatusSnooze = {
+      id: randomUUID(),
+      createdAt: stamp,
+      config,
+      baseline,
+      lastCheck: null,
+      nextCheckAt: new Date(this.now() + config.intervalMinutes * 60_000).toISOString(),
+    };
+    const updated = await this.options.registry.update(workspaceId, (current) => {
+      if (
+        current.archivedAt ||
+        current.cwd !== workspace.cwd ||
+        current.snooze?.id !== workspace.snooze?.id
+      )
+        throw new Error("Workspace changed while capturing statuses; try again");
+      return { ...current, snooze, updatedAt: stamp };
+    });
+    if (!updated) throw new Error("Workspace not found");
+    this.runInBackground();
+  }
+
   async checkNow(workspaceId: string): Promise<void> {
-    if (this.active?.workspaceId === workspaceId) throw new Error("A check is already running");
+    if (this.active?.workspaceId === workspaceId || this.statusChecks.has(workspaceId))
+      throw new Error("A check is already running");
     const stamp = new Date(this.now()).toISOString();
     const updated = await this.options.registry.update(workspaceId, (workspace) => {
-      if (workspace.archivedAt || workspace.snooze?.config.mode !== "ai")
-        throw new Error("Workspace has no AI snooze");
+      if (workspace.archivedAt || !workspace.snooze || workspace.snooze.config.mode === "time")
+        throw new Error("Workspace has no recurring snooze");
       return {
         ...workspace,
         snooze: { ...workspace.snooze, nextCheckAt: stamp },
@@ -113,6 +167,27 @@ export class WorkspaceSnoozeService {
       if (workspace.snooze?.config.mode === "time")
         await this.finish(workspace, { status: "unblocked", reason: "Snooze time reached" });
     }
+    const statusTasks: Promise<void>[] = [];
+    for (const workspace of due) {
+      if (this.stopped) return;
+      if (
+        workspace.snooze?.config.mode !== "status" ||
+        this.statusChecks.has(workspace.workspaceId) ||
+        this.statusChecks.size >= 4
+      )
+        continue;
+      const controller = new AbortController();
+      const active = { controller, snoozeId: workspace.snooze.id, task: Promise.resolve() };
+      this.statusChecks.set(workspace.workspaceId, active);
+      active.task = this.check(workspace, controller).finally(() =>
+        this.statusChecks.delete(workspace.workspaceId),
+      );
+      statusTasks.push(active.task);
+    }
+    await Promise.all([...statusTasks, this.runDueAI(due)]);
+  }
+
+  private async runDueAI(due: PersistedWorkspaceRecord[]): Promise<void> {
     if (this.active || this.stopped) return;
     const candidate = due.find((entry) => entry.snooze?.config.mode === "ai");
     if (!candidate) return;
@@ -149,7 +224,10 @@ export class WorkspaceSnoozeService {
     try {
       let result: WorkspaceSnoozeResult;
       try {
-        result = await this.options.check(workspace, controller.signal);
+        if (workspace.snooze?.config.mode === "status") {
+          if (!this.options.statusChecker) throw new Error("Status checker unavailable");
+          result = await this.options.statusChecker.check(workspace, controller.signal);
+        } else result = await this.options.check(workspace, controller.signal);
       } catch (error) {
         result = {
           status: "unknown",
@@ -179,13 +257,16 @@ export class WorkspaceSnoozeService {
         woke = true;
         return { ...current, snooze: null, updatedAt: stamp };
       }
-      const hours = expected.config.mode === "ai" ? expected.config.intervalHours : 1;
+      const delay =
+        expected.config.mode === "status"
+          ? expected.config.intervalMinutes * 60_000
+          : (expected.config.mode === "ai" ? expected.config.intervalHours : 1) * 3_600_000;
       return {
         ...current,
         updatedAt: stamp,
         snooze: {
           ...current.snooze,
-          nextCheckAt: new Date(this.now() + hours * 3_600_000).toISOString(),
+          nextCheckAt: new Date(this.now() + delay).toISOString(),
           lastCheck: { ...result, reason: result.reason.slice(0, 2000), checkedAt: stamp },
         },
       };
@@ -199,6 +280,10 @@ export class WorkspaceSnoozeService {
     this.timer = null;
     this.unsubscribe?.();
     this.active?.controller.abort();
-    await this.active?.task;
+    for (const check of this.statusChecks.values()) check.controller.abort();
+    await Promise.all([
+      this.active?.task,
+      ...[...this.statusChecks.values()].map((check) => check.task),
+    ]);
   }
 }

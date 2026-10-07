@@ -1,3 +1,4 @@
+import { workspaceSnoozePayload } from "@getpaseo/protocol/workspace-status-snooze";
 import type { WorkspaceSnoozeService } from "./workspace-snooze/service.js";
 import { getChaptersService } from "./chapters/generation.js";
 import { CodeLanguageSession } from "./code-language/session.js";
@@ -3025,6 +3026,8 @@ export class Session {
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
+    const snooze = this.dispatchSnoozeMessage(msg);
+    if (snooze) return snooze;
     switch (msg.type) {
       case "fetch_workspaces_request":
         return this.handleFetchWorkspacesRequest(msg);
@@ -3057,12 +3060,22 @@ export class Session {
         return this.handleProjectRemoveRequest(msg);
       case "workspace.title.set.request":
         return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
+      case "workspace.pin.set.request":
+        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchSnoozeMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
       // FORK(workspace-snooze): workspace scheduling RPCs.
+      case "workspace.snooze.status.discover.request":
+        return this.handleStatusSnoozeDiscover(msg);
+      case "workspace.snooze.status.set.request":
       case "workspace.snooze.set.request":
       case "workspace.snooze.check.request":
         return this.handleWorkspaceSnoozeRequest(msg);
-      case "workspace.pin.set.request":
-        return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
       default:
         return undefined;
     }
@@ -3903,27 +3916,60 @@ export class Session {
     }
   }
 
+  private async handleStatusSnoozeDiscover(
+    msg: Extract<SessionInboundMessage, { type: "workspace.snooze.status.discover.request" }>,
+  ): Promise<void> {
+    try {
+      if (!this.workspaceSnoozeService) throw new Error("Workspace snoozing unavailable");
+      const result = await this.workspaceSnoozeService.discoverStatus(msg.workspaceId);
+      this.emit({
+        type: "workspace.snooze.status.discover.response",
+        payload: { requestId: msg.requestId, ...result },
+      });
+    } catch (error) {
+      this.emit({
+        type: "workspace.snooze.status.discover.response",
+        payload: {
+          requestId: msg.requestId,
+          candidates: [],
+          errors: [getErrorMessage(error)],
+          autoArchiveAfterMerge: false,
+        },
+      });
+    }
+  }
+
   // FORK(workspace-snooze): the daemon owns scheduling even with no connected clients.
   private async handleWorkspaceSnoozeRequest(
     msg: Extract<
       SessionInboundMessage,
-      { type: "workspace.snooze.set.request" | "workspace.snooze.check.request" }
+      {
+        type:
+          | "workspace.snooze.set.request"
+          | "workspace.snooze.status.set.request"
+          | "workspace.snooze.check.request";
+      }
     >,
   ): Promise<void> {
     let error: string | null = null;
     try {
       if (!this.workspaceSnoozeService) throw new Error("Workspace snoozing unavailable");
-      if (msg.type === "workspace.snooze.set.request")
+      if (msg.type === "workspace.snooze.status.set.request")
+        await this.workspaceSnoozeService.setStatus(msg.workspaceId, msg.snooze);
+      else if (msg.type === "workspace.snooze.set.request")
         await this.workspaceSnoozeService.set(msg.workspaceId, msg.snooze);
       else await this.workspaceSnoozeService.checkNow(msg.workspaceId);
     } catch (cause) {
       error = getErrorMessage(cause);
     }
     this.emit({
-      type:
-        msg.type === "workspace.snooze.set.request"
-          ? "workspace.snooze.set.response"
-          : "workspace.snooze.check.response",
+      type: (
+        {
+          "workspace.snooze.status.set.request": "workspace.snooze.status.set.response",
+          "workspace.snooze.set.request": "workspace.snooze.set.response",
+          "workspace.snooze.check.request": "workspace.snooze.check.response",
+        } as const
+      )[msg.type],
       payload: {
         requestId: msg.requestId,
         workspaceId: msg.workspaceId,
@@ -5739,7 +5785,7 @@ export class Session {
       title: workspace.title,
       pinnedAt: workspace.pinnedAt,
       // FORK(workspace-snooze): directory sync carries the durable snooze.
-      snooze: workspace.snooze ?? null,
+      ...workspaceSnoozePayload(workspace.snooze),
       ...(workspace.labels && workspace.labels.length > 0 ? { labels: workspace.labels } : {}),
       archivingAt: null,
       status: "done",
@@ -5833,7 +5879,7 @@ export class Session {
       title: result.workspace.title,
       pinnedAt: result.workspace.pinnedAt,
       // FORK(workspace-snooze): include snooze in operation results.
-      snooze: result.workspace.snooze ?? null,
+      ...workspaceSnoozePayload(result.workspace.snooze),
       ...(result.workspace.labels && result.workspace.labels.length > 0
         ? { labels: result.workspace.labels }
         : {}),

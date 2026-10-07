@@ -1,3 +1,4 @@
+import type { StatusSnoozeInput } from "@getpaseo/protocol/workspace-status-snooze";
 import { expect, test } from "vitest";
 import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
 import { calendarDays, customDate, dateText, openSnoozeForm, presetDate } from "./form-model";
@@ -21,7 +22,7 @@ test("relative presets measure elapsed time while calendar presets use the next 
   ]);
 });
 test("failed save keeps edits and can be retried, and a fresh open seeds the saved snooze", async () => {
-  const saved: Array<WorkspaceSnoozeInput | null> = [];
+  const saved: Array<WorkspaceSnoozeInput | StatusSnoozeInput | null> = [];
   let fail = true;
   let closed = 0;
   const model = openSnoozeForm({
@@ -112,4 +113,48 @@ test("snoozed-only and pinned groups remain reachable through Show all without c
   expect(
     selectSnoozableGroup([{ workspaceKey: "hidden" }], false, new Map([["hidden", hidden]])),
   ).toEqual({ visibleItems: [], canToggle: true });
+});
+
+test("status discovery seeds selections, retry preserves choices, and save sends identities without trusting preview values", async () => {
+  const target = { kind: "linear" as const, issueId: "6e22bbbf-7d65-4463-8c1e-9ea7f8914abc" };
+  const snapshot = {
+    target,
+    label: "APP-1",
+    value: "review",
+    valueLabel: "Review",
+    capturedAt: now.toISOString(),
+  };
+  const saved: Array<WorkspaceSnoozeInput | StatusSnoozeInput | null> = [];
+  let unavailable = true;
+  const model = openSnoozeForm({
+    snooze: null,
+    timezone: "UTC",
+    now: () => now,
+    save: async (input) => {
+      saved.push(input);
+    },
+    check: async () => {},
+    saved: () => {},
+    discover: async () => {
+      if (unavailable) throw new Error("Host disconnected");
+      return { candidates: [snapshot], errors: [], autoArchiveAfterMerge: true };
+    },
+  });
+  model.setMode("status");
+  await Promise.resolve();
+  expect(model.getState().statusLoad).toBe("error");
+  unavailable = false;
+  await model.loadStatus();
+  expect(model.getState().statusLoad).toBe("ready");
+  const key = model.getState().selected[0];
+  model.toggleTarget(key);
+  await model.loadStatus();
+  await model.submit();
+  expect(saved).toEqual([]);
+  expect(model.getState().error).toContain("at least one");
+  model.toggleTarget(key);
+  model.setStatusInterval(60);
+  await model.submit();
+  expect(saved).toEqual([{ mode: "status", targets: [target], intervalMinutes: 60 }]);
+  model.close();
 });

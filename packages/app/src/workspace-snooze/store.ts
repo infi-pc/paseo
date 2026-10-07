@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { WorkspaceSnooze } from "@getpaseo/protocol/workspace-snooze";
+import type { AnyWorkspaceSnooze as WorkspaceSnooze } from "@getpaseo/protocol/workspace-status-snooze";
 import { useSessionStore } from "@/stores/session-store";
 
 export interface SnoozeTarget {

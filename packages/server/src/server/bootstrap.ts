@@ -1,3 +1,5 @@
+import { WorkspaceStatusSnoozeChecker } from "./workspace-snooze/status.js";
+import { linearService } from "../services/linear-service.js";
 import { WorkspaceSnoozeService } from "./workspace-snooze/service.js";
 import { createWorkspaceSnoozeChecker } from "./workspace-snooze/check.js";
 import { ToolCallSummaryStore } from "./agent/tool-call-summaries/store.js";
@@ -1156,7 +1158,7 @@ export async function createPaseoDaemon(
     onStateChanged: (state) => wsServer?.broadcastSleepPrevention(state),
   });
 
-  setupAutoArchiveOnMerge({
+  const autoArchiveOnMerge = setupAutoArchiveOnMerge({
     paseoHome: config.paseoHome,
     paseoWorktreesBaseRoot: config.worktreesRoot,
     daemonConfigStore,
@@ -1403,6 +1405,13 @@ export async function createPaseoDaemon(
     registry: workspaceRegistry,
     logger,
     check: createWorkspaceSnoozeChecker(agentManager, providerSnapshotManager),
+    statusChecker: new WorkspaceStatusSnoozeChecker({
+      github,
+      linear: linearService,
+      git: workspaceGitService,
+      autoArchiveAfterMerge: () => daemonConfigStore.get().autoArchiveAfterMerge === true,
+      beforeWake: (workspace) => autoArchiveOnMerge.settleForWorkspace(workspace.cwd),
+    }),
     wake: async (workspace, reason, id) => {
       await wsServer?.notifyWorkspaceSnoozeWake(
         workspace.workspaceId,

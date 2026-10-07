@@ -210,7 +210,7 @@ intact. **Show all** reveals snoozed rows in each sidebar group; opening one doe
 Archiving cancels the snooze.
 
 The daemon owns the schedule so checking continues when the app closes. After host downtime, a
-timed snooze wakes immediately and an AI snooze performs one overdue check, without replaying missed
+timed snooze wakes immediately and a recurring snooze performs one overdue check, without replaying missed
 intervals. Calendar presets use the selecting device's timezone and persist a UTC instant.
 
 AI checks use GPT Luna through Codex in auto-review mode, in the workspace's exact directory.
@@ -218,6 +218,18 @@ They retain normal CLI and MCP access. Read-only behavior is a prompt instructio
 guarantee. Manual approval requests end the check as inconclusive. Unavailable providers, denied
 access, and failed checks keep the workspace snoozed. Inspect evidence in
 [Background Activity](timeline-sync.md#background-request-inspection).
+
+Status-change snoozes read GitHub PR lifecycle/review decisions and linked Linear issue states
+without an agent. Saving must read every selected status successfully before hiding the workspace.
+The saved PR URLs and issue IDs stay fixed even if branches or attachments change. Any observed
+difference from that baseline wakes the workspace, including a backward transition. Linear state
+renames do not count; comments, labels, assignees, and CI are outside this mode. Polling can miss a
+change that reverses between checks.
+
+A failed or missing read is inconclusive. Keep the snooze unless another selected item has a known
+change. GitHub reads join the shared polling budget; Linear reads batch the selected issues. The
+existing auto-archive-on-merge policy settles before a status wake, and an archived workspace sends
+no wake notification. Status snoozing does not broaden that policy's eligibility rules.
 
 Keep scheduling state on the workspace record, independent of helper session lifetime. A check
 belongs to the snooze revision that started it; editing or canceling the snooze invalidates that
