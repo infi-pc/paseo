@@ -1,4 +1,5 @@
 import { WorkspaceStatusSnoozeChecker } from "./status.js";
+import { createGitHubService, GitHubCommandError } from "../../services/github-service.js";
 import { WorkspaceSnoozeSchema } from "@getpaseo/protocol/workspace-snooze";
 import {
   workspaceSnoozePayload,
@@ -314,4 +315,88 @@ test("auto-archive finishes before a status wake and suppresses its notification
   await f.service.runDue();
   expect((await f.registry.get("one"))?.archivedAt).toBeTruthy();
   expect(f.wakes).toEqual([]);
+});
+
+test("failed GitHub reviews cannot become a baseline or wake evidence, while healthy lifecycle changes still wake", async () => {
+  const url = "https://github.com/acme/widgets/pull/42";
+  const reviewTarget = { kind: "github" as const, url, field: "review" as const };
+  const stateTarget = { kind: "github" as const, url, field: "state" as const };
+  let state = "OPEN";
+  let reviewDecision: string | null = "APPROVED";
+  let reviewFailed = false;
+  const github = createGitHubService({
+    resolveGhPath: async () => "/usr/bin/gh",
+    resolveRepoHost: async () => null,
+    resolveRepoSlug: async () => "acme/widgets",
+    runner: async (args, options) => {
+      const stdout = JSON.stringify({
+        data: { t0: { pullRequest: { number: 42, state, isDraft: false, reviewDecision } } },
+        errors: reviewFailed
+          ? [{ message: "Review unavailable", path: ["t0", "pullRequest", "reviewDecision"] }]
+          : [],
+      });
+      if (reviewFailed) {
+        throw new GitHubCommandError({
+          args,
+          cwd: options.cwd,
+          exitCode: 1,
+          stdout,
+          stderr: "Review unavailable",
+        });
+      }
+      return { stdout, stderr: "" };
+    },
+  });
+  cleanup.push(async () => github.dispose?.());
+  const checker = new WorkspaceStatusSnoozeChecker({
+    github,
+    git: {
+      getSnapshot: async () => {
+        throw new Error("Not used");
+      },
+    },
+    linear: { getIssues: async () => [], readIssueStates: async () => [] },
+    autoArchiveAfterMerge: () => false,
+    beforeWake: async () => {},
+  });
+  const f = await fixture(undefined, checker);
+  const config = {
+    mode: "status" as const,
+    intervalMinutes: 5 as const,
+    targets: [stateTarget, reviewTarget],
+  };
+  await f.service.setStatus("one", config);
+  reviewDecision = null;
+  reviewFailed = true;
+  await expect(f.service.setStatus("two", config)).rejects.toThrow("Review is unavailable");
+  expect((await f.registry.get("two"))?.snooze).toBeUndefined();
+  f.advance(300_000);
+  await f.service.runDue();
+  expect(f.wakes).toEqual([]);
+  expect((await f.registry.get("one"))?.snooze?.lastCheck).toMatchObject({
+    status: "unknown",
+    reason: "PR #42 · Review is unavailable",
+  });
+  state = "MERGED";
+  f.advance(300_000);
+  await f.service.runDue();
+  expect(f.wakes).toEqual(["one"]);
+  expect((await f.registry.get("one"))?.snooze).toBeNull();
+
+  // Selecting only a healthy field permits capture even when a sibling fails.
+  await f.service.setStatus("two", { ...config, targets: [stateTarget] });
+  expect((await f.registry.get("two"))?.snooze?.config).toEqual({
+    ...config,
+    targets: [stateTarget],
+  });
+
+  // A genuine null review is a known change from Approved.
+  reviewFailed = false;
+  reviewDecision = "APPROVED";
+  await f.service.setStatus("one", { ...config, targets: [reviewTarget] });
+  reviewDecision = null;
+  f.advance(300_000);
+  await f.service.runDue();
+  expect(f.wakes).toEqual(["one", "one"]);
+  expect((await f.registry.get("one"))?.snooze).toBeNull();
 });

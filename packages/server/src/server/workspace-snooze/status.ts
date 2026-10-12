@@ -117,24 +117,28 @@ export class WorkspaceStatusSnoozeChecker {
       ...githubUrls.map(async (url) => {
         try {
           const pr = await this.options.github.readFixedPullRequestStatus({ cwd, url, signal });
-          let state = "Open";
-          if (pr.isDraft) state = "Draft";
-          if (pr.state.toLowerCase() === "closed") state = "Closed";
-          if (pr.isMerged || pr.state.toLowerCase() === "merged") state = "Merged";
-          const review = pr.reviewDecision ?? "none";
-          const reviewLabel = {
+          const { state, review } = pr;
+          const reviewLabels = {
             approved: "Approved",
             changes_requested: "Changes requested",
             pending: "Review required",
             none: "No decision",
-          }[review];
+          };
           for (const target of targets) {
             if (target.kind !== "github" || target.url !== url) continue;
+            const value = target.field === "state" ? state : review;
+            if (value === null) {
+              errors.push(
+                `PR #${pr.number} · ${target.field === "state" ? "State" : "Review"} is unavailable`,
+              );
+              continue;
+            }
             snapshots.push({
               target,
               label: `PR #${pr.number} · ${target.field === "state" ? "State" : "Review"}`,
-              value: target.field === "state" ? state : review,
-              valueLabel: target.field === "state" ? state : reviewLabel,
+              value,
+              valueLabel:
+                target.field === "review" && review !== null ? reviewLabels[review] : value,
               capturedAt: new Date().toISOString(),
             });
           }

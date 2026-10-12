@@ -587,6 +587,182 @@ describe("ForgeService", () => {
     }
   });
 
+  it.each(["scheduled", "in flight"])(
+    "concurrent readers share the %s fixed PR request",
+    async (phase) => {
+      const runner = createDeferredRunner();
+      const service = createGitHubService({
+        runner: runner.runner,
+        resolveGhPath: async () => "/usr/bin/gh",
+        resolveRepoHost: async () => null,
+        resolveRepoSlug: async () => "acme/widgets",
+      });
+      const input = { cwd: "/ws", url: "https://github.com/acme/widgets/pull/42" };
+      try {
+        const first = service.readFixedPullRequestStatus(input);
+        await flushMicrotasks();
+        if (phase === "in flight") await vi.advanceTimersByTimeAsync(GITHUB_POLL_ALIGNMENT_MS);
+        const second = service.readFixedPullRequestStatus(input);
+        await flushMicrotasks();
+        await vi.advanceTimersByTimeAsync(GITHUB_POLL_ALIGNMENT_MS);
+        expect(runner.calls).toHaveLength(1);
+        runner.resolveNext(
+          batchPollStatusJson({
+            t0: batchPollRepositoryJson([], { pullRequest: batchPollPrNodeJson({ number: 42 }) }),
+          }),
+        );
+        expect((await first).number).toBe(42);
+        expect(await second).toEqual(await first);
+        await vi.advanceTimersByTimeAsync(300_000);
+        expect(runner.calls).toHaveLength(1);
+      } finally {
+        service.dispose?.();
+      }
+    },
+  );
+
+  it("keeps an errored nullable review unknown while preserving healthy fields and aliases", async () => {
+    const stdout = JSON.stringify({
+      ...JSON.parse(
+        batchPollStatusJson({
+          t0: batchPollRepositoryJson([], {
+            pullRequest: batchPollPrNodeJson({ number: 42, state: "MERGED", reviewDecision: null }),
+          }),
+          t1: batchPollRepositoryJson([], {
+            pullRequest: batchPollPrNodeJson({ number: 43, state: "OPEN", reviewDecision: null }),
+          }),
+        }),
+      ),
+      errors: [{ message: "Review unavailable", path: ["t0", "pullRequest", "reviewDecision"] }],
+    });
+    const runner = createScriptedRunner([
+      {
+        error: new GitHubCommandError({
+          args: ["api", "graphql"],
+          cwd: "/ws",
+          exitCode: 1,
+          stderr: "Review unavailable",
+          stdout,
+        }),
+      },
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => "acme/widgets",
+    });
+    try {
+      const first = service.readFixedPullRequestStatus({
+        cwd: "/ws",
+        url: "https://github.com/acme/widgets/pull/42",
+      });
+      const second = service.readFixedPullRequestStatus({
+        cwd: "/ws",
+        url: "https://github.com/acme/widgets/pull/43",
+      });
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(GITHUB_POLL_ALIGNMENT_MS);
+      expect(await first).toEqual({ number: 42, state: "Merged", review: null });
+      expect(await second).toEqual({ number: 43, state: "Open", review: "none" });
+      expect(runner.calls).toHaveLength(1);
+    } finally {
+      service.dispose?.();
+    }
+  });
+
+  it.each([
+    {
+      name: "errored lifecycle",
+      fields: { state: "CLOSED", isDraft: false },
+      errorField: "state",
+      expected: { state: null, review: "approved" },
+    },
+    {
+      name: "errored draft",
+      fields: { state: "OPEN", isDraft: false },
+      errorField: "isDraft",
+      expected: { state: null, review: "approved" },
+    },
+    {
+      name: "malformed lifecycle",
+      fields: { state: null, isDraft: false },
+      errorField: null,
+      expected: { state: null, review: "approved" },
+    },
+    {
+      name: "missing review",
+      fields: { state: "OPEN", isDraft: false, reviewDecision: undefined },
+      errorField: null,
+      expected: { state: "Open", review: null },
+    },
+    {
+      name: "unrelated metadata error",
+      fields: { state: "OPEN", isDraft: true },
+      errorField: "title",
+      expected: { state: "Draft", review: "approved" },
+    },
+  ])("fixed reads isolate $name observations", async ({ fields, errorField, expected }) => {
+    const runner = createRunner([
+      JSON.stringify({
+        data: { t0: { pullRequest: { number: 42, reviewDecision: "APPROVED", ...fields } } },
+        errors: errorField ? [{ path: ["t0", "pullRequest", errorField] }] : [],
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      resolveRepoSlug: async () => "acme/widgets",
+    });
+    try {
+      const result = service.readFixedPullRequestStatus({
+        cwd: "/ws",
+        url: "https://github.com/acme/widgets/pull/42",
+      });
+      await flushMicrotasks();
+      await vi.advanceTimersByTimeAsync(GITHUB_POLL_ALIGNMENT_MS);
+      expect(await result).toEqual({ number: 42, ...expected });
+    } finally {
+      service.dispose?.();
+    }
+  });
+
+  it.each([[], ["t0"], ["t0", "pullRequest"]])(
+    "a fixed PR with an ancestor error at %j stays unavailable",
+    async (...path) => {
+      const runner = createRunner([
+        JSON.stringify({
+          data: {
+            t0: {
+              pullRequest: { number: 42, state: "OPEN", isDraft: false, reviewDecision: null },
+            },
+          },
+          errors: [{ path }],
+        }),
+      ]);
+      const service = createGitHubService({
+        runner: runner.runner,
+        resolveGhPath: async () => "/usr/bin/gh",
+        resolveRepoHost: async () => null,
+        resolveRepoSlug: async () => "acme/widgets",
+      });
+      try {
+        const result = expect(
+          service.readFixedPullRequestStatus({
+            cwd: "/ws",
+            url: "https://github.com/acme/widgets/pull/42",
+          }),
+        ).rejects.toThrow("unavailable");
+        await flushMicrotasks();
+        await vi.advanceTimersByTimeAsync(GITHUB_POLL_ALIGNMENT_MS);
+        await result;
+      } finally {
+        service.dispose?.();
+      }
+    },
+  );
+
   it("a missing fixed PR fails without redirecting to a fork parent", async () => {
     const runner = createRunner([
       batchPollStatusJson({
