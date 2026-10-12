@@ -28,6 +28,7 @@ export interface SidebarWorkspacePlacement {
   workspaceDirectory?: string;
   projectKind: WorkspaceStructureProject["projectKind"];
   workspaceKind: WorkspaceDescriptor["workspaceKind"];
+  background?: boolean;
   name: string;
   // FORK(workspace-snooze): rows retain hidden-state metadata.
   snooze?: WorkspaceDescriptor["snooze"];
@@ -167,6 +168,7 @@ export function createSidebarWorkspaceEntry(input: {
       input.workspace.worktreeSlug ?? shortenPath(input.workspace.workspaceDirectory),
     projectKind: input.workspace.projectKind,
     workspaceKind: input.workspace.workspaceKind,
+    background: input.workspace.background,
     name: input.workspace.name,
     title: input.workspace.title ?? null,
     pinnedAt: input.workspace.pinnedAt,

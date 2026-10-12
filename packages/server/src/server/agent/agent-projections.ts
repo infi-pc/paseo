@@ -142,6 +142,7 @@ export function toAgentPayload(
     title: options?.title ?? null,
     responseMetadata: agent.responseMetadata,
     labels: agent.labels,
+    ...(agent.internal ? { internal: true } : {}),
   };
 
   const usage = sanitizeUsage(agent.lastUsage);
@@ -219,6 +220,7 @@ export function buildStoredAgentPayload(
   const lastUserMessageAt = record.lastUserMessageAt ? new Date(record.lastUserMessageAt) : null;
 
   const runtimeInfo = buildStoredRuntimeInfo(record);
+  const thinkingOptionId = record.config?.thinkingOptionId ?? null;
   const providerAvailable = isStoredAgentProviderAvailable(record, validProviders);
   const persistence = projectPersistenceHandleForWire(
     buildStoredPersistenceHandle(record, validProviders),
@@ -230,10 +232,10 @@ export function buildStoredAgentPayload(
     cwd: record.cwd,
     ...(record.workspaceId ? { workspaceId: record.workspaceId } : {}),
     model: record.config?.model ?? null,
-    thinkingOptionId: record.config?.thinkingOptionId ?? null,
+    thinkingOptionId,
     effectiveThinkingOptionId: resolveEffectiveThinkingOptionId({
       runtimeInfo,
-      configuredThinkingOptionId: record.config?.thinkingOptionId ?? null,
+      configuredThinkingOptionId: thinkingOptionId,
     }),
     ...(runtimeInfo ? { runtimeInfo } : {}),
     createdAt: createdAt.toISOString(),
@@ -252,7 +254,9 @@ export function buildStoredAgentPayload(
     attentionReason: record.attentionReason ?? null,
     attentionTimestamp: record.attentionTimestamp ?? null,
     archivedAt: record.archivedAt ?? null,
+    ...(record.internal ? { internal: true } : {}),
     labels: normalizeLabels(record.labels),
+    ...(typeof record.lastError === "string" ? { lastError: record.lastError } : {}),
     ...(providerAvailable ? {} : { providerUnavailable: true }),
   };
 }

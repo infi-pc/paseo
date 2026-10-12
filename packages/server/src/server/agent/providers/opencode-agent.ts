@@ -13,7 +13,7 @@ import {
   type TextPartInput as OpenCodeTextPartInput,
 } from "@opencode-ai/sdk/v2/client";
 import fs from "node:fs/promises";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { createPathEquivalenceMatcher } from "../../../utils/path.js";
 import pLimit from "p-limit";
@@ -1434,10 +1434,11 @@ export class OpenCodeAgentClient implements AgentClient {
       OpenCodeServerManager.getInstance(this.logger, runtimeSettings, {
         managedProcesses: deps.managedProcesses,
         resolveHomeDir: deps.resolveHomeDir,
-        createEventSource: ({ serverUrl, processExit, logger: eventLogger }) =>
+        createEventSource: ({ serverUrl, processExit, listening, logger: eventLogger }) =>
           new OpenCodeEventConsumer({
             serverUrl,
             processExit,
+            listening,
             logger: eventLogger,
             createClient: (baseUrl) => this.createOpenCodeClient({ baseUrl, directory: "" }),
           }),
@@ -1497,6 +1498,7 @@ export class OpenCodeAgentClient implements AgentClient {
         client,
         session.id,
         this.logger,
+        connection.environment,
         new Map(this.modelContextWindows),
         connection.events,
         connection.release,
@@ -1551,6 +1553,7 @@ export class OpenCodeAgentClient implements AgentClient {
         client,
         handle.sessionId,
         this.logger,
+        connection.environment,
         new Map(this.modelContextWindows),
         connection.events,
         connection.release,
@@ -1599,6 +1602,7 @@ export class OpenCodeAgentClient implements AgentClient {
     return {
       client: this.createOpenCodeClient({ baseUrl: acquisition.server.url, directory }),
       events: acquisition.events,
+      environment: acquisition.environment,
       url: acquisition.server.url,
       release: acquisition.release,
     };
@@ -3362,6 +3366,7 @@ async function listOpenCodeChildSessions(
 
 /** One OpenCode server generation a session talks to. */
 interface OpenCodeServerConnection {
+  environment: Record<string, string>;
   client: OpencodeClient;
   events: OpenCodeEventSource;
   url: string;
@@ -3442,11 +3447,13 @@ class OpenCodeAgentSession implements AgentSession {
   private closed = false;
   private readonly persistSession: boolean;
   private deletedFromProvider = false;
+  private readonly usageSessionKey = randomUUID();
   constructor(
     config: OpenCodeAgentConfig,
     client: OpencodeClient,
     sessionId: string,
     logger: Logger,
+    private readonly harnessEnvironment: Record<string, string>,
     modelContextWindowsByModelKey: ReadonlyMap<string, number> = new Map(),
     events: OpenCodeEventSource = EMPTY_OPENCODE_EVENT_SOURCE,
     releaseServer: () => Promise<void> = async () => undefined,
@@ -3458,7 +3465,13 @@ class OpenCodeAgentSession implements AgentSession {
     connectServer?: () => Promise<OpenCodeServerConnection>,
   ) {
     this.config = config;
-    this.server = { client, events, url: serverUrl ?? "", release: releaseServer };
+    this.server = {
+      client,
+      events,
+      url: serverUrl ?? "",
+      release: releaseServer,
+      environment: this.harnessEnvironment,
+    };
     this.connectServer = connectServer ?? null;
     this.sessionId = sessionId;
     this.logger = logger.child({ agentId: this.agentId });
@@ -3471,6 +3484,16 @@ class OpenCodeAgentSession implements AgentSession {
       config.model,
     );
     this.subscribeServerEvents();
+  }
+
+  usageSession() {
+    if (this.closed) return null;
+    return {
+      provider: "opencode",
+      model: this.config.model,
+      env: this.harnessEnvironment,
+      sessionKey: this.usageSessionKey,
+    };
   }
 
   private get client(): OpencodeClient {

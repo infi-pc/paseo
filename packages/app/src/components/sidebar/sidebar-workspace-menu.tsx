@@ -393,6 +393,7 @@ export function SidebarWorkspaceContextMenu({
           ),
         ].join(", ")
       : null,
+    t,
   });
   const workspaceTarget = useMemo<WorkspaceLabelTarget>(
     () => ({

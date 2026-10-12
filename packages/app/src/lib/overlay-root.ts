@@ -249,14 +249,14 @@ interface WebOverlayRegistration {
   layer: number;
   onKeyDown: WebOverlayKeyHandler;
   restoreFocusRef?: React.RefObject<unknown>;
-  /** Selection toolbars keep browser selection and composer focus intact. */
+  /** Hover surfaces claim overlay keys while preserving the user's existing focus. */
   manageFocus?: boolean;
 }
 
 /**
  * Registers a focus scope in the same relative layer model used for painting.
- * Only the highest painted overlay receives keyboard input; focus is trapped
- * there and restored to the opener when that overlay closes.
+ * Only the highest painted overlay receives keyboard input. By default, focus is trapped
+ * there and restored to the opener when it closes; hover surfaces preserve focus instead.
  */
 export function useWebOverlayRegistration({
   active,

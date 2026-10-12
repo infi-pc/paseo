@@ -5,6 +5,8 @@ export type PaneHost = "main" | "explorer";
 export interface PanelManifest<K extends WorkspaceTabTarget["kind"] = WorkspaceTabTarget["kind"]> {
   kind: K;
   supportedHosts: readonly PaneHost[];
+  showCloseButton: boolean;
+  singleton: boolean;
   resourceKey(target: Extract<WorkspaceTabTarget, { kind: K }>): string;
 }
 
@@ -13,77 +15,117 @@ type PanelManifestByKind = {
 };
 
 const manifests = {
-  chapters: { kind: "chapters", supportedHosts: ["explorer"], resourceKey: () => "chapters" },
-  chapter: { kind: "chapter", supportedHosts: ["main"], resourceKey: () => "chapter" },
+  chapters: {
+    kind: "chapters",
+    supportedHosts: ["explorer"],
+    showCloseButton: false,
+    singleton: true,
+    resourceKey: () => "chapters",
+  },
+  chapter: {
+    kind: "chapter",
+    supportedHosts: ["main"],
+    showCloseButton: true,
+    singleton: true,
+    resourceKey: () => "chapter",
+  },
   background_activity: {
     kind: "background_activity",
+    showCloseButton: true,
+    singleton: true,
     supportedHosts: ["explorer"],
     resourceKey: () => "background_activity",
   },
   background_thread: {
     kind: "background_thread",
+    showCloseButton: true,
+    singleton: false,
     supportedHosts: ["main"],
     resourceKey: (target) => target.conversationId,
   },
   new_tab: {
     kind: "new_tab",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: () => "new_tab",
   },
   draft: {
     kind: "draft",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => target.draftId,
   },
   agent: {
     kind: "agent",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => target.agentId,
   },
   provider_subagent: {
     kind: "provider_subagent",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => `${target.parentAgentId}:${target.subagentId}`,
   },
   terminal: {
     kind: "terminal",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => target.terminalId,
   },
   browser: {
     kind: "browser",
     supportedHosts: ["main"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => target.browserId,
   },
   changes_tree: {
     kind: "changes_tree",
     supportedHosts: ["explorer"],
+    showCloseButton: false,
+    singleton: true,
     resourceKey: () => "changes_tree",
   },
   files: {
     kind: "files",
     supportedHosts: ["explorer"],
+    showCloseButton: false,
+    singleton: true,
     resourceKey: () => "files",
   },
   pull_request: {
     kind: "pull_request",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: () => "pull_request",
   },
   file: {
     kind: "file",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => target.path,
   },
   working_diff: {
     kind: "working_diff",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: () => "working_diff",
   },
   plugin: {
     kind: "plugin",
     // Plugin targets are narrowed by the target-aware plugin panel capability resolver.
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) =>
       target.context === "agent"
         ? `${target.pluginId}:${target.panelId}:agent:${target.agentId}`
@@ -92,11 +134,15 @@ const manifests = {
   setup: {
     kind: "setup",
     supportedHosts: ["main"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => target.workspaceId,
   },
   commit_diff: {
     kind: "commit_diff",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
     resourceKey: (target) => target.sha,
   },
 } satisfies PanelManifestByKind;
@@ -107,6 +153,13 @@ export function getPanelManifest<K extends WorkspaceTabTarget["kind"]>(kind: K):
 
 export function panelSupportsHost(kind: WorkspaceTabTarget["kind"], host: PaneHost): boolean {
   return getPanelManifest(kind).supportedHosts.includes(host);
+}
+
+export function panelCanLaunchInPane(
+  kind: WorkspaceTabTarget["kind"],
+  panePanelKinds: readonly WorkspaceTabTarget["kind"][],
+): boolean {
+  return !getPanelManifest(kind).singleton || !panePanelKinds.includes(kind);
 }
 
 export function panelResourceKey(target: WorkspaceTabTarget): string {

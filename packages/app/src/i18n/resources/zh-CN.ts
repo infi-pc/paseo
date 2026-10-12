@@ -55,6 +55,7 @@ export const zhCN = {
     back: "返回",
     loading: "加载中...",
     actions: {
+      save: "保存",
       back: "返回",
       cancel: "取消",
       close: "关闭",
@@ -406,6 +407,9 @@ export const zhCN = {
         started: "已开始",
         completed: "已完成",
       },
+    },
+    turnFooter: {
+      workedFor: "工作了 {{duration}}",
     },
     compaction: {
       loading: "正在压缩...",
@@ -1002,6 +1006,47 @@ export const zhCN = {
         actions: {
           viewPullRequest: "查看",
           openOn: "在 {{brand}} 上打开",
+          addToChat: "添加到聊天",
+          addAllToChat: "全部添加到聊天",
+          addingToChat: "正在添加...",
+        },
+        checksOverview: {
+          headline: {
+            actionRequired: "部分检查需要你处理",
+            failure: "部分检查未通过",
+            pending: "部分检查尚未完成",
+            success: "所有检查均已通过",
+            none: "没有检查",
+          },
+          count: {
+            actionRequired: "{{count}} 个需处理",
+            warning: "{{count}} 个警告",
+            failure: "{{count}} 个失败",
+            pending: "{{count}} 个进行中",
+            manual: "{{count}} 个手动",
+            success: "{{count}} 个成功",
+            ignored: "{{count}} 个已跳过",
+          },
+          detailOne: "检查：{{parts}}",
+          detailMany: "检查：{{parts}}",
+          groupOne: {
+            actionRequired: "{{count}} 个需处理的检查",
+            warning: "{{count}} 个有警告的检查",
+            failure: "{{count}} 个失败的检查",
+            pending: "{{count}} 个进行中的检查",
+            manual: "{{count}} 个手动检查",
+            success: "{{count}} 个成功的检查",
+            ignored: "{{count}} 个已跳过的检查",
+          },
+          groupMany: {
+            actionRequired: "{{count}} 个需处理的检查",
+            warning: "{{count}} 个有警告的检查",
+            failure: "{{count}} 个失败的检查",
+            pending: "{{count}} 个进行中的检查",
+            manual: "{{count}} 个手动检查",
+            success: "{{count}} 个成功的检查",
+            ignored: "{{count}} 个已跳过的检查",
+          },
         },
         checksSummary: {
           passedLabel: "通过",
@@ -1015,17 +1060,21 @@ export const zhCN = {
           checks: "Checks",
           pipeline: "流水线",
           reviews: "Reviews",
+          activity: "动态",
         },
         empty: {
           noJobs: "无作业",
           loadingPipeline: "正在加载流水线...",
           pipelineJobsLoadFailed: "无法加载流水线作业",
           allowedToFail: "允许失败",
+          noActivity: "暂无动态",
         },
         approvals: "{{given}} / {{required}} 批准",
         accessibility: {
           pullRequest: "Pull request #{{number}}",
           pullRequest_mr: "合并请求 !{{number}}",
+          commentActions: "评论操作",
+          threadActions: "讨论串操作",
           checkStatus: {
             passed: "成功",
             failed: "失败",
@@ -1038,22 +1087,24 @@ export const zhCN = {
           },
         },
         states: {
-          draft: "Draft",
-          merged: "已 merge",
+          draft: "草稿",
+          merged: "已合并",
           closed: "已关闭",
-          open: "Open",
+          open: "开放",
         },
         activity: {
           commented: "已评论",
           approved: "已批准",
           requestedChanges: "请求修改",
-          reviewed: "已 review",
+          reviewed: "已审查",
         },
         time: {
           justNow: "刚刚",
         },
         thread: {
           discussion: "讨论主题",
+          resolved: "已解决",
+          outdated: "已过时",
         },
         errors: {
           statusLoadFailed: "无法加载 Pull Request 状态",
@@ -1120,7 +1171,16 @@ export const zhCN = {
     },
   },
   sidebar: {
+    statusGroupAccessibility: "{{label}} 分组",
+    statusBucket: {
+      needsInput: "需要输入",
+      failed: "失败",
+      readyToReview: "待查看",
+      working: "运行中",
+      done: "已完成",
+    },
     display: {
+      showBackground: "显示后台工作区",
       trigger: "显示偏好",
       heading: "显示",
       grouping: {
@@ -1746,6 +1806,12 @@ export const zhCN = {
       helper: "连接到远程主机上运行的 Paseo 守护进程。",
       fields: {
         target: "SSH 主机",
+        password: "守护进程密码",
+        optional: "可选",
+      },
+      passwordVisibility: {
+        show: "显示密码",
+        hide: "隐藏密码",
       },
       actions: {
         cancel: "取消",
@@ -1972,6 +2038,8 @@ export const zhCN = {
     dismiss: "关闭",
   },
   contextWindow: {
+    noData: "暂无上下文数据",
+    accessibilityNoData: "上下文窗口：暂无上下文数据",
     title: "上下文窗口",
     used: "已使用 {{percentage}}%",
     tokens: "{{used}} / {{max}} tokens",
@@ -1979,6 +2047,17 @@ export const zhCN = {
     accessibility: "上下文窗口已使用 {{percentage}}%",
   },
   review: {
+    feedback: {
+      send: "发送反馈 ({{count}})",
+      sending: "正在发送反馈 ({{count}})",
+      chooseAgent: "选择智能体",
+      sent: "已向 {{recipient}} 发送反馈",
+      "no-agents": "请在此工作区打开智能体标签页以发送反馈。",
+      disconnected: "请连接到主机以发送反馈。",
+      "no-context": "保存的评论不再匹配此差异。",
+      failed: "发送反馈失败。请重试。",
+      prompt: "请处理此代码审查。",
+    },
     comment: {
       add: "添加 review 评论",
       edit: "编辑 review 评论",

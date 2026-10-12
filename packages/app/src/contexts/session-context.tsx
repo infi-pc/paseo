@@ -33,7 +33,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { AgentPermissionResponse } from "@getpaseo/protocol/agent-types";
 import { getHostRuntimeStore, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useVoiceAudioEngineOptional, useVoiceRuntimeOptional } from "@/contexts/voice-context";
-import type { AudioPlaybackSource } from "@/voice/audio-engine-types";
+import type { AudioPlaybackSource } from "@/audio";
 import {
   selectAgentTimelineState,
   toDaemonServerInfo,
@@ -54,7 +54,7 @@ import { useToast } from "@/contexts/toast-context";
 import { toErrorMessage } from "@/utils/error-messages";
 import { showProviderNoticeToast } from "@/utils/provider-notice-toast";
 import { applyCheckoutStatusUpdateFromEvent } from "@/git/checkout-status-cache";
-import { useProviderSubagentStore } from "@/subagents/provider-store";
+import { resyncProviderSubagents, useProviderSubagentStore } from "@/subagents/provider-store";
 
 // Re-export types from session-store and draft-store for backward compatibility
 export type { DraftInput } from "@/stores/draft-store";
@@ -539,9 +539,14 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       }
     });
 
-    const unsubProviderSubagentUpdate = onFeed("agent.provider_subagents.update", (message) => {
-      if (message.type !== "agent.provider_subagents.update") return;
-      useProviderSubagentStore.getState().applyUpdate(serverId, message.payload);
+    const unsubProviderSubagentUpdate = feeds.subscribe({
+      snapshot: () => {
+        void resyncProviderSubagents(client, serverId);
+      },
+      update: (message) => {
+        if (message.type !== "agent.provider_subagents.update") return;
+        useProviderSubagentStore.getState().applyUpdate(serverId, message.payload);
+      },
     });
 
     const unsubCheckoutStatusUpdate = onFeed("checkout_status_update", (message) => {
