@@ -26,8 +26,22 @@ const LinkedIssuesSchema = z.object({
 const IssueIdSchema = z.object({ issue: z.object({ id: z.string() }) });
 const LinkedSchema = z.object({ attachmentCreate: z.object({ success: z.boolean() }) });
 const EnvelopeSchema = z.object({
-  data: z.unknown().optional(),
-  errors: z.array(z.object({ message: z.string() })).optional(),
+  data: z.record(z.string(), z.unknown()).nullish(),
+  errors: z
+    .array(
+      z.object({
+        message: z.string(),
+        path: z.array(z.union([z.string(), z.number()])).optional(),
+      }),
+    )
+    .optional(),
+});
+
+const CompletedCommandErrorSchema = z.object({
+  code: z.number().int().positive(),
+  killed: z.literal(false).optional(),
+  signal: z.null().optional(),
+  stdout: z.string(),
 });
 
 const LINKED_ISSUES_QUERY = `query PaseoLinearIssues($url: String!) {
@@ -60,35 +74,6 @@ function validateLookup({ cwd, prUrl }: PullRequestLookup): void {
   if (url.protocol !== "https:") throw new LinearServiceError("Pull request URL must use HTTPS");
 }
 
-async function queryLinear(
-  cwd: string,
-  query: string,
-  variables: Record<string, string>,
-  allowPartial = false,
-) {
-  let stdout: string;
-  try {
-    ({ stdout } = await execCommand(
-      "linear",
-      ["api", query, "--variables-json", JSON.stringify(variables)],
-      { cwd, timeout: 15_000, killSignal: "SIGKILL", maxBuffer: 2 * 1024 * 1024 },
-    ));
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      throw new LinearServiceError("Install the Linear CLI on this host to show linked issues");
-    }
-    // Process errors include the complete command. Do not echo its arguments or environment.
-    throw new LinearServiceError(
-      "Linear request failed. Check the host connection and Linear CLI login, then retry",
-    );
-  }
-  const envelope = EnvelopeSchema.parse(JSON.parse(stdout));
-  if (envelope.errors?.length && (!allowPartial || !envelope.data)) {
-    throw new LinearServiceError(envelope.errors.map((error) => error.message).join("; "));
-  }
-  return envelope.data;
-}
-
 function presentIssue(issue: z.infer<typeof IssueSchema>): LinearIssue {
   const started = issue.team.states.nodes
     .filter((state) => state.type === "started")
@@ -109,6 +94,17 @@ function presentIssue(issue: z.infer<typeof IssueSchema>): LinearIssue {
   };
 }
 
+interface LinearServiceOptions {
+  execCommand?: typeof execCommand;
+}
+
+interface LinearQuery {
+  cwd: string;
+  query: string;
+  variables: Record<string, string>;
+  allowPartial?: boolean;
+}
+
 interface CacheEntry {
   expiresAt: number;
   result: Promise<LinearIssue[]>;
@@ -118,19 +114,69 @@ interface CacheEntry {
 export class LinearService {
   private readonly cache = new Map<string, CacheEntry>();
 
+  private readonly execute: typeof execCommand;
+
+  constructor(options: LinearServiceOptions = {}) {
+    this.execute = options.execCommand ?? execCommand;
+  }
+
+  private async queryLinear({ cwd, query, variables, allowPartial = false }: LinearQuery) {
+    let stdout: string;
+    let nonzeroExit = false;
+    try {
+      ({ stdout } = await this.execute(
+        "linear",
+        ["api", query, "--variables-json", JSON.stringify(variables)],
+        { cwd, timeout: 15_000, killSignal: "SIGKILL", maxBuffer: 2 * 1024 * 1024 },
+      ));
+    } catch (error) {
+      if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+        throw new LinearServiceError("Install the Linear CLI on this host to show linked issues");
+      }
+      const completed = CompletedCommandErrorSchema.safeParse(error);
+      if (!allowPartial || !completed.success) {
+        // Process errors include the complete command. Do not echo its arguments or environment.
+        throw new LinearServiceError(
+          "Linear request failed. Check the host connection and Linear CLI login, then retry",
+        );
+      }
+      // Linear exits 1 for GraphQL errors, including otherwise usable batch responses.
+      stdout = completed.data.stdout;
+      nonzeroExit = true;
+    }
+    const envelope = EnvelopeSchema.parse(JSON.parse(stdout));
+    const errors = envelope.errors ?? [];
+    const hasUnscopedErrors = errors.some((error) => typeof error.path?.[0] !== "string");
+    const cannotUsePartial = !allowPartial || hasUnscopedErrors;
+    if (errors.length && cannotUsePartial) {
+      throw new LinearServiceError(errors.map((error) => error.message).join("; "));
+    }
+    const missingPartialResponse = nonzeroExit && errors.length === 0;
+    if (!envelope.data || missingPartialResponse || Object.keys(envelope.data).length === 0) {
+      throw new LinearServiceError("Linear returned no usable response");
+    }
+    for (const error of errors) {
+      const alias = error.path?.[0];
+      if (typeof alias === "string") delete envelope.data[alias];
+    }
+    return envelope.data;
+  }
+
   async getIssues(input: PullRequestLookup & { force?: boolean }): Promise<LinearIssue[]> {
     validateLookup(input);
     const key = JSON.stringify({ cwd: input.cwd, prUrl: input.prUrl });
     const cached = this.cache.get(key);
     if (!input.force && cached && cached.expiresAt > Date.now()) return cached.result;
 
-    const result = queryLinear(input.cwd, LINKED_ISSUES_QUERY, { url: input.prUrl }).then(
-      (data) => {
-        const response = LinkedIssuesSchema.parse(data);
-        const issues = response.attachmentsForURL.nodes.map(({ issue }) => presentIssue(issue));
-        return [...new Map(issues.map((issue) => [issue.id, issue])).values()];
-      },
-    );
+    const result = this.queryLinear({
+      cwd: input.cwd,
+      query: LINKED_ISSUES_QUERY,
+      variables: { url: input.prUrl },
+    }).then((data) => {
+      const response = LinkedIssuesSchema.parse(data);
+      const issues = response.attachmentsForURL.nodes.map(({ issue }) => presentIssue(issue));
+      return [...new Map(issues.map((issue) => [issue.id, issue])).values()];
+    });
     const entry = { result, expiresAt: Date.now() + 30_000 };
     this.cache.delete(key);
     this.cache.set(key, entry);
@@ -155,9 +201,7 @@ export class LinearService {
     const query = `query PaseoWatchIssues(${ids.map((_, i) => `$id${i}: String!`).join(", ")}) {
       ${ids.map((_, i) => `i${i}: issue(id: $id${i}) { id identifier state { id name } }`).join("\n")}
     }`;
-    const data = z
-      .record(z.string(), z.unknown())
-      .parse(await queryLinear(cwd, query, variables, true));
+    const data = await this.queryLinear({ cwd, query, variables, allowPartial: true });
     const schema = z.object({
       id: z.string(),
       identifier: z.string(),
@@ -176,10 +220,18 @@ export class LinearService {
       throw new LinearServiceError("Enter a Linear issue identifier, such as CMS-664");
     }
     const { issue } = IssueIdSchema.parse(
-      await queryLinear(input.cwd, ISSUE_ID_QUERY, { id: identifier }),
+      await this.queryLinear({
+        cwd: input.cwd,
+        query: ISSUE_ID_QUERY,
+        variables: { id: identifier },
+      }),
     );
     const linked = LinkedSchema.parse(
-      await queryLinear(input.cwd, LINK_ISSUE_MUTATION, { issueId: issue.id, url: input.prUrl }),
+      await this.queryLinear({
+        cwd: input.cwd,
+        query: LINK_ISSUE_MUTATION,
+        variables: { issueId: issue.id, url: input.prUrl },
+      }),
     );
     if (!linked.attachmentCreate.success)
       throw new LinearServiceError("Linear did not link the issue");
