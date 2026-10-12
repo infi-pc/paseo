@@ -70,6 +70,12 @@ One entry per fork feature: the commits that built it, the files that own it, an
 
 Commits are the fork commits that built the feature (`git show --stat <sha>` for the full file list). "Owns" lists the fork-owned entry points. "Wires into" lists the upstream files the feature edits, largest first.
 
+### IPv6 localhost services
+
+- Owns: `packages/server/src/server/service-loopback.ts`.
+- Wires into: `packages/server/src/server/script-health-monitor.ts`, `packages/server/src/server/service-proxy.ts`, and their existing test suites.
+- Services bound to either loopback address work with health checks and forwarding. See [service proxy](service-proxy.md#how-it-works).
+
 ### Workspace snoozing
 
 - Owns: `packages/protocol/src/workspace-snooze.ts`, `packages/protocol/src/workspace-status-snooze.ts`, `packages/server/src/server/workspace-snooze/`, `packages/app/src/workspace-snooze/`.

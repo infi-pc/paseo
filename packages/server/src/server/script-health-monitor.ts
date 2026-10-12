@@ -1,4 +1,6 @@
 import net from "node:net";
+// FORK(service-loopback): probe IPv4 and IPv6 with the same policy as service forwarding.
+import { serviceLoopbackOptions } from "./service-loopback.js";
 import type { ServiceProxyHealthTarget, ServiceProxySubsystem } from "./service-proxy.js";
 
 export type ScriptHealthState = "pending" | "healthy" | "unhealthy";
@@ -208,7 +210,7 @@ export class ScriptHealthMonitor {
 
   private probeRoute(port: number): Promise<boolean> {
     return new Promise((resolve) => {
-      const socket = net.connect({ host: "127.0.0.1", port });
+      const socket = net.connect({ ...serviceLoopbackOptions, port });
       let settled = false;
 
       const finish = (healthy: boolean) => {
