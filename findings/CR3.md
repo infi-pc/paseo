@@ -1,6 +1,6 @@
 # CR3 — Fix status-change wake decisions before release
 
-Date: 2026-10-07.
+Date: 2026-10-07. Current status is maintained in [the fix ledger](FIXES-paseo-customizations.md).
 
 ## Scope and verdict
 
@@ -50,4 +50,4 @@ Whether editing must add targets was not explicit in the supplied plan, so this 
 - Security, permissions, additive wire compatibility, persisted schemas, fixed PR routing, host validation, and shared GitHub rate-budget handling had no additional actionable findings in the inspected paths.
 - No additional demonstrated maintenance-cost defect was found. No latent hazard was established beyond the live findings.
 - No live GitHub/Linear account reads, native/device checks, full local test suites, pushes, or main-daemon restarts were performed. The populated compact dialog remains unverified. Auto-archive refresh exceptions potentially delaying an otherwise known wake remain unproven and are not counted as a finding.
-- Current findings remain open. No fix ledger exists for this review.
+- At review time all findings were open. See the fix ledger for subsequent status.
