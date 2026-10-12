@@ -16,10 +16,11 @@ export function WorkspaceSnoozeIndicator({ snooze }: { snooze: WorkspaceSnooze }
       : t(`workspaceSnooze.result.${snooze.lastCheck?.status ?? "pending"}`);
   return (
     <Text style={styles.label} numberOfLines={1} testID="workspace-snooze-indicator">
-      {t("workspaceSnooze.snoozed")} · {detail}
+      <Text style={styles.snoozedLabel}>{t("workspaceSnooze.snoozed")}</Text> · {detail}
     </Text>
   );
 }
 const styles = StyleSheet.create((theme) => ({
   label: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  snoozedLabel: { color: theme.colors.statusWarning },
 }));
