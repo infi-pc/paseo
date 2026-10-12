@@ -72,6 +72,7 @@ export interface SeedDaemonClient {
     error: string | null;
   }>;
   archiveWorkspace(workspaceId: string): Promise<{ error: string | null }>;
+  restoreWorkspace(workspaceId: string): Promise<void>;
   /**
    * Force the daemon to recompute its git snapshot and diff for a checkout,
    * mirroring the UI's manual refresh. Tests use this to make an out-of-band

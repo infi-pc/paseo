@@ -495,6 +495,11 @@ export interface PaseoDaemon {
 }
 
 export interface PaseoDaemonDependencies {
+  // FORK(workspace-snooze): status observations are an injectable scheduling dependency.
+  workspaceStatusSnoozeChecker?: Pick<
+    WorkspaceStatusSnoozeChecker,
+    "discover" | "capture" | "check"
+  >;
   builtinPlugins?: BuiltinPluginLoader;
   hubRelationshipRemote?: HubRelationshipRemote;
   hubRelationshipClock?: HubRelationshipClock;
@@ -504,6 +509,13 @@ export interface PaseoDaemonDependencies {
     daemonStatusRpc?: boolean;
     relayConfig?: boolean;
   };
+}
+
+function resolveWorkspaceStatusSnoozeChecker(
+  dependencies: PaseoDaemonDependencies,
+  options: ConstructorParameters<typeof WorkspaceStatusSnoozeChecker>[0],
+) {
+  return dependencies.workspaceStatusSnoozeChecker ?? new WorkspaceStatusSnoozeChecker(options);
 }
 
 function resolveBuiltinPluginLoader(dependencies: PaseoDaemonDependencies): BuiltinPluginLoader {
@@ -1422,7 +1434,7 @@ export async function createPaseoDaemon(
     registry: workspaceRegistry,
     logger,
     check: createWorkspaceSnoozeChecker(agentManager, providerSnapshotManager),
-    statusChecker: new WorkspaceStatusSnoozeChecker({
+    statusChecker: resolveWorkspaceStatusSnoozeChecker(dependencies, {
       github,
       linear: linearService,
       git: workspaceGitService,
