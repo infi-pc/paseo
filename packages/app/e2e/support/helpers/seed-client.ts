@@ -66,11 +66,13 @@ export interface SeedDaemonClient {
           worktreeSlug?: string;
         };
     title?: string;
+    background?: boolean;
   }): Promise<{
     workspace: SeedWorkspaceDescriptor | null;
     error: string | null;
   }>;
   archiveWorkspace(workspaceId: string): Promise<{ error: string | null }>;
+  restoreWorkspace(workspaceId: string): Promise<void>;
   /**
    * Force the daemon to recompute its git snapshot and diff for a checkout,
    * mirroring the UI's manual refresh. Tests use this to make an out-of-band
@@ -224,6 +226,7 @@ export interface SeededWorkspace {
 export async function seedWorkspace(options: {
   repoPrefix: string;
   title?: string;
+  background?: boolean;
   port?: number;
   /** Repo fixture options; only applies to git projects (the default). */
   repo?: Parameters<typeof createTempGitRepo>[1];
@@ -239,6 +242,7 @@ export async function seedWorkspace(options: {
     const created = await client.createWorkspace({
       source: { kind: "directory", path: project.path },
       title: options.title,
+      background: options.background,
     });
     if (!created.workspace) {
       throw new Error(created.error ?? `Failed to create workspace ${project.path}`);

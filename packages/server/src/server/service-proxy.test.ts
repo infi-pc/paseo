@@ -313,7 +313,7 @@ interface ForwardedFixture {
  * echoes the headers it received so tests can assert what actually crossed the
  * proxy, not what a helper returned.
  */
-async function startForwardedHeadersFixture(): Promise<ForwardedFixture> {
+async function startForwardedHeadersFixture(upstreamHost = "127.0.0.1"): Promise<ForwardedFixture> {
   const upstreamPort = await findFreePort();
   const upstream = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": "application/json" });
@@ -331,7 +331,13 @@ async function startForwardedHeadersFixture(): Promise<ForwardedFixture> {
       `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX-Echo-Length: ${payload.length}\r\n\r\n${payload}`,
     );
   });
-  await new Promise<void>((resolve) => upstream.listen(upstreamPort, "127.0.0.1", resolve));
+  await new Promise<void>((resolve, reject) => {
+    upstream.once("error", reject);
+    upstream.listen(upstreamPort, upstreamHost, () => {
+      upstream.off("error", reject);
+      resolve();
+    });
+  });
 
   const serviceProxy = createServiceProxySubsystem({ logger });
   const route = serviceProxy.registerWorkspaceService({
@@ -415,6 +421,31 @@ function upgradeThroughProxy(
     });
   });
 }
+
+describe("service proxy loopback addresses", () => {
+  it.each(["127.0.0.1", "::1"])("forwards HTTP to a service bound to %s", async (host) => {
+    const fixture = await startForwardedHeadersFixture(host);
+    try {
+      const response = await httpGet(fixture.daemonPort, fixture.hostname);
+      expect(response.status).toBe(200);
+      expect(JSON.parse(response.body)).toMatchObject({ host: fixture.hostname });
+    } finally {
+      await fixture.close();
+    }
+  });
+  it.each(["127.0.0.1", "::1"])(
+    "forwards WebSocket upgrades to a service bound to %s",
+    async (host) => {
+      const fixture = await startForwardedHeadersFixture(host);
+      try {
+        const headers = await upgradeThroughProxy(fixture.daemonPort, fixture.hostname);
+        expect(headers).toMatchObject({ host: fixture.hostname, upgrade: "websocket" });
+      } finally {
+        await fixture.close();
+      }
+    },
+  );
+});
 
 describe("service proxy forwarded headers", () => {
   it("forwards the client authority with its port so services build reachable URLs", async () => {

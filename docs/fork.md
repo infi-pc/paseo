@@ -47,11 +47,13 @@ After the merge, run `npm run fork:status` again. The conflict list should be em
 
 One row per upstream sync. Record what conflicted and what the merge broke silently (auto-merged code that typechecked or tested wrong), so the next sync starts from the last one's lessons.
 
-| Date       | Upstream head | Fork commits | Conflicted files | Notes                                                                                                                                                                                                                                                                                                                                                                               |
-| ---------- | ------------- | ------------ | ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-09-24 | `e3c853df5`   | 25           | 37               | Merge `c97e1eb10`. Silent breakage: upstream's timeline projection collapsed tool-call rows so summary targets lost their seq (`agent-timeline-store.getRow`), upstream's exhaustive `diff-sharing.test.ts` demanded equality checks for fork fields, and a new layout-store test did not expect the fork's default chapters tab. Complexity lint tripped on four merged functions. |
-| 2026-09-29 | `f232d23e9`   | 27           | 1                | Includes Sonnet 5.5. Resolved `bootstrap.ts` cleanup by retaining local credential deletion alongside fork summary and sleep cleanup. Auto-merged `registerSession` exceeded the complexity limit; extracted the existing response-metadata restore logic.                                                                                                                          |
-| 2026-09-30 | `5599f9e56`   | 27           | 1                | Retained recommended prompts while adopting configurable content width in `turn-footer.tsx`. Upstream removed `MAX_CONTENT_WIDTH`; updated the fork-owned pinned prompt to use `theme.contentMaxWidth`.                                                                                                                                                                             |
+| Date       | Upstream head | Fork commits | Conflicted files | Notes                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------- | ------------- | ------------ | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2026-09-24 | `e3c853df5`   | 25           | 37               | Merge `c97e1eb10`. Silent breakage: upstream's timeline projection collapsed tool-call rows so summary targets lost their seq (`agent-timeline-store.getRow`), upstream's exhaustive `diff-sharing.test.ts` demanded equality checks for fork fields, and a new layout-store test did not expect the fork's default chapters tab. Complexity lint tripped on four merged functions.                                                |
+| 2026-09-29 | `f232d23e9`   | 27           | 1                | Includes Sonnet 5.5. Resolved `bootstrap.ts` cleanup by retaining local credential deletion alongside fork summary and sleep cleanup. Auto-merged `registerSession` exceeded the complexity limit; extracted the existing response-metadata restore logic.                                                                                                                                                                         |
+| 2026-09-30 | `5599f9e56`   | 27           | 1                | Retained recommended prompts while adopting configurable content width in `turn-footer.tsx`. Upstream removed `MAX_CONTENT_WIDTH`; updated the fork-owned pinned prompt to use `theme.contentMaxWidth`.                                                                                                                                                                                                                            |
+| 2026-10-01 | `95774ba71`   | 33           | 2                | Kept fork imports alongside upstream's in `daemon-client.ts` and `agent-panel.tsx`. Silent breakage: upstream replaced `getProviderIcon` with the `useProviderIcon` hook, which broke the fork-owned `workspace-recent-agents-menu.tsx`; migrated it to the hook.                                                                                                                                                                  |
+| 2026-10-12 | `06f052225`   | 41           | 22               | Adopted upstream’s shared Explorer tab row, compact header, hover-card component, and agent-message provenance while retaining fork panels, branch controls, summaries, and selection actions. Silent breakage: fork panel manifests needed close/singleton policy; launch catalog entries retained deleted toggle fields; stored-agent projection exceeded lint complexity; session test fixtures lacked the background recorder. |
 
 ## Keeping the footprint small
 
@@ -68,6 +70,35 @@ One entry per fork feature: the commits that built it, the files that own it, an
 
 Commits are the fork commits that built the feature (`git show --stat <sha>` for the full file list). "Owns" lists the fork-owned entry points. "Wires into" lists the upstream files the feature edits, largest first.
 
+### IPv6 localhost services
+
+- Owns: `packages/server/src/server/service-loopback.ts`.
+- Wires into: `packages/server/src/server/script-health-monitor.ts`, `packages/server/src/server/service-proxy.ts`, and their existing test suites.
+- Services bound to either loopback address work with health checks and forwarding. See [service proxy](service-proxy.md#how-it-works).
+
+### Workspace snoozing
+
+- Owns: `packages/protocol/src/workspace-snooze.ts`, `packages/protocol/src/workspace-status-snooze.ts`, `packages/server/src/server/workspace-snooze/`, `packages/app/src/workspace-snooze/`.
+- Wires into: workspace registry and directory payloads, session RPCs and permissions, daemon bootstrap and notification delivery, GitHub polling, Linear reads, auto-archive-on-merge, sidebar menus and group limits, app notification routing, and English resources.
+- Timed, Luna-evaluated, or status-change snoozes hide workspaces under Show all. See [workspace snoozing](agent-lifecycle.md#workspace-snoozing).
+
+### Multiple transcripts in New Agent drafts
+
+- Owns: `packages/app/src/transcript-picker/`.
+- Wires into: `composer/draft/workspace-tab.tsx` and English draft labels.
+- Open workspace chats can be toggled into a draft as independent snapshots. Selection follows the draft's attachment scope, including preselected fork context and removals through attachment pills.
+
+### Assistant text-selection toolbar
+
+- Owns: `packages/app/src/assistant-selection-toolbar/`.
+- Wires into: `agent-stream/view.tsx`, `panels/agent-panel.tsx`, `hooks/use-fork-agent.ts`, `lib/overlay-root.ts`, and English action labels.
+- Desktop selections can quote into the source draft or open a transcript-backed draft in the Explorer sidebar. The toolbar receives overlay keys without taking focus from the browser selection or composer.
+
+### Fork from the latest response
+
+- Wires into: `packages/server/src/server/agent/activity-curator.ts` and its existing test suite.
+- Latest-response forks include current context; see [durable item anchors](timeline-sync.md#durable-item-anchors).
+
 ### Responsive browser preview scale
 
 - Wires into: `packages/app/src/desktop/browser/pane/index.electron.tsx`, `desktop/browser/store/state.ts`, `desktop/browser/resident-webviews.ts`, and English browser labels.
@@ -78,6 +109,19 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 - Owns: `packages/protocol/src/agent-defaults.ts`, `packages/app/src/agent-defaults/`
 - Wires into: daemon config schemas, resolution, store and bootstrap; `websocket-server.ts`; app agent-form resolution, project settings and host Agents settings.
 - Shared defaults for new composers, with project overrides that follow worktree membership. See [default agents](data-model.md#default-agents).
+
+### Linked Linear issues in the workspace header
+
+- Owns: `packages/app/src/linear/`, `packages/server/src/services/linear-service.ts`, `packages/protocol/src/linear.ts`.
+- Wires into: workspace actions, checkout session RPC dispatch, daemon capability reporting, client requests, and English resources.
+- Uses the host's `linear` CLI and its existing workspace credentials. The daemon must have the CLI on its PATH; no credentials enter the app. Linking adds the PR URL as a Linear attachment. Creating an issue opens Linear's form, after which you can link its identifier.
+- PR URLs are the lookup identity; a shared short-lived daemon cache prevents each connected client from launching another CLI process.
+
+### Workspace PR toolbar button
+
+- Owns: `packages/app/src/git/workspace-pull-request-button.tsx`
+- Wires into: Git action policy and hook, `git/workspace-actions.tsx`, and the workspace header.
+- Keeps the current PR directly accessible from the toolbar; branches without a PR offer creation from the grey icon's menu.
 
 ### Project PR browser
 
@@ -111,8 +155,9 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 
 - Commits: `884ac282d`
 - Owns: nothing new
-- Wires into: `packages/desktop/src/main.ts`, `packages/desktop/src/daemon/quit-lifecycle.ts`, `paseo.json`
+- Wires into: `packages/desktop/src/main.ts`, `packages/desktop/src/daemon/quit-lifecycle.ts`, `packages/desktop/src/daemon/daemon-manager.ts`, `paseo.json`
 - Confirms before quitting the desktop app when that would stop the daemon.
+- Covers any running desktop-managed daemon in the home, not only one this app process launched. Upstream narrowed `isDesktopManagedDaemonRunningSync` and `stopDesktopDaemon` to the owned launch in #4575; the fork keeps the pid-file fallback and lets a confirmed `quit` stop an unowned desktop-managed daemon.
 
 ### package.json script discovery
 
@@ -125,7 +170,7 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 
 - Commits: `fae603ccb`
 - Owns: `packages/app/src/screens/workspace/workspace-header-branches.tsx`
-- Wires into: `packages/app/src/screens/workspace/workspace-screen.tsx`, `packages/server/src/server/session/checkout/checkout-session.ts`, `packages/server/src/utils/checkout-git.ts`, `packages/server/src/utils/worktree-metadata.ts`, `packages/protocol/src/messages.ts`, `packages/client/src/daemon-client.ts`, `docs/glossary.md`, `public-docs/workspaces.md`
+- Wires into: `packages/app/src/screens/workspace/workspace-screen.tsx`, `packages/app/src/screens/workspace/workspace-header-project-row.tsx`, `packages/server/src/server/session/checkout/checkout-session.ts`, `packages/server/src/utils/checkout-git.ts`, `packages/server/src/utils/worktree-metadata.ts`, `packages/protocol/src/messages.ts`, `packages/client/src/daemon-client.ts`, `docs/glossary.md`, `public-docs/workspaces.md`
 - Shows branch and base branch as a pair in the workspace header and lets you change the base there.
 
 ### Provider activity and turn changes
@@ -146,8 +191,9 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 
 - Commits: `4f9a6f739`, `59ed3d0cb`, `fb4f42001`
 - Owns: `packages/server/src/server/sleep-inhibitor/`, `packages/app/src/hooks/use-sleep-prevention.ts`, `packages/app/src/components/desktop/keep-awake-indicator.tsx`, `packages/app/src/screens/settings/prevent-sleep-card.tsx`
-- Wires into: `packages/server/src/server/bootstrap.ts`, `packages/server/src/server/websocket-server.ts`, `packages/app/src/stores/session-store.ts`, `packages/app/src/app/_layout.tsx`, `packages/server/src/server/config.ts`, `packages/server/src/server/persisted-config.ts`, `packages/app/src/screens/settings/host-page.tsx`
+- Wires into: `packages/server/src/server/bootstrap.ts`, `packages/server/src/server/websocket-server.ts`, `packages/server/src/server/session.ts`, `packages/app/src/stores/session-store.ts`, `packages/app/src/app/_layout.tsx`, `packages/server/src/server/config.ts`, `packages/server/src/server/persisted-config.ts`, `packages/app/src/screens/settings/host-page.tsx`
 - Keeps the host awake while agents run, with a settings card and indicator.
+- `sleep_prevention_changed` travels on the `status.server_info` event feed (see `sessionEventCategory` in `packages/server/src/server/session.ts`), and `Session` replays the current state when a client subscribes. Owned-subscription clients drop status messages that no subscription owns, so a raw socket send never reaches them.
 
 ### Pinned prompts
 

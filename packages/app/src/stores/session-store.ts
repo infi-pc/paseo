@@ -1,3 +1,4 @@
+import type { AnyWorkspaceSnooze } from "@getpaseo/protocol/workspace-status-snooze";
 import type { DiffStat } from "@getpaseo/protocol/diff-stat";
 import equal from "fast-deep-equal";
 import { create } from "zustand";
@@ -116,9 +117,12 @@ export interface WorkspaceDescriptor {
   worktreeSlug?: WorkspaceDescriptorPayload["worktreeSlug"];
   projectKind: WorkspaceDescriptorPayload["projectKind"];
   workspaceKind: WorkspaceDescriptorPayload["workspaceKind"];
+  background?: boolean;
   name: string;
   title?: string | null;
   pinnedAt?: string | null;
+  // FORK(workspace-snooze): persisted daemon state drives sidebar visibility.
+  snooze?: AnyWorkspaceSnooze | null;
   labels?: string[];
   status: WorkspaceDescriptorPayload["status"];
   statusEnteredAt: Date | null;
@@ -153,9 +157,12 @@ export function normalizeWorkspaceDescriptor(
     worktreeSlug: payload.worktreeSlug,
     projectKind: payload.projectKind,
     workspaceKind: payload.workspaceKind,
+    background: payload.background ?? false,
     name: payload.name,
     title: payload.title ?? null,
     pinnedAt: payload.pinnedAt ?? null,
+    // FORK(workspace-snooze): absent fields on older hosts mean awake.
+    snooze: payload.statusSnooze ?? payload.snooze ?? null,
     // COMPAT(workspaceLabels): old daemons omit assignments.
     labels: payload.labels ?? [],
     status: payload.status,

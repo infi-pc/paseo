@@ -6,6 +6,10 @@ Paseo proxies HTTP traffic to services running inside your workspaces. Localhost
 
 When a `paseo.json` script of `"type": "service"` starts, Paseo assigns it a local port and registers a route in the service proxy. Incoming requests whose `Host` header matches the script's generated hostname are forwarded to that port.
 
+Health checks, HTTP forwarding, and WebSocket forwarding try IPv4 loopback (`127.0.0.1`)
+first, then IPv6 loopback (`::1`). Services can bind to either address. These connections
+use fixed loopback addresses rather than your machine's `localhost` DNS entries.
+
 The generated hostname is built from the script name, branch, and project:
 
 ```

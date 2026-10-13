@@ -1,0 +1,147 @@
+import { WorkspaceStatusSnoozeChecker } from "./status.js";
+import { afterEach, expect, test } from "vitest";
+import {
+  createDaemonTestContext,
+  type DaemonTestContext,
+} from "../test-utils/daemon-test-context.js";
+import type { PushPayload } from "../push/index.js";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
+
+let context: DaemonTestContext | undefined;
+afterEach(async () => {
+  await context?.cleanup();
+});
+test("snooze RPCs publish directory state and a due workspace emits one wake notification", async () => {
+  const pushes: PushPayload[] = [];
+  context = await createDaemonTestContext({
+    pushNotificationSender: {
+      send: async (payload) => {
+        pushes.push(payload);
+      },
+    },
+  });
+  const { client, daemon } = context;
+  const created = await client.createWorkspace({
+    source: { kind: "directory", path: daemon.paseoHome },
+  });
+  if (!created.workspace) throw new Error(created.error ?? "No workspace");
+  const workspaceId = created.workspace.id;
+  const feed = client.observeEvents(["workspace.snooze.woke"], { notifications: true });
+  const wakes: SessionOutboundMessage[] = [];
+  feed.subscribe({
+    snapshot: () => {},
+    update: (event) => {
+      wakes.push(event);
+    },
+  });
+  await feed.ready;
+  await client.setWorkspaceSnooze(workspaceId, {
+    mode: "time",
+    wakeAt: new Date(Date.now() + 1000).toISOString(),
+    timezone: "UTC",
+  });
+  expect(
+    (await client.fetchWorkspaces({})).entries.find((workspace) => workspace.id === workspaceId)
+      ?.snooze?.config.mode,
+  ).toBe("time");
+  await expect.poll(() => pushes.length, { timeout: 15_000 }).toBe(1);
+  await expect.poll(() => wakes.length).toBe(1);
+  expect(pushes[0].data).toMatchObject({ workspaceId });
+  expect(wakes[0]).toMatchObject({
+    type: "workspace.snooze.woke",
+    payload: { workspaceId, shouldNotify: false },
+  });
+  expect(
+    (await client.fetchWorkspaces({})).entries.find((workspace) => workspace.id === workspaceId)
+      ?.snooze,
+  ).toBeNull();
+  await feed.release();
+  await client.removeProject(created.workspace.projectId);
+}, 30_000);
+
+test("unavailable Luna remains snoozed with an inspectable failed background check", async () => {
+  context = await createDaemonTestContext();
+  const { client, daemon } = context;
+  const created = await client.createWorkspace({
+    source: { kind: "directory", path: daemon.paseoHome },
+  });
+  if (!created.workspace) throw new Error(created.error ?? "No workspace");
+  const workspaceId = created.workspace.id;
+  await client.setWorkspaceSnooze(workspaceId, {
+    mode: "ai",
+    prompt: "CI passes",
+    intervalHours: 24,
+  });
+  await expect
+    .poll(
+      async () =>
+        (await client.fetchWorkspaces({})).entries.find((workspace) => workspace.id === workspaceId)
+          ?.snooze?.lastCheck?.status,
+    )
+    .toBe("unknown");
+  const activity = await client.getBackgroundActivity();
+  expect(activity.requests.filter((request) => request.snoozeCheck)).toMatchObject([
+    {
+      workspaceId,
+      status: "failed",
+      attempts: [{ provider: "codex", configuredModel: "gpt-6-luna" }],
+    },
+  ]);
+  await client.setWorkspaceSnooze(workspaceId, null);
+  await client.removeProject(created.workspace.projectId);
+}, 30_000);
+
+test("status snooze round-trips its additive payload and a changed issue wakes through the SDK", async () => {
+  const id = "6e22bbbf-7d65-4463-8c1e-9ea7f8914abc";
+  let state = { id: "review", name: "Review" };
+  const checker = new WorkspaceStatusSnoozeChecker({
+    github: {
+      readFixedPullRequestStatus: async () => {
+        throw new Error("Unexpected GitHub read");
+      },
+    },
+    git: {
+      getSnapshot: async () => {
+        throw new Error("Unexpected checkout discovery");
+      },
+    },
+    linear: {
+      getIssues: async () => [],
+      readIssueStates: async () => [{ id, issue: { id, identifier: "APP-1", state } }],
+    },
+    autoArchiveAfterMerge: () => false,
+    beforeWake: async () => {},
+  });
+  context = await createDaemonTestContext({ workspaceStatusSnoozeChecker: checker });
+  const { client, daemon } = context;
+  const created = await client.createWorkspace({
+    source: { kind: "directory", path: daemon.paseoHome },
+  });
+  if (!created.workspace) throw new Error("Workspace missing");
+  const workspaceId = created.workspace.id;
+  await client.setWorkspaceSnooze(workspaceId, {
+    mode: "status",
+    intervalMinutes: 5,
+    targets: [{ kind: "linear", issueId: id }],
+  });
+  const saved = (await client.fetchWorkspaces({})).entries.find((w) => w.id === workspaceId);
+  expect(saved?.snooze).toBeNull();
+  expect(saved?.statusSnooze).toMatchObject({
+    config: { mode: "status" },
+    baseline: [{ value: "review" }],
+  });
+  const discovered = await client.discoverWorkspaceStatusSnooze(workspaceId);
+  expect(discovered.candidates).toMatchObject([
+    { target: { kind: "linear", issueId: id }, value: "review" },
+  ]);
+  expect(discovered.errors).toEqual([]);
+  state = { id: "done", name: "Done" };
+  await client.checkWorkspaceSnooze(workspaceId);
+  await expect
+    .poll(
+      async () =>
+        (await client.fetchWorkspaces({})).entries.find((w) => w.id === workspaceId)?.statusSnooze,
+    )
+    .toBeNull();
+  await client.removeProject(created.workspace.projectId);
+}, 30_000);

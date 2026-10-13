@@ -6,6 +6,8 @@ import {
   readToolCallSummary,
   readToolCallSummaryFilePath,
 } from "@getpaseo/protocol/tool-call-summary";
+import type { AgentMessage } from "@getpaseo/protocol/agent-message";
+import { buildAgentMessageDisplay } from "@getpaseo/protocol/agent-message-display";
 import type { PlanOutcome } from "@/components/plan-card";
 import type { ComponentType } from "react";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
@@ -21,6 +23,7 @@ type ToolCallStatus = "executing" | "running" | "completed" | "failed" | "cancel
 export type ToolCallPresentationIcon = ComponentType<{ size?: number; color?: string }>;
 
 interface BuildToolCallPresentationInput {
+  agentMessage?: AgentMessage;
   toolName: string;
   status: ToolCallStatus;
   error: unknown;
@@ -31,6 +34,7 @@ interface BuildToolCallPresentationInput {
 }
 
 export interface ToolCallPresentation {
+  detail: ToolCallDetail | undefined;
   displayName: string;
   summary?: string;
   description?: string;
@@ -73,9 +77,13 @@ function reviewLabel(metadata: Record<string, unknown> | undefined): string | un
 export function buildToolCallPresentation(
   input: BuildToolCallPresentationInput,
 ): ToolCallPresentation {
-  const detailForDisplay = displayDetail(input.detail);
+  const detail = input.agentMessage
+    ? buildAgentMessageDisplay(input.agentMessage).detail
+    : input.detail;
+  const detailForDisplay = displayDetail(detail);
   const displayModel = buildToolCallDisplayModel({
     name: input.toolName,
+    agentMessage: input.agentMessage,
     status: displayStatus(input.status),
     error: input.error ?? null,
     detail: detailForDisplay,
@@ -83,7 +91,7 @@ export function buildToolCallPresentation(
     cwd: input.cwd,
   });
   const isLoadingDetails = isPendingToolCallDetail({
-    detail: input.detail,
+    detail,
     status: input.status,
     error: input.error,
   });
@@ -91,9 +99,9 @@ export function buildToolCallPresentation(
     Boolean(input.error) ||
     Boolean(input.metadata && Object.keys(input.metadata).length > 0) ||
     Boolean(readToolCallSummary(input.metadata)) ||
-    hasMeaningfulToolCallDetail(input.detail);
+    hasMeaningfulToolCallDetail(detail);
 
-  const filePath = extractToolCallFilePath(input.detail);
+  const filePath = extractToolCallFilePath(detail);
   const inputLabel =
     readToolCallTitle(input.metadata) ??
     buildInputLabel({
@@ -111,7 +119,8 @@ export function buildToolCallPresentation(
   }
 
   return {
-    inputLabel,
+    detail,
+    inputLabel: input.agentMessage ? undefined : inputLabel,
     inputFilePath: resolveSummaryPath(
       readToolCallSummaryFilePath(input.metadata, "input") ?? filePath ?? undefined,
     ),
@@ -120,10 +129,10 @@ export function buildToolCallPresentation(
     ),
     displayName: displayModel.displayName,
     summary: displayModel.summary,
-    description: readToolCallSummary(input.metadata),
+    description: input.agentMessage ? undefined : readToolCallSummary(input.metadata),
     activityLabel: reviewLabel(input.metadata),
     errorText: displayModel.errorText,
-    icon: input.resolveIcon(input.toolName, input.detail),
+    icon: input.resolveIcon(input.toolName, detail),
     isLoadingDetails,
     hasDetails,
     canOpenDetails: hasDetails || isLoadingDetails,

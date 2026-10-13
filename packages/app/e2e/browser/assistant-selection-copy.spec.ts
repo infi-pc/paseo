@@ -1,5 +1,10 @@
 import type { BrowserContext, Locator } from "@playwright/test";
 import { expect, test, type Page } from "../support/fixtures";
+import {
+  expectChatHistoryAttachment,
+  observeForkAttachment,
+} from "../support/helpers/assistant-fork";
+import { expectComposerVisible, submitMessage } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 
 const CROSS_STRUCTURE_MARKDOWN = [
@@ -118,6 +123,84 @@ async function selectAssistantElement(page: Page, selector: string): Promise<voi
     selection?.removeAllRanges();
     selection?.addRange(range);
   });
+}
+
+/**
+ * Select an element from the end of the text before it. A drag that starts in the gap
+ * above a block anchors there, so nothing outside the element is highlighted.
+ */
+async function selectAssistantElementFromEndOf(
+  page: Page,
+  startText: string,
+  selector: string,
+): Promise<void> {
+  await assistantMessageBlocks(page).evaluateAll(
+    (blocks, selected) => {
+      let startNode: Text | null = null;
+      for (const block of blocks) {
+        const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          if (walker.currentNode.textContent?.endsWith(selected.startText)) {
+            startNode = walker.currentNode as Text;
+          }
+        }
+      }
+      const end = blocks.map((block) => block.querySelector(selected.selector)).find(Boolean);
+      if (!startNode || !end) {
+        throw new Error(`Could not find ${selected.startText} — ${selected.selector}`);
+      }
+      const range = document.createRange();
+      range.setStart(startNode, startNode.length);
+      range.setEnd(end, end.childNodes.length);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    },
+    { startText, selector },
+  );
+}
+
+/** A drag over an image alone selects it inside its rendered frame. */
+async function selectAssistantImage(page: Page): Promise<void> {
+  await assistantMessageBlocks(page)
+    .locator("img")
+    .evaluate((element) => {
+      const range = document.createRange();
+      range.selectNode(element);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    });
+}
+
+/** Press in the gap below the image and drag to the end of `text` in the block after it. */
+async function dragFromBelowImageTo(page: Page, text: string): Promise<void> {
+  const blocks = assistantMessageBlocks(page);
+  const target = blocks.getByText(text);
+  await target.scrollIntoViewIfNeeded();
+  const frame = await blocks.locator('[data-paseo-markdown-tag="img"]').boundingBox();
+  const end = await target.evaluate((element, selectedText) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      const offset = node.textContent?.indexOf(selectedText) ?? -1;
+      if (offset >= 0) {
+        const range = document.createRange();
+        range.setStart(node, offset);
+        range.setEnd(node, offset + selectedText.length);
+        const box = range.getBoundingClientRect();
+        return { x: box.right - 1, y: box.top + box.height / 2, left: box.left };
+      }
+    }
+    throw new Error(`Could not find ${selectedText}`);
+  }, text);
+  if (!frame) {
+    throw new Error("Expected a rendered image");
+  }
+  await page.mouse.move(end.left + 5, frame.y + frame.height + 4);
+  await page.mouse.down();
+  await page.mouse.move(end.x, end.y, { steps: 10 });
+  await page.mouse.up();
 }
 
 async function selectAssistantText(page: Page, text: string): Promise<void> {
@@ -565,6 +648,19 @@ test("copying an assistant selection preserves Markdown structure and links", as
     const completeCodeClipboard = await readRichClipboard(page);
     expect(completeCodeClipboard.plainText).toBe('const answer = "yes";\n  return answer;');
 
+    // Touching the block before it without selecting any of its text is still a
+    // selection inside the code.
+    await selectAssistantElementFromEndOf(
+      page,
+      "not a generated link.",
+      '[data-paseo-markdown-language="typescript"] [data-paseo-markdown-tag="code"]',
+    );
+    await copySelection(page);
+
+    expect((await readRichClipboard(page)).plainText).toBe(
+      'const answer = "yes";\n  return answer;',
+    );
+
     // Crossing the block boundary expresses an intent to carry its Markdown structure.
     await selectAssistantAcrossCodeLines(page, "const", "After code.");
     await copySelection(page);
@@ -597,6 +693,160 @@ test("copying an assistant selection preserves Markdown structure and links", as
     await bashFence.locator("[data-paseo-markdown-ignore]").click();
 
     expect(await readPlainClipboard(page)).toBe("echo trailing");
+  } finally {
+    await agent.cleanup();
+  }
+});
+
+test("selection toolbar adds a formatted quote to the source draft without sending", async ({
+  page,
+}) => {
+  const agent = await seedMockAgentWorkspace({
+    repoPrefix: "assistant-selection-quote-",
+    title: "Selection quote source",
+    initialPrompt: "Explain the selected phrase.",
+    featureValues: { mockAssistantResponse: "A **selected phrase** in context." },
+  });
+  try {
+    await agent.client.waitForFinish(agent.agentId, 30_000);
+    await openAgentRoute(page, agent);
+    await expectComposerVisible(page);
+    const input = page.getByRole("textbox", { name: "Message agent..." });
+    await input.fill("Existing question");
+    await selectAssistantText(page, "selected phrase");
+    const toolbar = page.getByTestId("assistant-selection-toolbar");
+    await expect(toolbar).toBeVisible();
+    await expect(toolbar).toContainText("Reply in side chat");
+    // The toolbar must not capture input focus merely because a selection exists.
+    await expect(page.getByTestId("selection-add-to-chat")).not.toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(toolbar).toHaveCount(0);
+    await page.keyboard.press("Shift");
+    await expect(toolbar).toHaveCount(0);
+    await selectAssistantText(page, "selected phrase");
+    await page.getByTestId("selection-add-to-chat").click();
+    await expect(input).toHaveValue("Existing question\n\n> selected phrase\n\n");
+    await expect(input).toBeFocused();
+    await expect(toolbar).toHaveCount(0);
+    await expect(page.getByTestId("user-message")).toHaveCount(1);
+    await expect(input).toHaveCount(1);
+  } finally {
+    await agent.cleanup();
+  }
+});
+
+test("selection toolbar opens an Explorer draft with history through the selected response", async ({
+  page,
+}) => {
+  const attachment = observeForkAttachment(page);
+  const agent = await seedMockAgentWorkspace({
+    repoPrefix: "assistant-selection-side-",
+    title: "Selection side source",
+    initialPrompt: "Original question included in snapshot.",
+    featureValues: { mockAssistantResponse: "A selected phrase in context." },
+    model: "e2e-fast-stream",
+  });
+  try {
+    await agent.client.waitForFinish(agent.agentId, 30_000);
+    await openAgentRoute(page, agent);
+    await expectComposerVisible(page);
+    await submitMessage(page, "Later question excluded from snapshot.");
+    await agent.client.waitForFinish(agent.agentId, 30_000);
+    await expect(page.getByTestId("user-message")).toHaveCount(2);
+    const sourceInput = page.getByRole("textbox", { name: "Message agent..." });
+    await sourceInput.fill("Keep this source draft");
+    await selectAssistantText(page, "selected phrase");
+    await expect(page.getByTestId("selection-reply-in-side-chat")).toBeEnabled();
+    const toolbarBounds = await page.getByTestId("assistant-selection-toolbar").boundingBox();
+    expect(toolbarBounds).not.toBeNull();
+    expect(toolbarBounds!.x).toBeGreaterThanOrEqual(8);
+    expect(toolbarBounds!.x + toolbarBounds!.width).toBeLessThanOrEqual(
+      page.viewportSize()!.width - 8,
+    );
+    await page.screenshot({ path: "/tmp/paseo-selection-toolbar.png" });
+    await page.getByTestId("selection-reply-in-side-chat").click();
+    const explorer = page.getByTestId("workspace-explorer-sidebar").filter({ visible: true });
+    await expect(explorer).toBeVisible();
+    await expect(explorer.getByRole("button", { name: "New Agent", exact: true })).toHaveCount(1);
+    await expectChatHistoryAttachment(page);
+    const transcript = await attachment.waitForText();
+    expect(transcript).toContain("Original question included in snapshot.");
+    expect(transcript).toContain("A selected phrase in context.");
+    expect(transcript).not.toContain("Later question excluded from snapshot.");
+    const inputs = page.getByRole("textbox", { name: "Message agent..." });
+    await expect(inputs).toHaveCount(2);
+    await expect(inputs.nth(0)).toHaveValue("Keep this source draft");
+    await expect(inputs.nth(1)).toHaveValue("> selected phrase\n\n");
+    await expect(explorer.getByRole("textbox", { name: "Message agent..." })).toHaveValue(
+      "> selected phrase\n\n",
+    );
+    const sourceBounds = await inputs.nth(0).boundingBox();
+    const sideBounds = await inputs.nth(1).boundingBox();
+    expect(sourceBounds).not.toBeNull();
+    expect(sideBounds).not.toBeNull();
+    expect(sideBounds!.x).toBeGreaterThan(sourceBounds!.x + sourceBounds!.width);
+    await expect(page.getByTestId("user-message")).toHaveCount(2);
+    await expect(page.getByTestId("assistant-selection-toolbar")).toHaveCount(0);
+    await page.screenshot({ path: "/tmp/paseo-selection-side-chat.png" });
+    // A subsequent side reply adds another draft tab to the same Explorer dock.
+    await selectAssistantText(page, "selected phrase");
+    await page.getByTestId("selection-reply-in-side-chat").click();
+    await expect(explorer.getByRole("button", { name: "New Agent", exact: true })).toHaveCount(2);
+    await expect(inputs).toHaveCount(2);
+    await expect(inputs.nth(0)).toHaveValue("Keep this source draft");
+    await expect(inputs.nth(1)).toHaveValue("> selected phrase\n\n");
+  } finally {
+    await agent.cleanup();
+  }
+});
+
+test("copying a selection across an assistant image keeps its Markdown source and alt text", async ({
+  context,
+  page,
+}) => {
+  const image =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+  const agent = await seedMockAgentWorkspace({
+    repoPrefix: "assistant-selection-copy-image-",
+    title: "Assistant selection copy image",
+    initialPrompt: "Render the image fixture.",
+    featureValues: {
+      mockAssistantResponse: [
+        "Before the image.",
+        "",
+        `![chart](${image})`,
+        "",
+        "After the image.",
+      ].join("\n"),
+    },
+  });
+
+  try {
+    await allowRichClipboard(context);
+    await agent.client.waitForAgentUpsert(
+      agent.agentId,
+      (snapshot) => snapshot.status === "idle",
+      30_000,
+    );
+    await openAgentRoute(page, agent);
+    await expect(assistantMessageBlocks(page).locator("img")).toHaveCount(1);
+
+    await selectAssistantTextRange(page, "Before the image.", "After the image.");
+    await copySelection(page);
+
+    expect((await readRichClipboard(page)).plainText).toBe(
+      `Before the image.\n\n![chart](${image})\n\nAfter the image.`,
+    );
+
+    await selectAssistantImage(page);
+    await copySelection(page);
+
+    expect((await readRichClipboard(page)).plainText).toBe(`![chart](${image})`);
+
+    await dragFromBelowImageTo(page, "After the");
+    await copySelection(page);
+
+    expect((await readRichClipboard(page)).plainText).toBe("After the");
   } finally {
     await agent.cleanup();
   }

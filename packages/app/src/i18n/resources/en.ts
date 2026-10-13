@@ -1,4 +1,48 @@
 export const en = {
+  workspaceSnooze: {
+    title: "Snooze workspace",
+    action: "Snooze…",
+    edit: "Edit snooze…",
+    unsnooze: "Unsnooze",
+    save: "Save snooze",
+    time: "Time",
+    ai: "AI",
+    statusChange: "Status change",
+    statusRule: "Wake when any selected status changes from the snapshot captured on save.",
+    loadingStatuses: "Loading connected statuses…",
+    noStatuses: "No linked PR or Linear issues found.",
+    refreshStatuses: "Refresh statuses",
+    fiveMinutes: "5 minutes",
+    archivePrecedence:
+      "Auto-archive after merge is enabled. Eligible merged workspaces will be archived instead of returning to the sidebar.",
+    condition: "Unsnooze when…",
+    placeholder: "PR #123 is merged and the latest deployment succeeds",
+    interval: "Check every",
+    hourly: "1 hour",
+    daily: "1 day",
+    clockTime: "Time (HH:mm)",
+    previousMonth: "Previous month",
+    nextMonth: "Next month",
+    checkNow: "Check now",
+    checkQueued: "Check queued",
+    checkTitle: "Workspace snooze check",
+    snoozed: "Snoozed",
+    nextCheck: "Next check: {{time}}",
+    lastCheck: "Last check: {{time}}",
+    presets: {
+      hour: "In 1 hour",
+      day: "In 1 day",
+      tomorrow: "Tomorrow morning",
+      monday: "Next Monday",
+      custom: "Custom date and time…",
+    },
+    result: {
+      blocked: "Blocked",
+      unblocked: "Unblocked",
+      unknown: "Couldn’t determine",
+      pending: "Awaiting check",
+    },
+  },
   codeLanguage: {
     definition: "Go to definition",
     usages: "Find usages",
@@ -75,9 +119,11 @@ export const en = {
     total: "{{total}} matches",
   },
   common: {
+    bottomSheetBackdrop: "Bottom sheet backdrop",
     back: "Back",
     loading: "Loading...",
     actions: {
+      save: "Save",
       back: "Back",
       cancel: "Cancel",
       close: "Close",
@@ -444,6 +490,10 @@ export const en = {
       copyCode: "Copy code",
       copyTurn: "Copy turn",
       copyMessage: "Copy message",
+      // FORK(selection-toolbar): actions for selected assistant text.
+      selectionToolbar: "Selected text actions",
+      addSelectionToChat: "Add to chat",
+      replyToSelection: "Reply in side chat",
       forkMenu: "Fork chat from here",
       forkInNewTab: "Fork in a new tab",
       forkInNewWorkspace: "Fork in a new workspace",
@@ -499,6 +549,9 @@ export const en = {
         completed: "Completed",
       },
     },
+    turnFooter: {
+      workedFor: "Worked for {{duration}}",
+    },
     compaction: {
       loading: "Compacting...",
       auto: "Context automatically compacted",
@@ -546,6 +599,20 @@ export const en = {
     },
   },
   workspace: {
+    linear: {
+      title: "Linear issues",
+      link: "Link issue",
+      linking: "Linking issue…",
+      identifier: "Issue identifier, e.g. CMS-664",
+      create: "Create issue in Linear",
+      refresh: "Refresh linked issues",
+      loading: "Loading Linear issues…",
+      noPr: "Create a PR to link Linear issues",
+      updateHost: "Update the host to show Linear issues",
+      unavailable: "Connect to the host and open a PR to use Linear",
+      linkFailed: "Could not link the Linear issue. Try again",
+      openFailed: "Could not open Linear. Try again",
+    },
     route: {
       loading: "Loading workspace",
       connecting: "Connecting",
@@ -1126,6 +1193,47 @@ export const en = {
         actions: {
           viewPullRequest: "View",
           openOn: "Open on {{brand}}",
+          addToChat: "Add to chat",
+          addAllToChat: "Add all to chat",
+          addingToChat: "Adding...",
+        },
+        checksOverview: {
+          headline: {
+            actionRequired: "Some checks need your attention",
+            failure: "Some checks were not successful",
+            pending: "Some checks haven't completed yet",
+            success: "All checks have passed",
+            none: "No checks",
+          },
+          count: {
+            actionRequired: "{{count}} needs action",
+            warning: "{{count}} warning",
+            failure: "{{count}} failing",
+            pending: "{{count}} in progress",
+            manual: "{{count}} manual",
+            success: "{{count}} successful",
+            ignored: "{{count}} skipped",
+          },
+          detailOne: "{{parts}} check",
+          detailMany: "{{parts}} checks",
+          groupOne: {
+            actionRequired: "{{count}} needs action check",
+            warning: "{{count}} warning check",
+            failure: "{{count}} failing check",
+            pending: "{{count}} in progress check",
+            manual: "{{count}} manual check",
+            success: "{{count}} successful check",
+            ignored: "{{count}} skipped check",
+          },
+          groupMany: {
+            actionRequired: "{{count}} needs action checks",
+            warning: "{{count}} warning checks",
+            failure: "{{count}} failing checks",
+            pending: "{{count}} in progress checks",
+            manual: "{{count}} manual checks",
+            success: "{{count}} successful checks",
+            ignored: "{{count}} skipped checks",
+          },
         },
         checksSummary: {
           passedLabel: "passed",
@@ -1139,17 +1247,21 @@ export const en = {
           checks: "Checks",
           pipeline: "Pipeline",
           reviews: "Reviews",
+          activity: "Activity",
         },
         empty: {
           noJobs: "No jobs",
           loadingPipeline: "Loading pipeline…",
           pipelineJobsLoadFailed: "Could not load pipeline jobs",
           allowedToFail: "allowed to fail",
+          noActivity: "No activity yet",
         },
         approvals: "{{given}} of {{required}} approvals",
         accessibility: {
           pullRequest: "Pull request #{{number}}",
           pullRequest_mr: "Merge request !{{number}}",
+          commentActions: "Comment actions",
+          threadActions: "Thread actions",
           checkStatus: {
             passed: "Passed",
             failed: "Failed",
@@ -1178,6 +1290,8 @@ export const en = {
         },
         thread: {
           discussion: "Discussion thread",
+          resolved: "Resolved",
+          outdated: "Outdated",
         },
         errors: {
           statusLoadFailed: "Unable to load pull request status",
@@ -1244,7 +1358,16 @@ export const en = {
     },
   },
   sidebar: {
+    statusGroupAccessibility: "{{label}} group",
+    statusBucket: {
+      needsInput: "Needs input",
+      failed: "Failed",
+      readyToReview: "Ready to review",
+      working: "Working",
+      done: "Done",
+    },
     display: {
+      showBackground: "Show background",
       trigger: "Display preferences",
       heading: "Display",
       grouping: {
@@ -1303,6 +1426,9 @@ export const en = {
       hosts: "Hosts",
       settings: "Settings",
       closeSidebar: "Close sidebar",
+    },
+    footer: {
+      usage: "Usage",
     },
     help: {
       trigger: "Help and support",
@@ -1372,7 +1498,7 @@ export const en = {
       actions: {
         menu: "Workspace actions",
         newWorkspace: "New workspace",
-        showMore: "Show more",
+        showMore: "Show all",
         showLess: "Show less",
         createWorkspaceFor: "Create a new workspace for {{projectName}}",
         copyPath: "Copy path",
@@ -1824,6 +1950,17 @@ export const en = {
       title: "Password for {{host}}",
       label: "Host password",
     },
+    hostConfirmation: {
+      title: "Connect to this host?",
+      description:
+        "This host will be able to run code in this app and reach your other connected hosts. Only connect if you recognize it.",
+      descriptionChanged:
+        "This link changes how you connect to this host. The host will be able to run code in this app and reach your other connected hosts. Only connect if you recognize it.",
+      hostLabel: "Host",
+      fingerprintLabel: "Key fingerprint",
+      relayLabel: "Relay",
+      connect: "Connect",
+    },
     connectionMethods: {
       title: "Add connection",
       direct: {
@@ -1890,6 +2027,12 @@ export const en = {
       helper: "Connect to a Paseo daemon running on the remote host.",
       fields: {
         target: "SSH host",
+        password: "Daemon password",
+        optional: "Optional",
+      },
+      passwordVisibility: {
+        show: "Show password",
+        hide: "Hide password",
       },
       actions: {
         cancel: "Cancel",
@@ -2021,6 +2164,12 @@ export const en = {
     draft: {
       newAgent: "New Agent",
       creatingAgent: "Creating agent",
+      // FORK(transcript-picker): snapshots from other open chats in this workspace.
+      addTranscripts: "Add chat transcripts:",
+      untitledChat: "Untitled chat",
+      transcriptTitle: "Chat history · {{title}}",
+      transcriptFailed: "Could not add chat transcript.",
+      transcriptsLoading: "Wait for the selected transcripts to finish loading.",
     },
     file: {
       directoryMissing: "Workspace directory not found.",
@@ -2132,6 +2281,8 @@ export const en = {
     dismiss: "Dismiss",
   },
   contextWindow: {
+    noData: "No context data",
+    accessibilityNoData: "Context window: No context data",
     title: "Context window",
     used: "{{percentage}}% used",
     tokens: "{{used}} / {{max}} tokens",
@@ -2139,6 +2290,17 @@ export const en = {
     accessibility: "Context window {{percentage}}% used",
   },
   review: {
+    feedback: {
+      send: "Send feedback ({{count}})",
+      sending: "Sending feedback ({{count}})",
+      chooseAgent: "Choose an agent",
+      sent: "Feedback sent to {{recipient}}",
+      "no-agents": "Open an agent tab in this workspace to send feedback.",
+      disconnected: "Connect to the host to send feedback.",
+      "no-context": "Saved comments no longer match this diff.",
+      failed: "Failed to send feedback. Try again.",
+      prompt: "Please address this code review.",
+    },
     comment: {
       add: "Add review comment",
       edit: "Edit review comment",
@@ -2280,7 +2442,7 @@ export const en = {
       globalTitle: "Enable plugins",
       globalHint: "Global switch for every configured plugin",
       sourceLabel: "Plugin source",
-      sourcePlaceholder: "Directory, Git URL, or npm package",
+      sourcePlaceholder: "owner/slug, directory, Git URL, or npm package",
       docs: "Docs",
       install: "Install plugin",
       installing: "Installing…",
@@ -2491,8 +2653,15 @@ export const en = {
         description: "Show an outline for jumping between prompts",
       },
       sidebar: {
-        title: "Sidebar",
-        description: "Choose which items appear at the top of the sidebar and in what order",
+        header: {
+          title: "Header",
+          description: "Choose which items appear at the top of the sidebar and in what order",
+        },
+        footer: {
+          title: "Footer",
+          description:
+            "Choose which rows appear at the bottom of the sidebar and in what order. Add project and the icon row always show",
+        },
         moveUp: "Move up",
         moveDown: "Move down",
       },

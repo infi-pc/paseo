@@ -193,8 +193,10 @@ Terminal activity contributes to the workspace status bucket **per `workspaceId`
 Single file, validated with `PersistedConfigSchema`.
 
 `agents.skills.selection` is the daemon host's orchestration-skill preference. Missing means
-`{ mode: "all" }`. Installed state is not persisted; the daemon derives it from its three managed
-skill directories and keeps config plus filesystem convergence behind one serialized owner.
+`{ mode: "all" }`. Installed state is not persisted; the daemon derives it from the shared
+`~/.agents/skills` and Claude skill directories and keeps config plus filesystem convergence behind
+one serialized owner. Codex discovers the shared directory. Updates retire unchanged files from
+Paseo-managed copies in `~/.codex/skills`, preserving user edits and untracked files.
 
 `paseo reload` reads and validates this file once inside the daemon. That snapshot drives resolution,
 classification, application, and reload bookkeeping. `DaemonConfigStore` owns applying runtime-safe
@@ -527,6 +529,7 @@ Array of workspace records. A workspace is a specific working directory within a
 | `updatedAt`                    | `string` (ISO 8601)                                          |                                                                                                                                                                                               |
 | `archivedAt`                   | `string \| null` (ISO 8601)                                  | Soft-delete; required nullable                                                                                                                                                                |
 | `autoArchivedChangeRequestUrl` | `string \| null`                                             | Change request whose merged state triggered auto-archive. Restore replaces it with the current merged change request, when present, so repeated snapshots cannot archive the workspace again. |
+| `snooze`                       | `AnyWorkspaceSnooze? \| null`                                | Workspace-owned snooze configuration and latest check; see [snoozing](agent-lifecycle.md#workspace-snoozing).                                                                                 |
 | `labels`                       | `string[]?`                                                  | Normalized display names assigned from this host's shared label catalog. Missing means unlabelled.                                                                                            |
 | `pinnedAt`                     | `string \| null` (ISO 8601)                                  | Pinned-to-top-of-sidebar timestamp; null means "not pinned"                                                                                                                                   |
 | `untrustedSource`              | `{ kind: "change_request", forge, number, headRepository }?` | Provenance captured when a cross-repository change request creates the workspace. Missing means repository automation is allowed; explicit setup removes the field.                           |

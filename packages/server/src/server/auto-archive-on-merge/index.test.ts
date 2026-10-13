@@ -134,19 +134,53 @@ test("serializes the complete fan-out for duplicate merge events on one cwd", as
     resolvePath: resolve,
   };
 
-  setupAutoArchiveOnMerge(options, deps);
+  const policy = setupAutoArchiveOnMerge(options, deps);
   if (!onSnapshotUpdated) throw new Error("Snapshot listener was not registered");
   onSnapshotUpdated(createSnapshot("/repo/worktree/.", "open"));
   onSnapshotUpdated(snapshot);
   await vi.waitFor(() => expect(archivedWorkspaceIds).toEqual(["workspace-a"]));
 
   onSnapshotUpdated(createSnapshot("/repo/worktree/child/.."));
+  let settled = false;
+  const settling = policy.settleForWorkspace("/repo/worktree").then(() => {
+    settled = true;
+    return;
+  });
   await Promise.resolve();
   expect(archivedWorkspaceIds).toEqual(["workspace-a"]);
+  expect(settled).toBe(false);
 
   releaseFirstArchive?.();
   await finished;
+  await settling;
   expect(archivedWorkspaceIds).toEqual(["workspace-a", "workspace-b"]);
+});
+
+test("a snooze wake refresh preserves the policy's open-to-merged requirement", async () => {
+  let listener!: (snapshot: WorkspaceGitRuntimeSnapshot) => void;
+  const snapshot = createSnapshot("/repo/worktree");
+  const archiveIfSafe = vi.fn();
+  const options = {
+    logger: { child: () => ({ warn: vi.fn() }) } as unknown as Logger,
+    daemonConfigStore: { get: () => ({ autoArchiveAfterMerge: true }) },
+    workspaceGitService: {
+      onSnapshotUpdated: (next: typeof listener) => {
+        listener = next;
+        return { unsubscribe: vi.fn() };
+      },
+      getSnapshot: async () => {
+        listener(snapshot);
+        return snapshot;
+      },
+    },
+    listActiveWorkspaces: async () => [{ workspaceId: "one", cwd: snapshot.cwd }],
+  } as unknown as AutoArchiveOnMergeOptions;
+  const policy = setupAutoArchiveOnMerge(options, { archiveIfSafe, resolvePath: resolve });
+  await policy.settleForWorkspace(snapshot.cwd);
+  expect(archiveIfSafe).not.toHaveBeenCalled();
+  listener(createSnapshot(snapshot.cwd, "open"));
+  await policy.settleForWorkspace(snapshot.cwd);
+  expect(archiveIfSafe).toHaveBeenCalledTimes(1);
 });
 
 test("does not fan out a stale merged event when the fresh observation has no PR", async () => {

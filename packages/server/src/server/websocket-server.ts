@@ -1,3 +1,4 @@
+import type { WorkspaceSnoozeService } from "./workspace-snooze/service.js";
 import { stat } from "node:fs/promises";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
 import { CreationService } from "./creation/index.js";
@@ -5,7 +6,7 @@ import { MessageReceipts } from "./message-receipts/index.js";
 import { WebSocket, WebSocketServer } from "ws";
 import type { IncomingMessage, Server as HTTPServer } from "http";
 import { join } from "path";
-import { hostname as getHostname } from "node:os";
+import { getHostName } from "./host-name.js";
 import { randomUUID } from "node:crypto";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { AgentManager, AgentMetricsSnapshot } from "./agent/agent-manager.js";
@@ -21,6 +22,7 @@ import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-sto
 import type { SleepInhibitorState } from "./sleep-inhibitor/index.js";
 import {
   type ServerInfoStatusPayload,
+  type ScriptStatusUpdateMessage,
   type SessionOutboundMessage,
   type WorkspaceSetupSnapshot,
   type WSHelloMessage,
@@ -258,6 +260,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     suggestBranchesForCwd: async () => [],
     listStashes: async () => [],
     listWorktrees: async () => [],
+    invalidateWorktrees: () => {},
     getProjectSlug: async (cwd: string) => {
       const snapshot = createFallbackWorkspaceGitSnapshot(cwd);
       return deriveProjectSlug(cwd, snapshot.git.isGit ? snapshot.git.remoteUrl : null);
@@ -673,6 +676,8 @@ export class VoiceAssistantWebSocketServer {
     pluginRuntime?: SessionOptions["pluginRuntime"],
     orchestrationSkills?: SessionOptions["orchestrationSkills"],
     workspaceLabelService?: WorkspaceLabelService,
+    // FORK(workspace-snooze): shared daemon scheduler.
+    private readonly workspaceSnoozeService?: WorkspaceSnoozeService,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
     this.workspaceSetupRuntime = workspaceSetupRuntime;
@@ -991,6 +996,12 @@ export class VoiceAssistantWebSocketServer {
       void session
         .emitProjectUpdate(update)
         .catch((error) => this.logger.warn({ err: error }, "Failed to publish project update"));
+    }
+  }
+
+  public publishScriptStatusUpdate(message: ScriptStatusUpdateMessage): void {
+    for (const session of this.listSessions()) {
+      session.emitServerMessage(message);
     }
   }
 
@@ -1481,6 +1492,7 @@ export class VoiceAssistantWebSocketServer {
           ),
         );
       },
+      publishScriptStatusUpdate: (message) => this.publishScriptStatusUpdate(message),
       downloadTokenStore: this.downloadTokenStore,
       pushNotifications: this.pushNotifications,
       paseoHome: this.paseoHome,
@@ -1492,6 +1504,8 @@ export class VoiceAssistantWebSocketServer {
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       workspaceLabelService: this.workspaceLabelService ?? undefined,
+      // FORK(workspace-snooze): expose scheduling to sessions.
+      workspaceSnoozeService: this.workspaceSnoozeService,
       directorySync: this.directorySync,
       scheduleService: this.scheduleService,
       checkoutDiffManager: this.checkoutDiffManager,
@@ -1515,6 +1529,7 @@ export class VoiceAssistantWebSocketServer {
       workspaceSetupRuntime: this.workspaceSetupRuntime,
       onBranchChanged: this.onBranchChanged ?? undefined,
       getDaemonTcpPort: this.getDaemonTcpPort ?? undefined,
+      getSleepPreventionState: this.getSleepPreventionState,
       getDaemonTcpHost: this.getDaemonTcpHost ?? undefined,
       serviceProxyPublicBaseUrl: this.serviceProxyPublicBaseUrl,
       resolveScriptHealth: this.resolveScriptHealth ?? undefined,
@@ -1644,7 +1659,6 @@ export class VoiceAssistantWebSocketServer {
     }
     pending.identity.sessionId = connection.session.getSessionId();
     this.sendToClient(ws, this.createServerInfoMessage(connection.session));
-    this.sendSleepPreventionState(ws);
     connection.connectionLogger.info(
       {
         ...toConnectionLogFields(pending.identity),
@@ -1774,7 +1788,6 @@ export class VoiceAssistantWebSocketServer {
     this.sessions.set(ws, existing);
     pending.identity.sessionId = existing.session.getSessionId();
     this.sendToClient(ws, this.createServerInfoMessage(existing.session));
-    this.sendSleepPreventionState(ws);
     pending.connectionLogger.info(
       {
         ...toConnectionLogFields(pending.identity),
@@ -1790,7 +1803,7 @@ export class VoiceAssistantWebSocketServer {
       status: "server_info",
       protocolVersion: WS_PROTOCOL_VERSION,
       serverId: this.serverId,
-      hostname: getHostname(),
+      hostname: getHostName(),
       version: this.daemonVersion,
       permissions: session.getPermissions(),
       // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
@@ -1806,6 +1819,7 @@ export class VoiceAssistantWebSocketServer {
         workspaceRequestReceipts: true,
         creationLifecycle: true,
         hubAgentRpc: true,
+        backgroundWorkspaces: true,
         // COMPAT(directorySync): added in v0.3.x, remove gate after 2027-02-12.
         directorySync: true,
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
@@ -1839,6 +1853,8 @@ export class VoiceAssistantWebSocketServer {
         // and legacy fallback after 2027-01-17 once the supported daemon floor
         // is >= v0.2.0.
         forgeSearch: true,
+        // FORK(linear-toolbar): CLI availability and login failures are reported by the operation.
+        linearIssues: true,
         forgeSearchChecks: true,
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.
         ...(this.advertiseDaemonStatusRpc ? { daemonStatusRpc: true } : {}),
@@ -1917,6 +1933,10 @@ export class VoiceAssistantWebSocketServer {
         providerSubagentNesting: true,
         // COMPAT(workspacePinning): added in v0.1.107, remove gate after 2027-01-12.
         workspacePinning: true,
+        // FORK(workspace-snooze): advertise the scheduler capability.
+        ...(this.workspaceSnoozeService
+          ? { workspaceSnoozing: true, workspaceStatusSnoozing: true }
+          : {}),
         // COMPAT(workspaceMarkUnread): added in v0.5.0, remove after 2027-08-20.
         workspaceMarkUnread: true,
         // COMPAT(hubRelationship): added in v0.1.X, drop the gate when floor >= v0.1.X.
@@ -1945,6 +1965,7 @@ export class VoiceAssistantWebSocketServer {
         explicitEventSubscriptions: true,
         // COMPAT(canonicalSubmittedPrompts): added in v0.2.6, remove gate after 2027-01-30.
         canonicalSubmittedPrompts: true,
+        agentMessageProvenance: true,
         // COMPAT(stableProjectIdentity): added in v0.1.109, remove gate after 2027-01-15.
         stableProjectIdentity: true,
         // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
@@ -2006,31 +2027,20 @@ export class VoiceAssistantWebSocketServer {
     this.broadcast(this.createDaemonConfigChangedMessage(config));
   }
 
-  private createSleepPreventionMessage(state: SleepInhibitorState): WSOutboundMessage {
-    return wrapSessionMessage({
-      type: "status",
-      payload: {
-        status: "sleep_prevention_changed",
-        active: state.active,
-        supported: state.supported,
-        agentCount: state.agentCount,
-      },
-    });
-  }
-
+  // FORK(sleep-prevention): published through each session so owned-subscription clients
+  // receive it on their status.server_info feed; Session replays it on subscribe.
   broadcastSleepPrevention(state: SleepInhibitorState): void {
-    this.broadcast(this.createSleepPreventionMessage(state));
-  }
-
-  /**
-   * Clients learn the inhibitor state from broadcasts, which only fire on
-   * change — a session attaching between transitions would otherwise render
-   * nothing until the next agent starts.
-   */
-  private sendSleepPreventionState(ws: WebSocketLike): void {
-    const state = this.getSleepPreventionState?.();
-    if (!state) return;
-    this.sendToClient(ws, this.createSleepPreventionMessage(state));
+    for (const connection of new Set(this.sessions.values())) {
+      connection.session.publish({
+        type: "status",
+        payload: {
+          status: "sleep_prevention_changed",
+          active: state.active,
+          supported: state.supported,
+          agentCount: state.agentCount,
+        },
+      });
+    }
   }
 
   private bindSocketHandlers(ws: WebSocketLike): void {
@@ -2617,6 +2627,53 @@ export class VoiceAssistantWebSocketServer {
       focusedTerminalId: activity.focusedTerminalId,
       lastActivityAtMs: activity.lastActivityAt.getTime(),
     };
+  }
+
+  // FORK(workspace-snooze): explicit event subscribers keep older clients parse-compatible.
+  async notifyWorkspaceSnoozeWake(
+    workspaceId: string,
+    name: string,
+    body: string,
+    id: string,
+  ): Promise<void> {
+    const entries = [...this.sessions].filter(
+      ([ws, connection]) =>
+        connection.session.delivery.isModern(ws) &&
+        connection.session.wantsSourceNotification(ws, "workspace.snooze.woke"),
+    );
+    const plan = computeNotificationPlan({
+      allStates: entries.map(([ws, connection]) =>
+        this.getClientActivityState(connection.session, ws),
+      ),
+      focusTarget: null,
+      pushEligible: true,
+      nowMs: Date.now(),
+    });
+    const title = `${name} is ready`;
+    if (plan.shouldPush) {
+      void this.pushNotificationSender
+        .send({
+          title,
+          body,
+          data: { serverId: this.serverId, workspaceId, snoozeId: id },
+        })
+        .catch((err) => {
+          this.logger.warn({ err, workspaceId }, "Failed to send workspace wake notification");
+        });
+    }
+    for (const [index, [ws, connection]] of entries.entries()) {
+      connection.session.publishToSource(ws, {
+        type: "workspace.snooze.woke",
+        payload: {
+          id,
+          serverId: this.serverId,
+          workspaceId,
+          title,
+          body,
+          shouldNotify: index === plan.inAppRecipientIndex,
+        },
+      });
+    }
   }
 
   private async broadcastAgentAttention(params: {

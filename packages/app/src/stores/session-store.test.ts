@@ -450,6 +450,40 @@ describe("message submission ordering", () => {
 });
 
 describe("normalizeWorkspaceDescriptor", () => {
+  it("normalizes additive status snoozes into the shared sidebar state", () => {
+    const target = {
+      kind: "github" as const,
+      url: "https://github.com/acme/repo/pull/42",
+      field: "review" as const,
+    };
+    const statusSnooze = {
+      id: "status-watch",
+      createdAt: "2026-10-06T10:00:00Z",
+      nextCheckAt: "2026-10-06T10:05:00Z",
+      config: { mode: "status" as const, intervalMinutes: 5 as const, targets: [target] },
+      baseline: [
+        {
+          target,
+          label: "PR #42 · Review",
+          value: "pending",
+          valueLabel: "Review required",
+          capturedAt: "2026-10-06T10:00:00Z",
+        },
+      ],
+      lastCheck: null,
+    };
+    const payload = {
+      ...createWorkspace({ id: "one" }),
+      activityAt: null,
+      statusEnteredAt: null,
+      archivingAt: null,
+      snooze: null,
+      statusSnooze,
+    };
+    expect(normalizeWorkspaceDescriptor(payload).snooze).toEqual(statusSnooze);
+    expect(normalizeWorkspaceDescriptor({ ...payload, statusSnooze: null }).snooze).toBeNull();
+  });
+
   it("normalizes workspace scripts and invalid activity timestamps", () => {
     const scripts = [
       {

@@ -23,6 +23,7 @@ import {
   type FileTransferFrame,
 } from "@getpaseo/protocol/binary-frames/index";
 import { Session } from "./session.js";
+import { BackgroundActivityRecorder } from "./background-activity/recorder.js";
 import { OWNER_PERMISSIONS, type DaemonPermission } from "./authorization/index.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
@@ -316,6 +317,7 @@ interface SessionForTestOptions {
   scriptRuntimeStore?: SessionOptions["scriptRuntimeStore"];
   getDaemonTcpPort?: () => number | null;
   getDaemonTcpHost?: () => string | null;
+  getSleepPreventionState?: SessionOptions["getSleepPreventionState"];
   providerSnapshotManager?: ProviderSnapshotManager;
   hubExecutionAgents?: SessionOptions["hubExecutionAgents"];
   stt?: SessionOptions["stt"];
@@ -386,6 +388,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     pushNotifications: options.pushNotifications ?? asPushNotifications(),
     paseoHome: options.paseoHome ?? "/tmp/paseo-home",
     agentManager: asAgentManager({
+      backgroundActivity: new BackgroundActivityRecorder(),
       listAgents: vi.fn(() => []),
       listProviderSubagentActivity: vi.fn(() => []),
       subscribe: vi.fn(() => () => {}),
@@ -434,6 +437,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     serviceProxy: options.serviceProxy,
     scriptRuntimeStore: options.scriptRuntimeStore,
     getDaemonTcpPort: options.getDaemonTcpPort,
+    getSleepPreventionState: options.getSleepPreventionState,
     getDaemonTcpHost: options.getDaemonTcpHost,
     voice: options.voice,
     serverId: options.serverId,
@@ -481,6 +485,34 @@ test("routes host-scoped agent skills requests through the daemon owner", async 
     type: "agent.skills.save_selection.response",
     payload: { requestId: "save-skills", ...status, confirmationRequired: null },
   });
+});
+
+test("delivers sleep prevention state on the server info event feed", async () => {
+  const messages: SessionOutboundMessage[] = [];
+  const session = createSessionForTest({
+    messages,
+    getSleepPreventionState: () => ({ active: true, supported: true, agentCount: 2 }),
+  });
+
+  await session.handleMessage({
+    type: "session.events.set_subscription.request",
+    requestId: "events",
+    events: ["status.server_info"],
+  });
+  session.publish({
+    type: "status",
+    payload: { status: "sleep_prevention_changed", active: false, supported: true, agentCount: 0 },
+  });
+
+  const sleepPayloads = messages.flatMap((message) =>
+    message.type === "status" && message.payload.status === "sleep_prevention_changed"
+      ? [message.payload]
+      : [],
+  );
+  expect(sleepPayloads).toEqual([
+    { status: "sleep_prevention_changed", active: true, supported: true, agentCount: 2 },
+    { status: "sleep_prevention_changed", active: false, supported: true, agentCount: 0 },
+  ]);
 });
 
 test("routes plugin requests and releases its owned catalog subscription on cleanup", async () => {
@@ -5247,6 +5279,7 @@ test("unions viewed timelines across socket sources and removes detached sources
   const session = createSessionForTest({
     messages,
     agentManager: {
+      getAgent: (id: string) => ({ id, internal: false }),
       subscribe: vi.fn((listener: (event: AgentManagerEvent) => void) => {
         agentEventListeners.push(listener);
         return () => {};
@@ -5354,6 +5387,7 @@ test("keeps selective delivery scoped per socket when a retained session also ha
     messages,
     targetedMessages,
     agentManager: {
+      getAgent: (id: string) => ({ id, internal: false }),
       subscribe: vi.fn((listener: (event: AgentManagerEvent) => void) => {
         agentEventListeners.push(listener);
         return () => {};

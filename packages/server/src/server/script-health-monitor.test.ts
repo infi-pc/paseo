@@ -65,6 +65,7 @@ function createStubTerminalManager(
         name: options.name ?? "Terminal",
         cwd: options.cwd,
         send: () => {},
+        setActivity: () => {},
         subscribe: () => () => {},
         onExit: () => () => {},
         onCommandFinished: () => () => {},
@@ -99,14 +100,14 @@ function createStubTerminalManager(
   };
 }
 
-async function startTcpServer(): Promise<TcpServerHandle> {
+async function startTcpServer(host = "127.0.0.1"): Promise<TcpServerHandle> {
   const server = net.createServer((socket) => {
     socket.end();
   });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, host, () => {
       server.off("error", reject);
       resolve();
     });
@@ -151,6 +152,33 @@ describe("ScriptHealthMonitor", () => {
 
     await Promise.all(Array.from(servers, (server) => closeServer(server)));
     servers.clear();
+  });
+
+  it("marks an IPv6-only localhost service healthy", async () => {
+    vi.useFakeTimers();
+    const healthy = await startTcpServer("::1");
+    servers.add(healthy.server);
+    const routeStore = new ScriptRouteStore();
+    routeStore.registerRoute({
+      hostname: "api--repo.localhost",
+      port: healthy.port,
+      workspaceId: "workspace-a",
+      projectSlug: "repo",
+      scriptName: "api",
+    });
+    const monitor = new ScriptHealthMonitor({
+      serviceProxy: routeStore,
+      onChange: () => {},
+      pollIntervalMs: 1_000,
+      graceMs: 0,
+    });
+    monitor.start();
+    try {
+      await advancePoll(1_000);
+      expect(monitor.getHealthForHostname("api--repo.localhost")).toBe("healthy");
+    } finally {
+      monitor.stop();
+    }
   });
 
   it("starts new service routes in pending and transitions to healthy after the grace period", async () => {

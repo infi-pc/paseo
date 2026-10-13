@@ -1,4 +1,5 @@
 import type { ProviderActivity } from "./provider-activity.js";
+import type { AgentMessage } from "./agent-message.js";
 import type { AgentAttachment } from "./messages.js";
 
 export type AgentProvider = string;
@@ -312,6 +313,7 @@ export type ToolCallDetail =
     };
 
 interface ToolCallBase {
+  agentMessage?: AgentMessage;
   [key: string]: unknown;
   type: "tool_call";
   callId: string;
@@ -500,7 +502,7 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-export type ProviderOptions = Record<string, JsonValue>;
+export type ProviderOptions = Record<string, unknown>;
 
 export interface McpToolRef {
   kind: "mcp";
