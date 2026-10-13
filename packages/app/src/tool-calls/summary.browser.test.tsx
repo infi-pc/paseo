@@ -1,3 +1,5 @@
+import { page } from "vitest/browser";
+import { i18n } from "@/i18n/i18next";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import { ToolCallSummaryLabel } from "./summary-label";
 import { Pressable } from "react-native";
@@ -102,4 +104,56 @@ describe("input and result labels", () => {
     expect(openFile).toHaveBeenLastCalledWith("/repo/src/keep-awake.ts");
     expect(expand).not.toHaveBeenCalled();
   });
+});
+
+const activity = {
+  id: "review-turn",
+  provider: "codex",
+  omitted: 1,
+  records: [
+    {
+      id: "review",
+      event: "item/autoApprovalReview/completed",
+      timestamp: "2026-09-30T12:00:00Z",
+      summary: "Blocked by auto-review: outside scope",
+      level: "warning" as const,
+      callId: "call-1",
+      payload: '{"rationale":"outside scope","riskLevel":"high"}',
+      truncated: false,
+    },
+  ],
+};
+
+it.each([360, 1000])("reveals activity evidence progressively at %ipx", async (width) => {
+  expect(i18n.isInitialized).toBe(true);
+  const { ProviderActivityView } = await import("@/components/provider-activity");
+  const container = document.createElement("div");
+  container.style.width = `${width}px`;
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  mounted = { root, container };
+
+  act(() =>
+    root.render(
+      <ProviderActivityView
+        activity={activity}
+        level="warning"
+        message="Blocked by auto-review: outside scope"
+      />,
+    ),
+  );
+  expect(container.textContent).toContain("Blocked by auto-review");
+  expect(container.textContent).not.toContain("riskLevel");
+  const toggle = container.querySelector<HTMLElement>('[role="button"]');
+  expect(toggle).not.toBeNull();
+  act(() => toggle!.click());
+  expect(container.textContent).toContain("call-1");
+  expect(container.textContent).not.toContain("riskLevel");
+  const buttons = [...container.querySelectorAll<HTMLElement>('[role="button"]')];
+  act(() => buttons.at(-1)!.click());
+  expect(container.textContent).toContain("riskLevel");
+  await page
+    .getByTestId("provider-activity")
+    .screenshot({ path: `/tmp/paseo-activity-${width}.png` });
+  expect(container.getBoundingClientRect().width).toBeLessThanOrEqual(width);
 });

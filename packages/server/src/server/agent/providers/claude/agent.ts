@@ -1,3 +1,4 @@
+import { ProviderActivityCapture } from "../../activity/capture.js";
 import { validateProviderOptions } from "../../provider-options.js";
 import type { ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -2094,6 +2095,7 @@ class ClaudeContextUsageState {
 }
 
 class ClaudeAgentSession implements AgentSession {
+  private readonly activityCapture = new ProviderActivityCapture();
   readonly provider = "claude" as const;
   readonly capabilities = CLAUDE_CAPABILITIES;
 
@@ -3430,6 +3432,7 @@ class ClaudeAgentSession implements AgentSession {
       },
       // Required for provider-level /rewind support.
       enableFileCheckpointing: true,
+      includeHookEvents: true,
       // If we have a session ID from a previous query (e.g., after interrupt),
       // resume that session to continue the conversation history.
       ...sessionBinding,
@@ -4081,7 +4084,8 @@ class ClaudeAgentSession implements AgentSession {
       this.activeForegroundTurnId &&
       events.some(
         (event) =>
-          event.type === "timeline" ||
+          (event.type === "timeline" &&
+            !(event.item.type === "notification" && event.item.activity)) ||
           event.type === "permission_requested" ||
           event.type === "permission_resolved",
       )
@@ -4258,6 +4262,7 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const events: AgentStreamEvent[] = [];
+    this.appendActivityEvent(message, events);
     this.appendTaskStateEvent(message, events);
 
     // Subagent identity and lifecycle are announced by Claude Code's task protocol, so they are
@@ -4334,6 +4339,19 @@ class ClaudeAgentSession implements AgentSession {
     if (!lifecycle || lifecycle.state === "queued") return;
     this.unstartedMessageUuids.delete(lifecycle.commandUuid);
     this.permissionClearingSteerUuids.delete(lifecycle.commandUuid);
+  }
+
+  private appendActivityEvent(message: SDKMessage, events: AgentStreamEvent[]): void {
+    const activityRecord = toObjectRecord(message);
+    const subtype = activityRecord?.subtype;
+    const eventName = typeof subtype === "string" ? `${message.type}/${subtype}` : message.type;
+    const activity = this.activityCapture.capture(
+      "claude",
+      this.activeForegroundTurnId ?? this.autonomousTurn?.id ?? "session",
+      eventName,
+      message,
+    );
+    if (activity) events.push({ type: "timeline", provider: "claude", item: activity });
   }
 
   private appendTaskStateEvent(message: SDKMessage, events: AgentStreamEvent[]): void {

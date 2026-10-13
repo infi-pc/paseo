@@ -1,3 +1,4 @@
+import type { ProviderActivity } from "./provider-activity.js";
 import type { AgentMessage } from "./agent-message.js";
 import type { AgentAttachment } from "./messages.js";
 
@@ -381,6 +382,7 @@ export type AgentTimelineItem =
   | { type: "error"; message: string }
   | {
       type: "notification";
+      activity?: ProviderActivity;
       level: "info" | "warning" | "error";
       message: string;
     }

@@ -1959,6 +1959,41 @@ describe("ClaudeAgentSession context window usage", () => {
     });
   }
 
+  test("retains permission denial evidence without asserting the command failed", async () => {
+    const session = await createSessionForTest();
+    const events = session.translateMessageToEvents({
+      type: "system",
+      subtype: "permission_denied",
+      tool_name: "Bash",
+      tool_use_id: "call-denied",
+      decision_reason_type: "classifier",
+      decision_reason: "Outside authorized scope",
+      message: "Denied",
+      uuid: "11111111-1111-4111-8111-111111111111",
+      session_id: "session-1",
+    });
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        item: expect.objectContaining({
+          type: "notification",
+          level: "warning",
+          activity: expect.objectContaining({
+            records: [
+              expect.objectContaining({
+                callId: "call-denied",
+                summary: "Permission denied: Outside authorized scope",
+              }),
+            ],
+          }),
+        }),
+      }),
+    );
+    expect(
+      events.some((event) => event.type === "timeline" && event.item.type === "tool_call"),
+    ).toBe(false);
+    await session.close();
+  });
+
   test("emits canonical task snapshots from Claude TaskCreate results", async () => {
     const session = await createSessionForTest();
     try {
@@ -3293,7 +3328,9 @@ describe("ClaudeAgentSession context window usage", () => {
       session_id: "session-1",
     } as unknown as SDKMessage);
 
-    const timelineEvents = events.filter((event) => event.type === "timeline");
+    const timelineEvents = events.filter(
+      (event) => event.type === "timeline" && event.item.type !== "notification",
+    );
     expect(timelineEvents).toEqual([]);
     expect(events.some((event) => event.type === "turn_completed")).toBe(true);
   });
@@ -3355,7 +3392,9 @@ describe("ClaudeAgentSession context window usage", () => {
     const result = await session.run("turn");
     await session.close();
 
-    expect(result.timeline).toEqual([
+    expect(
+      result.timeline.filter((item) => !(item.type === "notification" && item.activity)),
+    ).toEqual([
       {
         type: "assistant_message",
         text: "Here is the answer.",

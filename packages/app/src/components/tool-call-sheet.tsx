@@ -17,6 +17,7 @@ import { ToolCallDetailsContent } from "./tool-call-details";
 // ----- Types -----
 
 export interface ToolCallSheetData {
+  metadata?: Record<string, unknown>;
   toolName: string;
   displayName: string;
   summary?: string;
@@ -154,6 +155,7 @@ function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
     toolName,
     displayName,
     description,
+    metadata,
     detail,
     errorText,
     icon: IconComponent,
@@ -185,6 +187,7 @@ function ToolCallSheetContent({ data, onClose }: ToolCallSheetContentProps) {
       <BottomSheetScrollView style={styles.content} contentContainerStyle={styles.contentContainer}>
         <ToolCallDetailsContent
           toolName={toolName}
+          metadata={metadata}
           description={description}
           detail={detail}
           errorText={errorText}

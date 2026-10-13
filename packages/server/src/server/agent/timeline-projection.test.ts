@@ -1,3 +1,4 @@
+import { ProviderActivityCapture } from "./activity/capture.js";
 import { describe, expect, test } from "vitest";
 
 import type { AgentTimelineRow } from "./agent-manager.js";
@@ -776,5 +777,64 @@ describe("selectProjectedTimelinePage", () => {
 
     expect(page.entries.some((entry) => entry.item.type === "tool_call")).toBe(true);
     expect(page.endSeq).toBe(501);
+  });
+});
+
+describe("provider activity retention", () => {
+  test("projects immutable updates once and keeps separate turns separate", () => {
+    const capture = new ProviderActivityCapture();
+    const first = capture.capture("codex", "turn-1", "item/autoApprovalReview/started", {
+      review: { status: "inProgress" },
+      targetItemId: "tool-1",
+    });
+    const completed = capture.capture("codex", "turn-1", "item/autoApprovalReview/completed", {
+      review: { status: "denied", rationale: "Not authorized" },
+      targetItemId: "tool-1",
+    });
+    const next = capture.capture("codex", "turn-2", "new/event", { extra: 42 });
+    if (!first || !completed || !next) throw new Error("Missing captured activity");
+    const projected = projectTimelineRows({
+      mode: "projected",
+      rows: [first, completed, next].map((item, index) => ({
+        item,
+        seq: index + 1,
+        timestamp: "2026-09-30T00:00:00Z",
+      })),
+    });
+    expect(projected).toHaveLength(2);
+    expect(projected[0]?.item).toMatchObject({
+      level: "warning",
+      activity: {
+        records: [
+          expect.anything(),
+          expect.objectContaining({
+            callId: "tool-1",
+            summary: "Blocked by auto-review: Not authorized",
+          }),
+        ],
+      },
+    });
+    expect(first).toMatchObject({ activity: { records: [expect.anything()] } });
+  });
+
+  test("redacts credentials, marks nested truncation, and bounds retained events", () => {
+    const capture = new ProviderActivityCapture();
+    const result = capture.capture("claude", "turn", "new/event", {
+      api_key: "private",
+      headers: { authorization: "secret" },
+      output: "x".repeat(30000),
+    });
+    expect(JSON.stringify(result)).not.toContain("private");
+    expect(JSON.stringify(result)).not.toContain("secret");
+    expect(result).toMatchObject({
+      activity: { records: [expect.objectContaining({ truncated: true })] },
+    });
+    let latest = result;
+    for (let i = 0; i < 100; i++)
+      latest = capture.capture("claude", "turn", "tool_progress", { elapsed_time_seconds: i });
+    expect(latest).toMatchObject({ activity: { omitted: 21 } });
+    expect(
+      capture.capture("codex", "turn", "item/agentMessage/delta", { delta: "text" }),
+    ).toBeNull();
   });
 });

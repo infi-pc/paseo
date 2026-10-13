@@ -2227,6 +2227,19 @@ export const en = {
     },
   },
   toolCallDetails: {
+    fullDetails: "Full details",
+    turnChanges: "Changes during this turn",
+    diffScope:
+      "Changes during this interval can include other agents or external edits. Provider patches may exclude shell changes.",
+    activity_one: "{{provider}} activity · {{count}} event",
+    activity_other: "{{provider}} activity · {{count}} events",
+    captureScope:
+      "Captured provider events. Streaming text and tool output appear in the conversation. Sensitive fields and large media are omitted.",
+    truncated: "Some event content was omitted or truncated",
+    omitted_one: "{{count}} earlier event omitted from this detail view",
+    omitted_other: "{{count}} earlier events omitted from this detail view",
+    toolCallId: "Tool call: {{id}}",
+    exitCode: "Exit code: {{code}}",
     error: "Error",
     empty: "No additional details available",
     subAgentActivity: "Sub-agent activity",

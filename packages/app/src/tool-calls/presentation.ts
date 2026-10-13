@@ -1,3 +1,4 @@
+import { ProviderActivityRecordSchema } from "@getpaseo/protocol/provider-activity";
 import { i18n } from "@/i18n/i18next";
 import { isAbsolutePath } from "@/utils/path";
 import {
@@ -37,6 +38,7 @@ export interface ToolCallPresentation {
   displayName: string;
   summary?: string;
   description?: string;
+  activityLabel?: string;
   inputLabel?: string;
   inputFilePath?: string;
   outputFilePath?: string;
@@ -63,6 +65,15 @@ function displayDetail(detail: ToolCallDetail | undefined): ToolCallDetail {
   return detail ?? { type: "unknown", input: null, output: null };
 }
 
+function reviewLabel(metadata: Record<string, unknown> | undefined): string | undefined {
+  const activity = ProviderActivityRecordSchema.array().safeParse(metadata?.providerActivity);
+  if (!activity.success) return undefined;
+  return activity.data.findLast(
+    (entry) =>
+      entry.event.includes("ApprovalReview/") || entry.event === "system/permission_denied",
+  )?.summary;
+}
+
 export function buildToolCallPresentation(
   input: BuildToolCallPresentationInput,
 ): ToolCallPresentation {
@@ -86,6 +97,7 @@ export function buildToolCallPresentation(
   });
   const hasDetails =
     Boolean(input.error) ||
+    Boolean(input.metadata && Object.keys(input.metadata).length > 0) ||
     Boolean(readToolCallSummary(input.metadata)) ||
     hasMeaningfulToolCallDetail(detail);
 
@@ -118,6 +130,7 @@ export function buildToolCallPresentation(
     displayName: displayModel.displayName,
     summary: displayModel.summary,
     description: input.agentMessage ? undefined : readToolCallSummary(input.metadata),
+    activityLabel: reviewLabel(input.metadata),
     errorText: displayModel.errorText,
     icon: input.resolveIcon(input.toolName, detail),
     isLoadingDetails,

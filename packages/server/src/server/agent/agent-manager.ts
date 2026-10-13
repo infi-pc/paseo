@@ -1,3 +1,4 @@
+import { TurnChanges } from "./activity/turn-changes.js";
 import type { AgentResponseMetadata } from "@getpaseo/protocol/messages";
 import {
   RESPONSE_CONTROL_INSTRUCTIONS,
@@ -760,6 +761,7 @@ export class AgentManager {
   private readonly providerDefinitions = new Map<AgentProvider, ProviderEnabledFlag>();
   private readonly agents = new Map<string, LiveManagedAgent>();
   private readonly timelineStore = new InMemoryAgentTimelineStore();
+  private readonly turnChanges = new TurnChanges();
   private readonly providerSubagents = new ProviderSubagentStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
   private readonly sessionEventTails = new Map<string, Promise<void>>();
@@ -2672,6 +2674,11 @@ export class AgentManager {
   }): Promise<string> {
     const { agent, agentId, pendingRun, prompt, options } = params;
     try {
+      if (!agent.internal) await this.turnChanges.begin(agentId, agent.cwd);
+      if (pendingRun.settled) {
+        this.turnChanges.discard(agentId);
+        throw new Error(`Agent ${agentId} run was canceled before its turn started`);
+      }
       const result = await agent.session.startTurn(prompt, options);
       if (pendingRun.settled) {
         throw new Error(`Agent ${agentId} run was canceled before its turn started`);
@@ -2679,9 +2686,11 @@ export class AgentManager {
       return result.turnId;
     } catch (error) {
       if (pendingRun.settled) {
+        this.turnChanges.discard(agentId);
         throw error;
       }
       if (isStaleProviderSessionError(error)) {
+        this.turnChanges.discard(agentId);
         pendingRun.start = { status: "failed", error: error.message };
         agent.pendingReplacement = false;
         if (!agent.activeForegroundTurnId) agent.lifecycle = "idle";
@@ -2702,6 +2711,7 @@ export class AgentManager {
         provider: agent.provider,
         error: errorMsg,
       });
+      this.turnChanges.discard(agentId);
       this.finalizeForegroundTurn(agent);
       this.runs.settleForegroundRun(agentId, pendingRun.token);
       throw error;
@@ -4467,6 +4477,29 @@ export class AgentManager {
     );
   }
 
+  private async captureTurnChanges(params: {
+    agent: ActiveManagedAgent;
+    event: AgentStreamEvent;
+    options: HandleStreamEventOptions | undefined;
+    isForegroundEvent: boolean;
+    turnId: string | undefined;
+  }): Promise<void> {
+    const { agent, event, options, isForegroundEvent, turnId } = params;
+    if (!isTurnTerminalEvent(event) || !isForegroundEvent || options?.fromHistory || agent.internal)
+      return;
+    const changes = await this.turnChanges.finish(agent.id, agent.cwd);
+    this.recordAndDispatchTimelineItem(
+      agent.id,
+      changes ?? {
+        type: "notification",
+        level: "warning",
+        message: "Turn changes unavailable: no baseline was captured before this turn",
+      },
+      agent.provider,
+      turnId,
+    );
+  }
+
   private async handleStreamEvent(
     agent: ActiveManagedAgent,
     event: AgentStreamEvent,
@@ -4498,6 +4531,13 @@ export class AgentManager {
       this.agentStreamCoalescer.flushFor(agent.id);
     }
 
+    await this.captureTurnChanges({
+      agent,
+      event,
+      options,
+      isForegroundEvent,
+      turnId: eventTurnId,
+    });
     let terminalDisposition: ActiveTurnTerminalDisposition = "untracked";
     if (isTurnTerminalEvent(event)) {
       terminalDisposition = this.applyActiveTurnTerminal(

@@ -675,8 +675,13 @@ export function waitForNextPermission(
   return waitForNextEvent(session, "permission_requested");
 }
 
-export function waitForNextTimelineItem(session: AgentSession): Promise<TimelineEvent> {
-  return waitForNextEvent(session, "timeline");
+export function waitForNextTimelineItem(
+  session: AgentSession,
+  type?: TimelineEvent["item"]["type"],
+): Promise<TimelineEvent> {
+  return waitForNextEvent(session, "timeline", (event) =>
+    type ? event.item.type === type : !(event.item.type === "notification" && event.item.activity),
+  );
 }
 
 export function waitForTimelineToolCall(

@@ -30,6 +30,13 @@ import {
   toAgentUsage,
 } from "./codex-app-server-agent.js";
 
+function withoutActivity(events: AgentStreamEvent[]): AgentStreamEvent[] {
+  return events.filter(
+    (event) =>
+      !(event.type === "timeline" && event.item.type === "notification" && event.item.activity),
+  );
+}
+
 describe("mapCodexPlanUpdateToTodo", () => {
   test("preserves checklist progress without creating a plan card", () => {
     expect(
@@ -3108,7 +3115,7 @@ describe("Codex app-server provider", () => {
       ],
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -3179,6 +3186,44 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
+  test("captures multiple reviews and unrecognized root events without changing execution status", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    for (const reviewId of ["review-one", "review-two"]) {
+      asInternals(session).handleNotification("item/autoApprovalReview/completed", {
+        threadId: "test-thread",
+        turnId: "test-turn",
+        reviewId,
+        targetItemId: "call",
+        review: { status: "denied", rationale: "Outside scope", riskLevel: "high" },
+      });
+    }
+    asInternals(session).handleNotification("future/provider/event", {
+      threadId: "test-thread",
+      extra: 123,
+    });
+    const last = events.at(-1);
+    expect(last).toMatchObject({
+      type: "timeline",
+      item: {
+        type: "notification",
+        level: "warning",
+        activity: {
+          records: [
+            expect.objectContaining({
+              callId: "call",
+              summary: "Blocked by auto-review: Outside scope",
+            }),
+            expect.objectContaining({ callId: "call" }),
+            expect.objectContaining({ event: "future/provider/event" }),
+          ],
+        },
+      },
+    });
+    expect(withoutActivity(events)).toEqual([]);
+  });
+
   test("converts Codex collab agent notifications through the normal timeline path", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
@@ -3197,7 +3242,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -3257,7 +3302,7 @@ describe("Codex app-server provider", () => {
       turn: { status: "completed" },
     });
 
-    const timelineEvents = events.filter((event) => event.type === "timeline");
+    const timelineEvents = withoutActivity(events).filter((event) => event.type === "timeline");
     expect(timelineEvents).toHaveLength(4);
     expect(timelineEvents.every((event) => event.item.type === "tool_call")).toBe(true);
     const finalItem = timelineEvents.at(-1)?.item;
@@ -3275,7 +3320,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    const providerEvents = events.flatMap((event) =>
+    const providerEvents = withoutActivity(events).flatMap((event) =>
       event.type === "provider_subagent" ? [event.event] : [],
     );
     expect(providerEvents).toContainEqual(
@@ -3337,7 +3382,7 @@ describe("Codex app-server provider", () => {
         text: "Late trailing output.",
       });
 
-      const providerUpserts = events.flatMap((event) =>
+      const providerUpserts = withoutActivity(events).flatMap((event) =>
         event.type === "provider_subagent" && event.event.type === "upsert" ? [event.event] : [],
       );
       expect(providerUpserts.at(-1)).toMatchObject({
@@ -3468,7 +3513,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    const childItems = events.flatMap((event) =>
+    const childItems = withoutActivity(events).flatMap((event) =>
       event.type === "provider_subagent" &&
       event.event.type === "timeline" &&
       event.event.id === "image-child-thread"
@@ -3923,7 +3968,7 @@ describe("Codex app-server provider", () => {
       turn: { status: "completed" },
     });
 
-    const providerSubagents = events.flatMap((event) =>
+    const providerSubagents = withoutActivity(events).flatMap((event) =>
       event.type === "provider_subagent" && event.event.type === "upsert" ? [event.event] : [],
     );
     expect(providerSubagents).toContainEqual(
@@ -4005,7 +4050,7 @@ describe("Codex app-server provider", () => {
       delta: "Still nested.",
     });
 
-    const grandchildUpserts = events.flatMap((event) =>
+    const grandchildUpserts = withoutActivity(events).flatMap((event) =>
       event.type === "provider_subagent" &&
       event.event.type === "upsert" &&
       event.event.id === "grandchild-thread"
@@ -4034,7 +4079,7 @@ describe("Codex app-server provider", () => {
       threadId: "unmapped-child-thread",
       turn: { status: "completed" },
     });
-    expect(events).toEqual([]);
+    expect(withoutActivity(events)).toEqual([]);
 
     asInternals(session).handleNotification("turn/completed", {
       threadId: "test-thread",
@@ -4477,7 +4522,7 @@ describe("Codex app-server provider", () => {
       item: { type: "contextCompaction", id: "child-compaction" },
     });
 
-    const timelineItems = events.flatMap((event) =>
+    const timelineItems = withoutActivity(events).flatMap((event) =>
       event.type === "timeline" ? [event.item] : [],
     );
     expect(timelineItems.every((item) => item.type === "tool_call")).toBe(true);
@@ -5239,7 +5284,7 @@ describe("Codex app-server provider", () => {
       item: userMessageItem,
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -5273,7 +5318,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -5406,7 +5451,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -5434,7 +5479,7 @@ describe("Codex app-server provider", () => {
       turnId: "legacy-compact-turn-2",
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -5514,7 +5559,7 @@ describe("Codex app-server provider", () => {
         status: "active",
       },
     });
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -5574,7 +5619,7 @@ describe("Codex app-server provider", () => {
       method: "thread/compact/start",
       params: { threadId: "test-thread" },
     });
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -6016,7 +6061,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -6048,7 +6093,7 @@ describe("Codex app-server provider", () => {
         },
       });
 
-      expect(events).toEqual([
+      expect(withoutActivity(events)).toEqual([
         {
           type: "timeline",
           provider: "codex",
@@ -6076,8 +6121,8 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toHaveLength(1);
-    const event = events[0];
+    expect(withoutActivity(events)).toHaveLength(1);
+    const event = withoutActivity(events)[0];
     expect(event).toMatchObject({
       type: "timeline",
       provider: "codex",
@@ -6115,6 +6160,7 @@ describe("Codex app-server provider", () => {
         if (event.type !== "timeline") {
           return;
         }
+        if (event.item.type === "notification" && event.item.activity) return;
         timelineEvents.push(event);
         if (timelineEvents.length === 2) {
           clearTimeout(timeout);
@@ -6233,7 +6279,7 @@ describe("Codex app-server provider", () => {
       turn: { status: "completed", error: null },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "turn_completed",
         provider: "codex",
@@ -6270,7 +6316,7 @@ describe("Codex app-server provider", () => {
         },
       });
 
-      expect(events).toEqual([
+      expect(withoutActivity(events)).toEqual([
         {
           type: "timeline",
           provider: "codex",
@@ -6411,7 +6457,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -6448,7 +6494,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -6493,7 +6539,7 @@ describe("Codex app-server provider", () => {
         "CI is still cooking. I’m staying on the current run rather than jumping around, because the first red job will tell us exactly whether anything else needs work.",
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -6538,7 +6584,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",
@@ -6575,7 +6621,7 @@ describe("Codex app-server provider", () => {
       },
     });
 
-    expect(events).toEqual([
+    expect(withoutActivity(events)).toEqual([
       {
         type: "timeline",
         provider: "codex",

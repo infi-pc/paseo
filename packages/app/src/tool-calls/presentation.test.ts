@@ -177,6 +177,32 @@ it("opens result files relative to the command directory", () => {
   ).toBe("/repo/packages/app/src/sleep.ts");
 });
 
+it("surfaces a review result without turning a running command into a failed command", () => {
+  const presentation = buildToolCallPresentation({
+    toolName: "exec_command",
+    status: "running",
+    error: null,
+    detail: { type: "shell", command: "curl example.com" },
+    resolveIcon: fakeResolveIcon,
+    metadata: {
+      providerActivity: [
+        {
+          id: "review",
+          event: "item/autoApprovalReview/completed",
+          timestamp: "2026-09-30T00:00:00Z",
+          summary: "Blocked by auto-review: network access",
+          level: "warning",
+          payload: "{}",
+          truncated: false,
+        },
+      ],
+    },
+  });
+  expect(presentation.activityLabel).toBe("Blocked by auto-review: network access");
+  expect(presentation.errorText).toBeUndefined();
+  expect(presentation.canOpenDetails).toBe(true);
+});
+
 it.each([
   ["message", "Message from QA messenger"],
   ["finished", "QA messenger finished"],

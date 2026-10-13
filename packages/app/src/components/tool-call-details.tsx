@@ -1,3 +1,5 @@
+import { ProviderActivityRecordSchema } from "@getpaseo/protocol/provider-activity";
+import { CapturedDetails, ActivityRecord } from "./provider-activity";
 import React, { useMemo, type ReactNode } from "react";
 import {
   View,
@@ -31,6 +33,7 @@ const ScrollView = isWeb ? RNScrollView : GHScrollView;
 // ---- Content Component ----
 
 interface ToolCallDetailsContentProps {
+  metadata?: Record<string, unknown>;
   description?: string;
   toolName?: string;
   detail?: ToolCallDetail;
@@ -677,6 +680,11 @@ function buildDetailSections(
   if (detail.type === "shell") {
     return [
       <ShellDetailSection key="shell" command={detail.command} output={detail.output} ds={ds} />,
+      detail.exitCode != null && (
+        <Text key="exit-code" selectable style={styles.generatedDescription}>
+          {t("toolCallDetails.exitCode", { code: detail.exitCode })}
+        </Text>
+      ),
     ];
   }
   if (detail.type === "worktree_setup") {
@@ -782,6 +790,7 @@ function LoadingSkeleton({ containerStyle }: { containerStyle: StyleProp<ViewSty
 }
 
 export function ToolCallDetailsContent({
+  metadata,
   description,
   toolName,
   detail,
@@ -794,6 +803,7 @@ export function ToolCallDetailsContent({
   const resolvedMaxHeight = fillAvailableHeight ? undefined : (maxHeight ?? 300);
   const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight);
   const diffLines = useDiffLines(detail);
+  const capturedValue = useMemo(() => ({ detail, metadata }), [detail, metadata]);
 
   const sections: ReactNode[] = buildDetailSections(toolName, detail, diffLines, ds, t);
 
@@ -813,6 +823,17 @@ export function ToolCallDetailsContent({
     sections.push(<ErrorSection key="error" errorText={errorText} ds={ds} />);
   }
 
+  const activity = useMemo(
+    () => ProviderActivityRecordSchema.array().safeParse(metadata?.providerActivity),
+    [metadata],
+  );
+  if (activity.success) {
+    for (const entry of activity.data)
+      sections.push(<ActivityRecord key={entry.id} entry={entry} />);
+  }
+  if (detail || metadata) {
+    sections.push(<CapturedDetails key="captured" value={capturedValue} />);
+  }
   if (sections.length === 0) {
     if (showLoadingSkeleton) {
       return <LoadingSkeleton containerStyle={ds.loadingContainerStyle} />;

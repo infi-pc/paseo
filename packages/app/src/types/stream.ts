@@ -1,5 +1,9 @@
 import type { AgentMessage } from "@getpaseo/protocol/agent-message";
 import type {
+  ProviderActivity,
+  ProviderActivityRecord,
+} from "@getpaseo/protocol/provider-activity";
+import type {
   AgentProvider,
   AgentTimelineItem,
   JsonValue,
@@ -780,6 +784,7 @@ export function isAgentToolCallItem(item: StreamItem): item is AgentToolCallItem
 type NotificationLevel = "info" | "warning" | "error";
 
 export interface NotificationItem {
+  activity?: ProviderActivity;
   kind: "notification";
   sourceType: "error" | "notification";
   id: string;
@@ -1028,6 +1033,7 @@ function finalizeActiveThoughts(state: StreamItem[]): StreamItem[] {
 }
 
 export function streamTimelineItemIdentity(item: StreamItem): string | null {
+  if (item.kind === "notification" && item.activity) return `activity/${item.activity.id}`;
   if (isAgentToolCallItem(item)) {
     return agentToolCallIdentity({
       callId: item.payload.data.callId,
@@ -1242,7 +1248,55 @@ function appendAgentToolCall(input: AppendAgentToolCallInput): StreamItem[] {
   return [...state, item];
 }
 
+function activityForCall(
+  state: StreamItem[],
+  callId: string,
+  turnId: string | undefined,
+): ProviderActivityRecord[] {
+  return state.flatMap((item) =>
+    item.kind === "notification" && item.activity && item.turnId === turnId
+      ? item.activity.records.filter((entry) => entry.callId === callId)
+      : [],
+  );
+}
+
+function attachToolActivity(
+  state: StreamItem[],
+  activity: ProviderActivity,
+  turnId: string | undefined,
+): StreamItem[] {
+  const byCall = new Map<string, ProviderActivityRecord[]>();
+  for (const entry of activity.records) {
+    if (!entry.callId) continue;
+    const entries = byCall.get(entry.callId) ?? [];
+    entries.push(entry);
+    byCall.set(entry.callId, entries);
+  }
+  return state.map((item) => {
+    if (!isAgentToolCallItem(item) || item.turnId !== turnId) return item;
+    const records = byCall.get(item.payload.data.callId);
+    if (!records) return item;
+    const existing = item.payload.data.metadata?.providerActivity;
+    const sameRecords =
+      Array.isArray(existing) &&
+      existing.length === records.length &&
+      existing.every((entry, index) => isRecord(entry) && entry.id === records[index]?.id);
+    if (sameRecords) return item;
+    return {
+      ...item,
+      payload: {
+        ...item.payload,
+        data: {
+          ...item.payload.data,
+          metadata: { ...item.payload.data.metadata, providerActivity: records },
+        },
+      },
+    };
+  });
+}
+
 function appendNotification(state: StreamItem[], entry: NotificationItem): StreamItem[] {
+  if (entry.activity) state = attachToolActivity(state, entry.activity, entry.turnId);
   const index = state.findIndex((existing) => existing.id === entry.id);
   if (index >= 0) {
     const next = [...state];
@@ -1438,6 +1492,9 @@ function reduceTimelineToolCall(
     );
   }
 
+  const activity = activityForCall(state, item.callId, event.turnId);
+  const metadata =
+    activity.length > 0 ? { ...item.metadata, providerActivity: activity } : item.metadata;
   return appendAgentToolCall({
     state,
     data: {
@@ -1447,7 +1504,7 @@ function reduceTimelineToolCall(
       status: item.status,
       error: item.error,
       detail: item.detail,
-      metadata: item.metadata,
+      metadata,
       ...(item.agentMessage ? { agentMessage: item.agentMessage } : {}),
     },
     timestamp,
@@ -1563,13 +1620,19 @@ function reduceTimelineEvent(
       const notification: NotificationItem = {
         kind: "notification",
         sourceType: "notification",
-        id: createUniqueTimelineId(state, "notification", item.message, timestamp),
+        id:
+          timelineItemIdentity(item) ??
+          createUniqueTimelineId(state, "notification", item.message, timestamp),
+        ...(item.activity ? { activity: item.activity } : {}),
+        ...(event.turnId ? { turnId: event.turnId } : {}),
         ...(timelineCursor ? { timelineCursor } : {}),
         timestamp,
         level: item.level,
         message: item.message,
       };
-      return finalizeActiveThoughts(appendNotification(state, notification));
+      return item.activity
+        ? appendNotification(state, notification)
+        : finalizeActiveThoughts(appendNotification(state, notification));
     }
     case "compaction":
       return finalizeActiveThoughts(
@@ -1963,6 +2026,13 @@ export function applyStreamEvent(params: {
   unmatchedUserMessageInsert?: "tail" | "head";
 }): ApplyStreamEventResult {
   const { tail, head, event, timestamp } = params;
+  if (event.type === "timeline" && event.item.type === "notification" && event.item.activity) {
+    const nextTail = reduceStreamUpdate(tail, event, timestamp, {
+      source: params.source ?? "live",
+      timelineCursor: params.timelineCursor,
+    });
+    return { tail: nextTail, head, changedTail: nextTail !== tail, changedHead: false };
+  }
   const canonicalUserResult = applyCanonicalUserMessageEvent({
     tail,
     head,

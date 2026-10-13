@@ -1,3 +1,4 @@
+import { ProviderActivityView } from "@/components/provider-activity";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
@@ -931,6 +932,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             return renderToolCallItem(layoutItem, item);
 
           case "notification":
+            if (item.activity)
+              return (
+                <ProviderActivityView
+                  activity={item.activity}
+                  message={item.message}
+                  level={item.level}
+                />
+              );
             return <Notification level={item.level} message={item.message} />;
 
           case "todo_list":

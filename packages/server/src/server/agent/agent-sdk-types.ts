@@ -1,3 +1,4 @@
+import type { ProviderActivity } from "@getpaseo/protocol/provider-activity";
 import type {
   AgentFeature,
   AgentFeatureSelect,
@@ -396,6 +397,7 @@ export type AgentTimelineItem =
   | { type: "error"; message: string }
   | {
       type: "notification";
+      activity?: ProviderActivity;
       level: "info" | "warning" | "error";
       message: string;
     }
