@@ -1,3 +1,4 @@
+import { MAX_TRANSCRIPT_CHARS } from "@getpaseo/protocol/transcript";
 import type { StatusSnoozeInput } from "@getpaseo/protocol/workspace-status-snooze";
 import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
 import type {
@@ -665,6 +666,12 @@ type ScheduleUpdatePayload = Extract<
   { type: "schedule/update/response" }
 >["payload"];
 export type FetchAgentTimelinePayload = FetchAgentTimelineResponseMessage["payload"];
+export interface ExportedAgentTranscript {
+  title: string;
+  cwd: string;
+  body: string;
+}
+
 export type AgentForkContextPayload = AgentForkContextResponseMessage["payload"];
 
 export type FetchAgentTimelineDirection = FetchAgentTimelinePayload["direction"];
@@ -3493,6 +3500,55 @@ export class DaemonClient {
     return subscribeTimeline(agentId, this.observeTimeline([agentId]), handler, (error) =>
       this.logger.error({ err: error }, "Timeline observation failed"),
     );
+  }
+
+  // FORK(transcript-clipboard): only complete, correlated exports reach the clipboard.
+  async exportAgentTranscript(
+    agentId: string,
+    options: AgentForkContextOptions = {},
+  ): Promise<ExportedAgentTranscript> {
+    const requestId = this.createRequestId(options.requestId);
+    const chunks: string[] = [];
+    let invalid = false;
+    let length = 0;
+    const unsubscribe = this.subscribeRawMessages((message) => {
+      if (
+        message.type !== "agent.transcript.export.update" ||
+        message.payload.requestId !== requestId
+      )
+        return;
+      length += message.payload.text.length;
+      if (message.payload.index !== chunks.length || length > MAX_TRANSCRIPT_CHARS) {
+        invalid = true;
+        return;
+      }
+      chunks.push(message.payload.text);
+    });
+    try {
+      const response = await this.sendRequest({
+        requestId,
+        message: {
+          type: "agent.transcript.export.request",
+          requestId,
+          agentId,
+          boundaryCursor: options.boundaryCursor,
+          boundaryMessageId: options.boundaryMessageId,
+        },
+        timeout: 30_000,
+        options: { skipQueue: true },
+        select: (message) =>
+          message.type === "agent.transcript.export.response" &&
+          message.payload.requestId === requestId
+            ? message.payload
+            : null,
+      });
+      if (response.error !== null) throw new Error(response.error);
+      if (invalid || chunks.length !== response.chunkCount)
+        throw new Error("The transcript export was incomplete. Please try copying again.");
+      return { title: response.title, cwd: response.cwd, body: chunks.join("") };
+    } finally {
+      unsubscribe();
+    }
   }
 
   async buildAgentForkContext(

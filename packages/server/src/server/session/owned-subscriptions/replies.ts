@@ -32,6 +32,8 @@ const exceptions = {
   agent_permission_resolved: ["agent_permission_response"],
   terminals_changed: ["subscribe_terminals_request"],
   "usage.list_reports.update": ["usage.list_reports.request"],
+  // FORK(transcript-clipboard): chunks belong only to the requesting connection.
+  "agent.transcript.export.update": ["agent.transcript.export.request"],
   "daemon.update.progress": ["daemon.update.request"],
   // Transcription belongs to the explicitly retained voice operation, not a request ID.
   transcription_result: [],

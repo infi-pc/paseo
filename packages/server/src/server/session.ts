@@ -1,3 +1,4 @@
+import { TRANSCRIPT_CHUNK_CHARS } from "@getpaseo/protocol/transcript";
 import { workspaceSnoozePayload } from "@getpaseo/protocol/workspace-status-snooze";
 import type { WorkspaceSnoozeService } from "./workspace-snooze/service.js";
 import { getChaptersService } from "./chapters/generation.js";
@@ -132,7 +133,7 @@ import {
 } from "./agent/timeline-append.js";
 import { assertPluginTimelineDataSize } from "./agent/agent-timeline-content.js";
 import { parsePluginClientId } from "./plugins/plugin-session-identity.js";
-import { buildAgentForkContextAttachment } from "./agent/activity-curator.js";
+import { buildAgentForkContextAttachment, buildAgentTranscript } from "./agent/activity-curator.js";
 import { buildAgentPrompt } from "./agent/prompt-attachments.js";
 import type { StructuredGenerationDaemonConfig } from "./agent/structured-generation-providers.js";
 import {
@@ -2847,6 +2848,8 @@ export class Session {
       }
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
+      case "agent.transcript.export.request":
+        return this.handleAgentTranscriptExportRequest(msg);
       default:
         return undefined;
     }
@@ -8345,6 +8348,64 @@ export class Session {
         },
         source,
       );
+    }
+  }
+
+  // FORK(transcript-clipboard): freeze the conversation before sending bounded reply chunks.
+  private async handleAgentTranscriptExportRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.transcript.export.request" }>,
+  ): Promise<void> {
+    try {
+      const agent = await ensureAgentLoaded(msg.agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+      const payload = await this.buildAgentPayload(agent);
+      const timeline = this.agentManager.fetchTimeline(msg.agentId, {
+        direction: "tail",
+        limit: 0,
+      });
+      const text = buildAgentTranscript({
+        rows: timeline.rows,
+        cursorBoundary: msg.boundaryCursor
+          ? { timelineEpoch: timeline.epoch, cursor: msg.boundaryCursor }
+          : null,
+        boundaryMessageId: msg.boundaryMessageId,
+      });
+      const chunkCount = Math.ceil(text.length / TRANSCRIPT_CHUNK_CHARS);
+      for (let index = 0; index < chunkCount; index++) {
+        const offset = index * TRANSCRIPT_CHUNK_CHARS;
+        this.emit({
+          type: "agent.transcript.export.update",
+          payload: {
+            requestId: msg.requestId,
+            index,
+            text: text.slice(offset, offset + TRANSCRIPT_CHUNK_CHARS),
+          },
+        });
+      }
+      this.emit({
+        type: "agent.transcript.export.response",
+        payload: {
+          requestId: msg.requestId,
+          title: payload.title?.trim().slice(0, 1_000) || "Untitled chat",
+          cwd: agent.cwd.slice(0, 1_000),
+          chunkCount,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.emit({
+        type: "agent.transcript.export.response",
+        payload: {
+          requestId: msg.requestId,
+          title: "",
+          cwd: "",
+          chunkCount: 0,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 

@@ -1,7 +1,9 @@
+// FORK(transcript-clipboard): copy context from the existing fork affordance.
+import { useTranscriptCopy, type TranscriptCopySource } from "@/transcript/use-copy";
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
-import { Split } from "lucide-react-native";
+import { Copy, Split } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   DropdownMenu,
@@ -17,20 +19,27 @@ export type AssistantForkTarget = "tab" | "workspace";
 interface AssistantForkMenuProps {
   onFork: (target: AssistantForkTarget) => Promise<void> | void;
   testID?: string;
+  transcriptSource?: TranscriptCopySource;
 }
 
 const ThemedSplit = withUnistyles(Split);
+const ThemedCopy = withUnistyles(Copy);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 export const AssistantForkMenu = memo(function AssistantForkMenu({
   onFork,
+  transcriptSource,
   testID = "assistant-fork-menu",
 }: AssistantForkMenuProps) {
   const { t } = useTranslation();
+  const { copyTranscript } = useTranscriptCopy(
+    transcriptSource?.serverId ?? "",
+    Boolean(transcriptSource),
+  );
   const [isOpen, setIsOpen] = useState(false);
-  const [pendingTarget, setPendingTarget] = useState<AssistantForkTarget | null>(null);
+  const [pendingTarget, setPendingTarget] = useState<AssistantForkTarget | "copy" | null>(null);
   const isLocked = pendingTarget !== null;
 
   const handleOpenChange = useCallback(
@@ -54,6 +63,22 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
     },
     [isLocked, onFork],
   );
+
+  const copyIcon = useMemo(
+    () => <ThemedCopy size={ICON_SIZE.sm} uniProps={foregroundColorMapping} />,
+    [],
+  );
+
+  const handleCopy = useCallback(async () => {
+    if (isLocked || !transcriptSource) return;
+    setPendingTarget("copy");
+    try {
+      await copyTranscript(transcriptSource.agentId, transcriptSource.boundary);
+    } finally {
+      setPendingTarget(null);
+      setIsOpen(false);
+    }
+  }, [copyTranscript, isLocked, transcriptSource]);
 
   const triggerStyle = useCallback(
     () => [styles.trigger, isLocked ? styles.triggerDisabled : null],
@@ -118,6 +143,18 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
         >
           {t("message.actions.forkInNewWorkspace")}
         </DropdownMenuItem>
+        {transcriptSource ? (
+          <DropdownMenuItem
+            closeOnSelect={false}
+            disabled={isLocked && pendingTarget !== "copy"}
+            leading={copyIcon}
+            onSelect={handleCopy}
+            status={pendingTarget === "copy" ? "pending" : undefined}
+            testID={`${testID}-copy-transcript`}
+          >
+            {t(transcriptSource.boundary ? "transcript.copyUpToHere" : "transcript.copyFull")}
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

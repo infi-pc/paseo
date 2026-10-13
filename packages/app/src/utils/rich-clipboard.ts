@@ -11,7 +11,7 @@ export interface MarkdownClipboardContent {
 
 export interface RichClipboardWriter {
   supportsHtml: () => boolean;
-  write: (data: Record<ClipboardMimeType, Blob>) => Promise<void>;
+  write: (data: Record<ClipboardMimeType, Blob | Promise<Blob>>) => Promise<void>;
 }
 
 export interface MarkdownClipboardEnvironment {
@@ -66,22 +66,28 @@ export function createCodeClipboardContent(
 }
 
 export async function writeMarkdownToRichClipboard(
-  markdown: string,
+  markdown: string | Promise<string>,
   environment: MarkdownClipboardEnvironment,
+  createContent: (markdown: string) => MarkdownClipboardContent = createMarkdownClipboardContent,
 ): Promise<void> {
   if (environment.richWriter?.supportsHtml()) {
-    const content = createMarkdownClipboardContent(markdown);
+    // FORK(transcript-clipboard): start the clipboard write during the click; Safari's activation expires while an export is fetched.
+    const content = Promise.resolve(markdown).then(createContent);
+    const data = {
+      "text/plain": content.then((value) => new Blob([value.plainText], { type: "text/plain" })),
+      "text/html": content.then((value) => new Blob([value.html], { type: "text/html" })),
+    };
+    const settled = Promise.allSettled(Object.values(data));
     try {
-      await environment.richWriter.write({
-        "text/plain": new Blob([content.plainText], { type: "text/plain" }),
-        "text/html": new Blob([content.html], { type: "text/html" }),
-      });
+      await environment.richWriter.write(data);
+      await content;
       return;
     } catch {
+      await settled;
       // Fall through to the plain-text path. Some webviews expose rich clipboard
       // APIs but deny writes depending on focus, permissions, or browser policy.
     }
   }
 
-  await environment.writePlainText(markdown);
+  await environment.writePlainText(await markdown);
 }

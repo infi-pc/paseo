@@ -1,3 +1,6 @@
+import { useHostFeature } from "@/runtime/host-features";
+// FORK(transcript-clipboard): chat tab menus export the whole conversation.
+import { useTranscriptCopy } from "@/transcript/use-copy";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   useCallback,
@@ -1100,6 +1103,12 @@ function ResolvedWorkspaceDesktopTabsRow({
   onExitFocusMode,
 }: ResolvedWorkspaceDesktopTabsRowProps) {
   const { t } = useTranslation();
+  const supportsTranscriptExport = useHostFeature(normalizedServerId, "agentTranscriptExport");
+  const { copyTranscript, pending: transcriptCopyPending } = useTranscriptCopy(
+    normalizedServerId,
+    supportsTranscriptExport,
+  );
+  const onCopyTranscript = supportsTranscriptExport ? copyTranscript : undefined;
   const newTabKeys = useShortcutKeys("workspace-tab-new");
   const [tabsContainerWidth, setTabsContainerWidth] = useState<number>(0);
   const [exitFocusModeWidth, setExitFocusModeWidth] = useState<number>(0);
@@ -1336,6 +1345,8 @@ function ResolvedWorkspaceDesktopTabsRow({
           index={index}
           tabCount={displayedTabs.length}
           onCopyResumeCommand={onCopyResumeCommand}
+          onCopyTranscript={onCopyTranscript}
+          transcriptCopyPending={transcriptCopyPending}
           onCopyAgentId={onCopyAgentId}
           onCopyTerminalId={onCopyTerminalId}
           onCopyFilePath={onCopyFilePath}
@@ -1372,6 +1383,8 @@ function ResolvedWorkspaceDesktopTabsRow({
       onCopyTerminalId,
       onCopyFilePath,
       onCopyResumeCommand,
+      onCopyTranscript,
+      transcriptCopyPending,
       onNavigateTab,
       onReloadAgent,
       onUseAutomaticNaming,
@@ -1493,6 +1506,8 @@ function ResolvedDesktopTabChip({
   index,
   tabCount,
   onCopyResumeCommand,
+  onCopyTranscript,
+  transcriptCopyPending,
   onCopyAgentId,
   onCopyTerminalId,
   onCopyFilePath,
@@ -1520,6 +1535,8 @@ function ResolvedDesktopTabChip({
   index: number;
   tabCount: number;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTranscript: ((agentId: string) => Promise<void>) | undefined;
+  transcriptCopyPending: boolean;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
@@ -1549,6 +1566,8 @@ function ResolvedDesktopTabChip({
         index,
         tabCount,
         onCopyResumeCommand,
+        onCopyTranscript,
+        transcriptCopyPending,
         onCopyAgentId,
         onCopyTerminalId,
         onCopyFilePath,
@@ -1572,6 +1591,8 @@ function ResolvedDesktopTabChip({
       onCopyTerminalId,
       onCopyFilePath,
       onCopyResumeCommand,
+      onCopyTranscript,
+      transcriptCopyPending,
       labels,
       onReloadAgent,
       onUseAutomaticNaming,

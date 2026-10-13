@@ -35,6 +35,17 @@ resumes. Compose its instructions at that boundary; never store them in the user
 or interrupt a running turn to change them. Internal generators and provider-owned subagents do not
 participate.
 
+## Copying conversation context
+
+**Copy full transcript** captures the conversation at the time of copying. **Copy transcript up to
+here** stops at the selected response. A transcript includes user and assistant text with readable
+tool summaries; it does not clone reasoning, file bytes, or the provider session.
+
+Pasting into a Paseo composer adds context to that draft. It keeps the destination's provider and
+settings and sends only when you submit. The snapshot survives reloads and remains usable after the
+source chat changes, archives, or disconnects. Other applications receive readable Markdown or HTML.
+Oversized exports fail explicitly instead of omitting earlier messages.
+
 ## Runtime residency
 
 An unarchived agent may be `closed` without being deleted or archived. Closing releases its provider

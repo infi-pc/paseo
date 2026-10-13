@@ -1,3 +1,6 @@
+import { useHostFeature } from "@/runtime/host-features";
+// FORK(transcript-clipboard): identify the chat behind each copy affordance.
+import type { TranscriptCopySource } from "@/transcript/use-copy";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
@@ -172,6 +175,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  transcriptSource?: TranscriptCopySource;
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -186,6 +190,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      transcriptSource={input.transcriptSource}
     />
   ) : null;
   const content = (
@@ -405,6 +410,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId),
     );
     const streamHead = providedStreamHead ?? sessionStreamHead;
+    const supportsTranscriptExport = useHostFeature(resolvedServerId, "agentTranscriptExport");
+    const transcriptSource = useMemo(
+      () => (supportsTranscriptExport ? { serverId: resolvedServerId, agentId } : undefined),
+      [resolvedServerId, agentId, supportsTranscriptExport],
+    );
     const forkAgent = useForkAgent({ serverId: resolvedServerId, toast, readOnly });
     const supportsAgentForkContextCursor = useSessionStore(
       (state) =>
@@ -975,10 +985,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          transcriptSource: readOnly ? undefined : transcriptSource,
         });
       },
       [
         handleForkAssistantTurn,
+        transcriptSource,
         readOnly,
         renderStreamItemContent,
         streamRenderStrategy,
@@ -1011,11 +1023,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
+            transcriptSource={readOnly ? undefined : transcriptSource}
           />
         ) : null,
       [
         handleForkAssistantTurn,
         handleForkInFlightTurn,
+        transcriptSource,
         readOnly,
         isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,

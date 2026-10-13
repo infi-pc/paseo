@@ -45,6 +45,11 @@ export function splitComposerAttachmentsForSubmit(
       : buildForgeAttachmentFromSearchItem;
 
   for (const attachment of attachments) {
+    // FORK(transcript-clipboard): use the provider-independent chat history block.
+    if (attachment.kind === "transcript") {
+      agentAttachments.push(attachment.attachment);
+      continue;
+    }
     if (attachment.kind === "image") {
       images.push(attachment.metadata);
       continue;

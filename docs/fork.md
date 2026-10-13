@@ -70,6 +70,14 @@ One entry per fork feature: the commits that built it, the files that own it, an
 
 Commits are the fork commits that built the feature (`git show --stat <sha>` for the full file list). "Owns" lists the fork-owned entry points. "Wires into" lists the upstream files the feature edits, largest first.
 
+### Transcript clipboard
+
+- Owns: `packages/protocol/src/transcript.ts` and `packages/app/src/transcript/`.
+- Wires into: protocol messages and permissions, daemon session export, client request handling,
+  turn and tab menus, composer paste and attachment submission, draft persistence, and English resources.
+- The conversation snapshot crosses threads and hosts through the clipboard. See
+  [copying conversation context](agent-lifecycle.md#copying-conversation-context).
+
 ### IPv6 localhost services
 
 - Owns: `packages/server/src/server/service-loopback.ts`.

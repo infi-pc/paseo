@@ -184,6 +184,91 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+test("transcript export assembles only its ordered chunks", async () => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "transcript-test",
+    transportFactory: () => mock.transport,
+    reconnect: { enabled: false },
+  });
+  clients.push(client);
+  const connecting = client.connect();
+  mock.triggerOpen();
+  await connecting;
+  const exported = client.exportAgentTranscript("agent", {
+    requestId: "copy",
+    boundaryMessageId: "answer",
+  });
+  expect(JSON.parse(assertStr(mock.sent[0]))).toEqual({
+    type: "session",
+    message: {
+      type: "agent.transcript.export.request",
+      agentId: "agent",
+      requestId: "copy",
+      boundaryMessageId: "answer",
+    },
+  });
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.transcript.export.update",
+      payload: { requestId: "other", index: 0, text: "Unrelated export" },
+    }),
+  );
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.transcript.export.update",
+      payload: { requestId: "copy", index: 0, text: "First " },
+    }),
+  );
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.transcript.export.update",
+      payload: { requestId: "copy", index: 1, text: "second" },
+    }),
+  );
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "agent.transcript.export.response",
+      payload: { requestId: "copy", title: "Chat", cwd: "/repo", chunkCount: 2, error: null },
+    }),
+  );
+  await expect(exported).resolves.toEqual({ title: "Chat", cwd: "/repo", body: "First second" });
+});
+
+test.each(["missing", "out of order", "server error"])(
+  "transcript export rejects %s without returning a partial transcript",
+  async (failure) => {
+    const mock = createMockTransport();
+    const client = new DaemonClient({
+      url: "ws://test",
+      clientId: "transcript-test",
+      transportFactory: () => mock.transport,
+      reconnect: { enabled: false },
+    });
+    clients.push(client);
+    const connecting = client.connect();
+    mock.triggerOpen();
+    await connecting;
+    const exported = client.exportAgentTranscript("agent", { requestId: "copy" });
+    const index = failure === "out of order" ? 1 : 0;
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "agent.transcript.export.update",
+        payload: { requestId: "copy", index, text: "Partial" },
+      }),
+    );
+    const error = failure === "server error" ? "Source unavailable" : null;
+    mock.triggerMessage(
+      wrapSessionMessage({
+        type: "agent.transcript.export.response",
+        payload: { requestId: "copy", title: "Chat", cwd: "/repo", chunkCount: 2, error },
+      }),
+    );
+    await expect(exported).rejects.toThrow(error ?? "incomplete");
+  },
+);
+
 test("traces WebSocket frames, message types, and JSON parse duration", async () => {
   const mock = createMockTransport();
   const recorder = createTraceRecorder();

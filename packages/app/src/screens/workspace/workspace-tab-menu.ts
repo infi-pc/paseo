@@ -69,6 +69,8 @@ interface BuildWorkspaceTabMenuEntriesInput {
   tabCount: number;
   menuTestIDBase: string;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTranscript?: (agentId: string) => Promise<void> | void;
+  transcriptCopyPending?: boolean;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
@@ -87,6 +89,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   index: number;
   tabCount: number;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTranscript?: (agentId: string) => Promise<void> | void;
+  transcriptCopyPending?: boolean;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
@@ -179,6 +183,7 @@ export function buildWorkspaceTabMenuEntries(
     tabCount,
     menuTestIDBase,
     onCopyResumeCommand,
+    onCopyTranscript,
     onCopyAgentId,
     onCopyTerminalId,
     onCopyFilePath,
@@ -198,6 +203,20 @@ export function buildWorkspaceTabMenuEntries(
 
   if (tab.target.kind === "agent") {
     const { agentId } = tab.target;
+    // FORK(transcript-clipboard): full export belongs to the chat tab menu.
+    if (onCopyTranscript) {
+      entries.push({
+        kind: "item",
+        key: "copy-transcript",
+        label: i18n.t(input.transcriptCopyPending ? "transcript.copying" : "transcript.copyFull"),
+        icon: "copy",
+        disabled: input.transcriptCopyPending,
+        testID: `${menuTestIDBase}-copy-transcript`,
+        onSelect: () => {
+          void onCopyTranscript(agentId);
+        },
+      });
+    }
     entries.push({
       kind: "item",
       key: "copy-resume-command",
@@ -351,6 +370,8 @@ export function buildWorkspaceDesktopTabActions(
       tabCount: input.tabCount,
       menuTestIDBase: contextMenuTestId,
       onCopyResumeCommand: input.onCopyResumeCommand,
+      onCopyTranscript: input.onCopyTranscript,
+      transcriptCopyPending: input.transcriptCopyPending,
       onCopyAgentId: input.onCopyAgentId,
       onCopyTerminalId: input.onCopyTerminalId,
       onCopyFilePath: input.onCopyFilePath,

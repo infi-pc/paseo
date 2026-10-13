@@ -1,3 +1,5 @@
+// FORK(transcript-clipboard): native text paste is recognized at the input-change boundary.
+import { findTranscriptInsertion } from "@/transcript/paste";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
@@ -128,6 +130,7 @@ export interface MessageInputProps {
   onAttachButtonRef?: (node: View | null) => void;
   onAddImages?: (images: ImageAttachment[]) => void;
   onPasteImages?: (files: readonly NativePastedFile[]) => void;
+  onPasteText?: (text: string) => boolean;
   client: DaemonClient | null;
   /** Dictation start gate from host runtime (socket connected + directory ready). */
   isReadyForDictation?: boolean;
@@ -432,16 +435,17 @@ function getTextInputNativeElement(current: ComposerTextInputHandle | null): HTM
   return native instanceof HTMLElement ? native : null;
 }
 
-interface PasteImagesEffectArgs {
+interface PasteEffectArgs {
   getWebTextArea: () => TextAreaHandle | null;
   isConnected: boolean;
   disabled: boolean;
   isDictating: boolean;
   isRealtimeVoiceForCurrentAgent: boolean;
   onAddImages: ((images: ImageAttachment[]) => void) | undefined;
+  onPasteText: ((text: string) => boolean) | undefined;
 }
 
-function usePasteImagesEffect(args: PasteImagesEffectArgs): void {
+function usePasteEffect(args: PasteEffectArgs): void {
   const {
     getWebTextArea,
     isConnected,
@@ -449,10 +453,11 @@ function usePasteImagesEffect(args: PasteImagesEffectArgs): void {
     isDictating,
     isRealtimeVoiceForCurrentAgent,
     onAddImages,
+    onPasteText,
   } = args;
 
   useEffect(() => {
-    if (!isWeb || !onAddImages) return;
+    if (!isWeb) return;
 
     const textarea = getWebTextArea() as
       | (TextAreaHandle & {
@@ -472,6 +477,12 @@ function usePasteImagesEffect(args: PasteImagesEffectArgs): void {
     const handlePaste = (event: ClipboardEvent) => {
       if (!isConnected || disabled || isDictating || isRealtimeVoiceForCurrentAgent) return;
 
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (onPasteText?.(text)) {
+        event.preventDefault();
+        return;
+      }
+      if (!onAddImages) return;
       const imageFiles = collectImageFilesFromClipboardData(event.clipboardData);
       if (imageFiles.length === 0) return;
 
@@ -500,6 +511,7 @@ function usePasteImagesEffect(args: PasteImagesEffectArgs): void {
     isDictating,
     isRealtimeVoiceForCurrentAgent,
     onAddImages,
+    onPasteText,
   ]);
 }
 
@@ -1057,6 +1069,7 @@ interface ResolvedMessageInputProps {
   onAttachButtonRef: ((node: View | null) => void) | undefined;
   onAddImages: ((images: ImageAttachment[]) => void) | undefined;
   onPasteImages: ((files: readonly NativePastedFile[]) => void) | undefined;
+  onPasteText: ((text: string) => boolean) | undefined;
   client: DaemonClient | null;
   isReadyForDictation: boolean | undefined;
   placeholder: string | undefined;
@@ -1104,6 +1117,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     onAttachButtonRef: props.onAttachButtonRef,
     onAddImages: props.onAddImages,
     onPasteImages: props.onPasteImages,
+    onPasteText: props.onPasteText,
     client: props.client,
     isReadyForDictation: props.isReadyForDictation,
     placeholder: props.placeholder,
@@ -1159,6 +1173,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       onAttachButtonRef,
       onAddImages,
       onPasteImages,
+      onPasteText,
       client,
       isReadyForDictation,
       placeholder,
@@ -1574,13 +1589,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
     }, [getWebTextArea]);
 
-    usePasteImagesEffect({
+    usePasteEffect({
       getWebTextArea,
       isConnected,
       disabled,
       isDictating,
       isRealtimeVoiceForCurrentAgent,
       onAddImages,
+      onPasteText,
     });
 
     const handleSelectionChange = useCallback(
@@ -1669,12 +1685,33 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const handleInputChange = useCallback(
       (nextValue: string) => {
+        const canPaste =
+          isConnected && !disabled && !isDictating && !isRealtimeVoiceForCurrentAgent;
+        if (!isWeb && canPaste && onPasteText) {
+          const inserted = findTranscriptInsertion(valueRef.current, nextValue);
+          if (inserted && onPasteText(inserted.text)) {
+            textInputRef.current?.replaceText(valueRef.current, {
+              start: inserted.start,
+              end: inserted.end,
+            });
+            return;
+          }
+        }
         updateComposerHeightForText?.(valueRef.current, nextValue);
         valueRef.current = nextValue;
         updateLiveTextPresence(nextValue);
         onChangeText(nextValue);
       },
-      [onChangeText, updateComposerHeightForText, updateLiveTextPresence],
+      [
+        onChangeText,
+        updateComposerHeightForText,
+        updateLiveTextPresence,
+        onPasteText,
+        isConnected,
+        disabled,
+        isDictating,
+        isRealtimeVoiceForCurrentAgent,
+      ],
     );
 
     const handleInputFocus = useCallback(() => {

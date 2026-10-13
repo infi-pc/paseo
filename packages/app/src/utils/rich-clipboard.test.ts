@@ -26,7 +26,10 @@ function createRecordingClipboard(
       if (richWriteFails) {
         throw new Error("clipboard denied");
       }
-      richWrites.push(data);
+      richWrites.push({
+        "text/plain": await data["text/plain"],
+        "text/html": await data["text/html"],
+      });
     },
   };
 
@@ -41,6 +44,30 @@ function createRecordingClipboard(
 }
 
 describe("createMarkdownClipboardContent", () => {
+  it("starts a deferred clipboard write before the transcript arrives", async () => {
+    let resolveText: (text: string) => void = () => {};
+    const text = new Promise<string>((resolve) => {
+      resolveText = resolve;
+    });
+    let started = false;
+    let written = "";
+    const writing = writeMarkdownToRichClipboard(text, {
+      richWriter: {
+        supportsHtml: () => true,
+        write: async (data) => {
+          started = true;
+          written = await (await data["text/plain"]).text();
+        },
+      },
+      writePlainText: async () => {
+        throw new Error("Unexpected fallback");
+      },
+    });
+    expect(started).toBe(true);
+    resolveText("Complete transcript");
+    await writing;
+    expect(written).toBe("Complete transcript");
+  });
   it("renders markdown structures to clipboard html", () => {
     const markdown = [
       "# Heading",

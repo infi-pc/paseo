@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildAgentForkContextAttachment, curateAgentActivity } from "./activity-curator.js";
+import {
+  buildAgentForkContextAttachment,
+  buildAgentTranscript,
+  curateAgentActivity,
+} from "./activity-curator.js";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
 
@@ -37,6 +41,66 @@ function row(seq: number, item: AgentTimelineItem): AgentTimelineRow {
     item,
   };
 }
+
+describe("transcript export", () => {
+  it("copies complete messages beyond the fork budget and stops at the selected response", () => {
+    const message = "Beginning " + "x".repeat(110_000) + " end.";
+    const transcript = buildAgentTranscript({
+      rows: [
+        row(1, { type: "user_message", text: message }),
+        row(2, { type: "reasoning", text: "Private reasoning" }),
+        row(3, { type: "assistant_message", text: "Done.", messageId: "answer" }),
+        row(4, { type: "user_message", text: "Later prompt" }),
+      ],
+      boundaryMessageId: "answer",
+    });
+    expect(transcript).toBe(`## User\n\n${message}\n\n## Assistant\n\nDone.`);
+  });
+
+  it("copies partial live responses and readable tools while omitting response metadata", () => {
+    expect(
+      buildAgentTranscript({
+        rows: [
+          row(1, { type: "user_message", text: "Inspect the file" }),
+          row(
+            2,
+            toolCallItem({
+              callId: "read",
+              name: "Read",
+              detail: { type: "read", filePath: "src/index.ts", content: "private file contents" },
+            }),
+          ),
+          row(3, {
+            type: "assistant_message",
+            text: 'Done.\n<paseo-meta message="Done" />',
+            messageId: "answer",
+          }),
+          row(4, {
+            type: "assistant_message",
+            text: "Partial live response\n<paseo-meta mess",
+            messageId: "live",
+          }),
+        ],
+      }),
+    ).toBe(
+      "## User\n\nInspect the file\n\n## Tool\n\n[Read] src/index.ts\n\n## Assistant\n\nDone.\n\n## Assistant\n\nPartial live response",
+    );
+  });
+
+  it("refuses an oversized transcript and stale checkpoints rather than shortening messages", () => {
+    expect(() =>
+      buildAgentTranscript({
+        rows: [row(1, { type: "user_message", text: "x".repeat(2_000_001) })],
+      }),
+    ).toThrow("too large to copy");
+    expect(() =>
+      buildAgentTranscript({
+        rows: [],
+        cursorBoundary: { timelineEpoch: "new", cursor: { epoch: "old", seq: 1 } },
+      }),
+    ).toThrow("no longer available");
+  });
+});
 
 describe("curateAgentActivity", () => {
   it("keeps reasoning before the assistant text that followed it", () => {
@@ -517,6 +581,7 @@ it("bounds fork history to 100,000 characters while preserving the newest messag
       row(1, { type: "user_message", text: "old-message " + "x".repeat(1_100_000) }),
       row(2, { type: "assistant_message", messageId: "checkpoint", text: "Latest answer." }),
       row(3, { type: "user_message", text: "Beyond the selected checkpoint." }),
+      row(4, { type: "assistant_message", messageId: "later", text: "Later response." }),
     ],
     boundaryMessageId: "checkpoint",
   });
