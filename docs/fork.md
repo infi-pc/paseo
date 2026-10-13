@@ -128,6 +128,13 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 - Wires into: `packages/app/src/screens/workspace/workspace-screen.tsx`, `packages/server/src/server/session/checkout/checkout-session.ts`, `packages/server/src/utils/checkout-git.ts`, `packages/server/src/utils/worktree-metadata.ts`, `packages/protocol/src/messages.ts`, `packages/client/src/daemon-client.ts`, `docs/glossary.md`, `public-docs/workspaces.md`
 - Shows branch and base branch as a pair in the workspace header and lets you change the base there.
 
+### Provider activity and turn changes
+
+- Marker: `FORK(provider-activity)`
+- Owns: `packages/server/src/server/agent/activity/`, `packages/protocol/src/provider-activity.ts`, `packages/app/src/components/provider-activity.tsx`
+- Wires into: provider live events, timeline identity/projection, the stream reducer, tool details, and foreground turn boundaries
+- Contract and coverage: [provider activity](providers.md#inspecting-provider-activity)
+
 ### Tool call summaries
 
 - Commits: `4f9a6f739`, `fe676b131`, `ff66c741b`

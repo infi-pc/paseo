@@ -2305,3 +2305,74 @@ describe("notification timeline items", () => {
     expect(new Set(state.map((item) => item.id)).size).toBe(state.length);
   });
 });
+
+it("replays provider activity once and associates out-of-order tool evidence", () => {
+  const timestamp = new Date("2026-09-30T10:00:00Z");
+  const record = {
+    id: "review",
+    event: "item/autoApprovalReview/completed",
+    timestamp: timestamp.toISOString(),
+    summary: "Blocked by auto-review",
+    level: "warning" as const,
+    callId: "call",
+    payload: "{}",
+    truncated: false,
+  };
+  const item = {
+    type: "notification" as const,
+    level: "warning" as const,
+    message: record.summary,
+    activity: { id: "turn-activity", provider: "codex", omitted: 0, records: [record] },
+  };
+  const events: AgentStreamEventPayload[] = [
+    { type: "timeline", provider: "codex", turnId: "turn", item },
+    {
+      type: "timeline",
+      provider: "codex",
+      turnId: "turn",
+      item: {
+        type: "tool_call",
+        name: "shell",
+        callId: "call",
+        status: "running",
+        error: null,
+        detail: { type: "shell", command: "echo hello" },
+      },
+    },
+    { type: "timeline", provider: "codex", turnId: "turn", item },
+  ];
+  const state = hydrateStreamState(
+    events.map((event) => ({ event, timestamp })),
+    { source: "canonical" },
+  );
+  expect(state.filter((entry) => entry.kind === "notification")).toHaveLength(1);
+  const tool = state.find(isAgentToolCallItem);
+  expect(tool?.payload.data.status).toBe("running");
+  expect(tool?.payload.data.metadata?.providerActivity).toEqual([record]);
+});
+
+it("keeps streaming text in place when activity updates arrive", () => {
+  const timestamp = new Date();
+  const head: StreamItem[] = [
+    { kind: "assistant_message", id: "text", text: "Still writing", timestamp },
+  ];
+  const result = applyStreamEvent({
+    tail: [],
+    head,
+    timestamp,
+    event: {
+      type: "timeline",
+      provider: "codex",
+      turnId: "turn",
+      item: {
+        type: "notification",
+        level: "info",
+        message: "Agent activity",
+        activity: { id: "activity", provider: "codex", records: [], omitted: 0 },
+      },
+    },
+  });
+  expect(result.head).toBe(head);
+  expect(result.changedHead).toBe(false);
+  expect(result.tail).toHaveLength(1);
+});

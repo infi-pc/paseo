@@ -3157,6 +3157,7 @@ export const ToolCall = memo(function ToolCall({
         displayName: presentation.displayName,
         summary: presentation.summary,
         description: presentation.description,
+        metadata,
         detail: effectiveDetail,
         errorText: presentation.errorText,
         icon: presentation.icon,
@@ -3169,6 +3170,7 @@ export const ToolCall = memo(function ToolCall({
     shouldRenderInline,
     openToolCall,
     toolName,
+    metadata,
     presentation.displayName,
     presentation.summary,
     presentation.description,
@@ -3212,6 +3214,7 @@ export const ToolCall = memo(function ToolCall({
       <ToolCallDetailsContent
         toolName={toolName}
         description={presentation.description}
+        metadata={metadata}
         detail={effectiveDetail}
         errorText={presentation.errorText}
         maxHeight={maxDetailHeight}
@@ -3222,6 +3225,7 @@ export const ToolCall = memo(function ToolCall({
     shouldRenderInline,
     toolName,
     effectiveDetail,
+    metadata,
     presentation.description,
     presentation.errorText,
     presentation.isLoadingDetails,
@@ -3232,21 +3236,21 @@ export const ToolCall = memo(function ToolCall({
     const input = presentation.inputLabel;
     if (!input) return undefined;
     const isLoading = status === "running" || status === "executing";
+    const output = presentation.activityLabel ?? (isLoading ? undefined : presentation.description);
     return ({ style, onLayout }: ExpandableBadgeLabelContentProps) => (
       <ToolCallSummaryLabel
         inputStyle={isLoading ? style : undefined}
         onInputLayout={onLayout}
         input={input}
-        output={
-          status === "running" || status === "executing" ? undefined : presentation.description
-        }
+        output={output}
         inputFilePath={presentation.inputFilePath}
-        outputFilePath={presentation.outputFilePath}
+        outputFilePath={presentation.activityLabel ? undefined : presentation.outputFilePath}
         onOpenFilePath={onOpenFilePath}
       />
     );
   }, [
     presentation.inputLabel,
+    presentation.activityLabel,
     presentation.description,
     presentation.inputFilePath,
     presentation.outputFilePath,

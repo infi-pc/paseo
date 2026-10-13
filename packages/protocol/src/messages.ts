@@ -1,3 +1,4 @@
+import { ProviderActivitySchema } from "./provider-activity.js";
 import {
   CodeDocumentRequestSchema,
   CodeDocumentResponseSchema,
@@ -715,6 +716,7 @@ export const AgentTimelineItemPayloadSchema: z.ZodType<AgentTimelineItem, unknow
   }),
   z.object({
     type: z.literal("notification"),
+    activity: ProviderActivitySchema.optional(),
     level: z.enum(["info", "warning", "error"]),
     message: z.string(),
   }),

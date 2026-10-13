@@ -1,3 +1,4 @@
+import { ProviderActivityCapture } from "../activity/capture.js";
 import {
   getAgentStreamEventTurnId,
   type AgentPermissionAction,
@@ -3425,6 +3426,7 @@ interface ConsumedRootCompaction {
 }
 
 export class CodexAppServerAgentSession implements AgentSession {
+  private readonly activityCapture = new ProviderActivityCapture();
   readonly provider = CODEX_PROVIDER;
   readonly capabilities = CODEX_APP_SERVER_CAPABILITIES;
 
@@ -5430,7 +5432,19 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.dispatchSubAgentNotification(parsed, route.callId);
       return;
     }
-    this.dispatchParsedNotification(parsed);
+    if (parsed.kind === "turn_started") this.dispatchParsedNotification(parsed);
+    const rawThreadId = notificationParams?.threadId;
+    const belongsToRoot = typeof rawThreadId !== "string" || rawThreadId === this.currentThreadId;
+    if (belongsToRoot) {
+      const activity = this.activityCapture.capture(
+        CODEX_PROVIDER,
+        this.activeForegroundTurnId ?? this.currentTurnId ?? "session",
+        method,
+        params,
+      );
+      if (activity) this.emitEvent({ type: "timeline", provider: CODEX_PROVIDER, item: activity });
+    }
+    if (parsed.kind !== "turn_started") this.dispatchParsedNotification(parsed);
   }
 
   private dispatchSubAgentNotification(parsed: ParsedCodexNotification, callId: string): void {

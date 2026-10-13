@@ -1,3 +1,5 @@
+import { TurnChanges } from "./activity/turn-changes.js";
+import { execFileSync } from "node:child_process";
 import { RESPONSE_CONTROL_INSTRUCTIONS } from "./response-control/session.js";
 import { expect, test, vi } from "vitest";
 import { spawn } from "node:child_process";
@@ -11549,5 +11551,121 @@ test("failed startup history closes the session without registering an agent", a
     expect({ agents: manager.listAgents(), closed }).toEqual({ agents: [], closed: true });
   } finally {
     for (const agent of manager.listAgents()) await manager.closeAgent(agent.id);
+  }
+});
+
+test("turn snapshots capture overlapping shell edits and preserve the Git index", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "paseo-turn-test-"));
+  try {
+    execFileSync("git", ["init", "--quiet"], { cwd });
+    writeFileSync(join(cwd, "shared.txt"), "baseline\n");
+    execFileSync("git", ["add", "shared.txt"], { cwd });
+    const indexBefore = execFileSync("git", ["ls-files", "--stage"], { cwd }).toString();
+    const snapshots = new TurnChanges();
+    writeFileSync(join(cwd, "shared.txt"), "baseline\npreexisting dirty\n");
+    await snapshots.begin("a", cwd);
+    await snapshots.begin("b", cwd);
+    writeFileSync(join(cwd, "shared.txt"), "baseline\npreexisting dirty\nagent A\nagent B\n");
+    writeFileSync(join(cwd, "new.txt"), "shell output\n");
+    const first = await snapshots.finish("a", cwd);
+    const second = await snapshots.finish("b", cwd);
+    for (const result of [first, second]) {
+      if (result?.type !== "notification") throw new Error("Missing snapshot");
+      const entry = result.activity?.records[0];
+      expect(entry?.diff).not.toContain("+preexisting dirty");
+      expect(entry?.diff).toContain("+agent A");
+      expect(entry?.diff).toContain("+agent B");
+      expect(entry?.diff).toContain("+shell output");
+      expect(entry?.payload).toContain("Includes concurrent workspace edits");
+    }
+    expect(execFileSync("git", ["ls-files", "--stage"], { cwd }).toString()).toBe(indexBefore);
+    expect(await snapshots.finish("a", cwd)).toBeNull();
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
+test.each(["completed", "failed", "canceled"] as const)(
+  "turn snapshots bracket provider execution and survive timeline replay: %s",
+  async (outcome) => {
+    const cwd = mkdtempSync(join(tmpdir(), "paseo-turn-manager-"));
+    execFileSync("git", ["init", "--quiet"], { cwd });
+    writeFileSync(join(cwd, "file.txt"), "before\n");
+    const client = new (class extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new (class extends TestAgentSession {
+          override async startTurn(): Promise<{ turnId: string }> {
+            writeFileSync(join(cwd, "file.txt"), "after\n");
+            const turnId = "snapshot-turn";
+            setTimeout(() => {
+              this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+              if (outcome === "failed")
+                this.pushEvent({
+                  type: "turn_failed",
+                  provider: this.provider,
+                  turnId,
+                  error: "Test failure",
+                });
+              else if (outcome === "canceled")
+                this.pushEvent({
+                  type: "turn_canceled",
+                  provider: this.provider,
+                  turnId,
+                  reason: "Interrupted",
+                });
+              else this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+            }, 0);
+            return { turnId };
+          }
+        })(config);
+      }
+    })();
+    const store = new RecordingTimelineStore();
+    const manager = new AgentManager({
+      clients: { codex: client },
+      logger,
+      durableTimelineStore: store,
+    });
+    const agent = await manager.createAgent({ provider: "codex", cwd }, undefined, {
+      workspaceId: undefined,
+    });
+    try {
+      for await (const _event of manager.streamAgent(agent.id, "change file")) {
+        /* drain turn */
+      }
+      await manager.flush();
+      const snapshots = (await manager.getTimelineRows(agent.id)).flatMap((row) =>
+        row.item.type === "notification" && row.item.activity?.provider === "Paseo"
+          ? row.item.activity.records
+          : [],
+      );
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]?.diff).toContain("-before");
+      expect(snapshots[0]?.diff).toContain("+after");
+      writeFileSync(join(cwd, "file.txt"), "later edits\n");
+      expect(snapshots[0]?.diff).not.toContain("later edits");
+    } finally {
+      await manager.closeAgent(agent.id);
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  },
+);
+
+test("turn snapshots mark excluded files without inventing deletions", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "paseo-turn-excluded-"));
+  try {
+    execFileSync("git", ["init", "--quiet"], { cwd });
+    writeFileSync(join(cwd, "file.txt"), "before\n");
+    const snapshots = new TurnChanges();
+    await snapshots.begin("a", cwd);
+    writeFileSync(join(cwd, "file.txt"), Buffer.from([0, 1, 2]));
+    const result = await snapshots.finish("a", cwd);
+    expect(result).toMatchObject({
+      type: "notification",
+      level: "info",
+      activity: { records: [expect.objectContaining({ truncated: true, diff: "" })] },
+    });
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
   }
 });

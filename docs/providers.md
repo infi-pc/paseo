@@ -46,6 +46,50 @@ Each provider definition owns its option schema and exact MCP preapproval mappin
 must fail closed for Hub unattended execution until it can approve one exact injected MCP server
 and tool identity without approving native tools.
 
+## Inspecting provider activity
+
+Codex and Claude preserve non-streaming root-session events in one expandable activity row per
+turn. Reviews, permission denials, limits, retries, hooks, usage, summaries, session changes, and
+unknown event types remain inspectable even when they have no dedicated presentation. Claude
+hook events are enabled; prompt suggestions remain opt-in at the SDK level because generating
+them is additional model work. Captured evidence starts with new live events; importing a native
+session cannot recover events its history did not retain.
+
+| Evidence                                                                     | Destination                                                                                |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Permission reviews and denials                                               | Warning on the activity row; linked tool details when the provider supplies a tool-call ID |
+| Progress, retries, hooks, rate limits, summaries, usage and session metadata | Activity list, then full captured fields                                                   |
+| Codex accumulated turn diff                                                  | Diff viewer inside activity, labelled as provider-tracked changes                          |
+| Tool metadata and shell exit code                                            | Expanded tool details                                                                      |
+| Unknown non-streaming events                                                 | Activity list with their provider event name                                               |
+| Streaming text, reasoning and output deltas                                  | Existing conversation and tool views; not duplicated in the inspector                      |
+| Child-session events                                                         | Existing child-session routing; not copied into the parent's inspector                     |
+| Credentials and large media                                                  | Sensitive named fields redacted; large inline data omitted                                 |
+| Control acknowledgements                                                     | Existing request lifecycle; not copied into the inspector                                  |
+
+Activity records are bounded and show omission/truncation indicators. Treat redaction as a
+best-effort filter for known credential fields and token formats, not a guarantee that arbitrary
+provider prose contains no secrets. Do not send these records to description-generation agents.
+A review describes the reviewed action; it does not establish that its parent command never ran.
+Multi-tool summaries retain their original tool IDs in the payload instead of being copied as
+individual tool results.
+
+Paseo also captures changes around non-internal foreground turns for every provider. The baseline
+is taken before dispatch; the endpoint is taken before the terminal event settles. The saved diff
+lives in the durable timeline, independently of later file edits. This does not provide restore.
+Capture covers Git-tracked and non-ignored untracked text files, within the agent's working
+directory, with explicit size/count limits. It excludes `.env`, symlinks and binary files and
+never updates the Git index or creates commits. Unsupported directories and failed captures are
+shown as unavailable. Baselines are in memory: a daemon restart loses an unfinished baseline.
+
+These are interval comparisons, not authorship records. Shared-workspace edits from other agents,
+editors and formatters can appear. Captures are not atomic; detected per-file changes during a
+read are excluded and marked partial. A file excluded from either endpoint is excluded from the
+comparison so it cannot appear as a false addition or deletion.
+
+The wire extension is an optional field on existing notifications. Old clients can still read the
+notification text; current clients reveal the attached evidence without additional RPCs.
+
 ## Two Integration Patterns
 
 ### ACP (Agent Client Protocol) -- recommended
