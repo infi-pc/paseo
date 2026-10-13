@@ -2067,6 +2067,15 @@ export const AgentForkContextRequestMessageSchema = z.object({
   requestId: z.string(),
 });
 
+// FORK(transcript-clipboard): finite export stream: ordered .update chunks precede one terminal .response.
+export const AgentTranscriptExportRequestMessageSchema = z.object({
+  type: z.literal("agent.transcript.export.request"),
+  agentId: z.string(),
+  boundaryCursor: AgentTimelineCursorSchema.optional(),
+  boundaryMessageId: z.string().optional(),
+  requestId: z.string(),
+});
+
 export const SetAgentModeRequestMessageSchema = z.object({
   type: z.literal("set_agent_mode_request"),
   agentId: z.string(),
@@ -3548,6 +3557,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   ProviderSubagentTimelineRequestMessageSchema,
   SetAgentTimelineSubscriptionRequestMessageSchema,
   AgentForkContextRequestMessageSchema,
+  AgentTranscriptExportRequestMessageSchema,
   SetAgentModeRequestMessageSchema,
   SetAgentModelRequestMessageSchema,
   SetAgentThinkingRequestMessageSchema,
@@ -3958,6 +3968,7 @@ export const ServerInfoStatusPayloadSchema = z
         agentForkContext: z.boolean().optional(),
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
         agentForkContextCursor: z.boolean().optional(),
+        agentTranscriptExport: z.boolean().optional(),
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: z.boolean().optional(),
         // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gates after 2027-03-14; retain wire field.
@@ -5130,6 +5141,26 @@ export const AgentForkContextResponseMessageSchema = z.object({
     itemCount: z.number().int().nonnegative(),
     boundaryMessageId: z.string().nullable(),
     boundaryCursor: AgentTimelineCursorSchema.nullable().optional(),
+    error: z.string().nullable(),
+  }),
+});
+
+export const AgentTranscriptExportUpdateMessageSchema = z.object({
+  type: z.literal("agent.transcript.export.update"),
+  payload: z.object({
+    requestId: z.string(),
+    index: z.number().int().nonnegative(),
+    text: z.string(),
+  }),
+});
+
+export const AgentTranscriptExportResponseMessageSchema = z.object({
+  type: z.literal("agent.transcript.export.response"),
+  payload: z.object({
+    requestId: z.string(),
+    title: z.string(),
+    cwd: z.string(),
+    chunkCount: z.number().int().nonnegative(),
     error: z.string().nullable(),
   }),
 });
@@ -7242,6 +7273,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentTimelineSubscriptionResponseMessageSchema,
   AgentAttentionRequiredMessageSchema,
   AgentForkContextResponseMessageSchema,
+  AgentTranscriptExportUpdateMessageSchema,
+  AgentTranscriptExportResponseMessageSchema,
   CancelAgentResponseMessageSchema,
   ClearAgentAttentionResponseMessageSchema,
   WorkspaceCreateResponseSchema,

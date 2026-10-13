@@ -1,4 +1,5 @@
-import { expect, test as base } from "../support/fixtures";
+import { installDaemonWebSocketGate } from "../support/helpers/daemon-websocket-gate";
+import { expect, test as base, type Page } from "../support/fixtures";
 import { awaitAssistantMessage } from "../support/helpers/agent-stream";
 import {
   expectChatHistoryAttachment,
@@ -8,6 +9,7 @@ import {
   forkMostRecentAssistantTurnToNewTab,
   forkMostRecentAssistantTurnToNewWorkspace,
   observeForkAttachment,
+  openMostRecentAssistantForkMenu,
 } from "../support/helpers/assistant-fork";
 import { expectComposerVisible, submitMessage } from "../support/helpers/composer";
 import { createAgentTabFromMenu } from "../support/helpers/workspace-tabs";
@@ -34,6 +36,148 @@ const test = base.extend<{
     });
     await Promise.allSettled(sessions.map((session) => session.cleanup()));
   },
+});
+
+async function readTranscriptClipboard(page: Page): Promise<string> {
+  return page.evaluate(() => navigator.clipboard.readText());
+}
+
+async function readPersistedTranscriptDrafts(page: Page): Promise<string | null> {
+  return page.evaluate(() => localStorage.getItem("paseo-drafts"));
+}
+
+test.describe("Transcript clipboard", () => {
+  test.describe.configure({ timeout: 180_000 });
+
+  test("copies a checkpoint and a full transcript, then pastes draft-local context that survives reload", async ({
+    page,
+    context,
+    seedForkWorkspace,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const session = await seedForkWorkspace({
+      repoPrefix: "transcript-clipboard-",
+      title: "Source transcript",
+      initialPrompt: "Original source prompt",
+      featureValues: {
+        mockAssistantResponse: "**Original answer**\n\n```ts\nconst copied = true;\n```",
+      },
+    });
+    await session.client.waitForFinish(session.agentId, 30_000);
+    await session.client.sendAgentMessage(session.agentId, "Later source prompt");
+    await session.client.waitForFinish(session.agentId, 30_000);
+    const target = await session.client.createAgent({
+      provider: "mock",
+      cwd: session.cwd,
+      workspaceId: session.workspaceId,
+      title: "Destination",
+      modeId: "load-test",
+      model: "e2e-fast-stream",
+    });
+    await openAgentRoute(page, session);
+    await expectComposerVisible(page);
+    const forkButtons = page.getByRole("button", { name: "Fork chat from here", exact: true });
+    await expect(forkButtons).toHaveCount(2);
+    await forkButtons.first().click();
+    await page.getByRole("menuitem", { name: "Copy transcript up to here", exact: true }).click();
+    await expect(page.getByText("Copied Transcript", { exact: true })).toBeVisible();
+    const checkpoint = await page.evaluate(() => navigator.clipboard.readText());
+    expect(checkpoint).toContain("Original source prompt");
+    expect(checkpoint).not.toContain("Later source prompt");
+
+    await page.getByTestId(`workspace-tab-agent_${session.agentId}`).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Copy full transcript", exact: true }).click();
+    await expect.poll(() => readTranscriptClipboard(page)).not.toBe(checkpoint);
+    const full = await page.evaluate(() => navigator.clipboard.readText());
+    expect(full).toContain("Later source prompt");
+    const html = await page.evaluate(async () => {
+      const items = await navigator.clipboard.read();
+      return (await items[0].getType("text/html")).text();
+    });
+    expect(html).toContain("<strong>Original answer</strong>");
+    expect(html).not.toContain("paseo-transcript:v1");
+
+    await page.evaluate(() => {
+      const external = document.createElement("textarea");
+      external.dataset.testid = "external-transcript-target";
+      document.body.appendChild(external);
+    });
+    const external = page.getByTestId("external-transcript-target");
+    await external.focus();
+    await external.press("ControlOrMeta+v");
+    await expect(external).toHaveValue(full);
+    await external.evaluate((element) => element.remove());
+
+    await page.getByTestId(`workspace-tab-agent_${target.id}`).click();
+    const input = page.getByRole("textbox", { name: "Message agent..." });
+    await input.fill("Use this context in the destination.");
+    await input.press("End");
+    await input.press("ControlOrMeta+v");
+    const pill = page.getByTestId("composer-transcript-attachment-pill").filter({ visible: true });
+    await expect(pill).toContainText("Transcript · Source transcript");
+    await expect(input).toHaveValue("Use this context in the destination.");
+    await page.getByTestId(`workspace-tab-agent_${session.agentId}`).click();
+    await expect(pill).toHaveCount(0);
+    await page.getByTestId(`workspace-tab-agent_${target.id}`).click();
+    await expect(pill).toHaveCount(1);
+    await expect.poll(() => readPersistedTranscriptDrafts(page)).toContain('"transcript"');
+    await page.reload();
+    await expectComposerVisible(page);
+    await expect(pill).toHaveCount(1);
+    await expect(input).toHaveValue("Use this context in the destination.");
+    await pill.click();
+    const preview = page.getByTestId("transcript-preview").filter({ visible: true });
+    await expect(preview).toContainText("Later source prompt");
+    await preview.getByRole("button", { name: "Close", exact: true }).click();
+    await pill.hover();
+    await pill
+      .locator("..")
+      .getByRole("button", { name: "Remove transcript", exact: true })
+      .click();
+    await expect(pill).toHaveCount(0);
+    await session.client.archiveAgent(session.agentId);
+    await input.press("ControlOrMeta+v");
+    await expect(pill).toHaveCount(1);
+    await page.screenshot({ path: "/tmp/paseo-transcript-paste.png" });
+    await input.press("Enter");
+    const user = page
+      .getByTestId("user-message")
+      .filter({ hasText: "Use this context in the destination." })
+      .last();
+    await expect(user).toContainText("Transcript · Source transcript");
+    await expect(pill).toHaveCount(0);
+  });
+
+  test("keeps the clipboard and shows a persistent error when export delivery disconnects", async ({
+    page,
+    context,
+    seedForkWorkspace,
+  }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    const gate = await installDaemonWebSocketGate(page);
+    const session = await seedForkWorkspace({
+      repoPrefix: "transcript-failure-",
+      title: "Source failure",
+      initialPrompt: "Source prompt",
+      featureValues: { mockAssistantResponse: "Source answer" },
+    });
+    await session.client.waitForFinish(session.agentId, 30_000);
+    await openAgentRoute(page, session);
+    await expectComposerVisible(page);
+    await page.evaluate(() => navigator.clipboard.writeText("Previous clipboard"));
+    gate.holdNextServerMessage("agent.transcript.export.response");
+    await openMostRecentAssistantForkMenu(page);
+    await page.getByRole("menuitem", { name: "Copy transcript up to here", exact: true }).click();
+    await gate.waitForHeldServerMessage("agent.transcript.export.response");
+    await expect(page.getByTestId("transcript-copying")).toBeVisible();
+    await gate.drop();
+    const error = page.getByTestId("transcript-copy-error");
+    await expect(error).toBeVisible({ timeout: 45_000 });
+    await expect(error).not.toBeEmpty();
+    await expect.poll(() => readTranscriptClipboard(page)).toBe("Previous clipboard");
+    gate.restore();
+    await page.screenshot({ path: "/tmp/paseo-transcript-copy-error.png" });
+  });
 });
 
 test.describe("Assistant fork menu", () => {

@@ -4,6 +4,8 @@ import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
 import { isLikelyExternalToolName } from "@getpaseo/protocol/tool-name-normalization";
 import { buildToolCallDisplayModel } from "@getpaseo/protocol/tool-call-display";
 import { projectTimelineRows } from "./timeline-projection.js";
+import { responseDisplayText } from "@getpaseo/protocol/response-control/footer";
+import { MAX_TRANSCRIPT_CHARS, TranscriptTooLargeError } from "@getpaseo/protocol/transcript";
 
 const DEFAULT_MAX_ITEMS = 0;
 const MAX_TOOL_INPUT_CHARS = 400;
@@ -202,6 +204,7 @@ function selectForkContextRows(input: {
   rows: readonly AgentTimelineRow[];
   cursorBoundary?: ForkCursorBoundary | null;
   boundaryMessageId?: string | null;
+  includeLatestResponseUpdates?: boolean;
 }): {
   items: AgentTimelineItem[];
   boundaryCursor: { epoch: string; seq: number } | null;
@@ -240,7 +243,7 @@ function selectForkContextRows(input: {
   const latestResponseIndex = projectedRows.findLastIndex(
     (row) => row.item.type === "assistant_message",
   );
-  if (boundaryIndex === latestResponseIndex) {
+  if (boundaryIndex === latestResponseIndex && input.includeLatestResponseUpdates !== false) {
     return {
       items: projectedRows.map((entry) => entry.item),
       boundaryCursor,
@@ -261,6 +264,37 @@ function selectForkContextRows(input: {
     boundaryCursor,
     boundaryMessageId,
   };
+}
+
+// FORK(transcript-clipboard): export complete messages with an exact response boundary.
+export function buildAgentTranscript(input: {
+  rows: readonly AgentTimelineRow[];
+  cursorBoundary?: ForkCursorBoundary | null;
+  boundaryMessageId?: string | null;
+}): string {
+  const { items } = selectForkContextRows({ ...input, includeLatestResponseUpdates: false });
+  const entries: string[] = [];
+  let length = 0;
+  for (const item of items) {
+    let entry: string;
+    switch (item.type) {
+      case "user_message":
+        entry = `## User\n\n${item.text}`;
+        break;
+      case "assistant_message":
+        entry = `## Assistant\n\n${responseDisplayText(item.text, true)}`;
+        break;
+      case "tool_call":
+        entry = `## Tool\n\n${formatToolCallEntry(item, { includeExternalToolInput: false }).text}`;
+        break;
+      default:
+        continue;
+    }
+    length += entry.length + 2;
+    if (length > MAX_TRANSCRIPT_CHARS) throw new TranscriptTooLargeError();
+    entries.push(entry);
+  }
+  return entries.join("\n\n");
 }
 
 function trimContextMetadata(value: string | null | undefined): string | null {

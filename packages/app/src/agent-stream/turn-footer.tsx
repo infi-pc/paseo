@@ -1,3 +1,5 @@
+// FORK(transcript-clipboard): pin completed exports and snapshot live turns up to now.
+import type { TranscriptCopySource } from "@/transcript/use-copy";
 import React, { memo, useCallback, useMemo, type ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -50,6 +52,7 @@ export const TurnFooter = memo(function TurnFooter({
   host,
   strategy,
   supportsTimelineCursor,
+  transcriptSource,
   onForkAssistantTurn,
   onForkInFlightTurn,
 }: {
@@ -58,6 +61,7 @@ export const TurnFooter = memo(function TurnFooter({
   host: TurnFooterHost | null;
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
+  transcriptSource?: TranscriptCopySource;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
 }) {
@@ -75,6 +79,7 @@ export const TurnFooter = memo(function TurnFooter({
         <RunningTurnFooter
           inFlightTurnStartedAt={inFlightTurnStartedAt}
           onForkInFlightTurn={onForkInFlightTurn}
+          transcriptSource={transcriptSource}
         />
       </TurnFooterRow>
     );
@@ -89,6 +94,7 @@ export const TurnFooter = memo(function TurnFooter({
       timing={host.timing}
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
+      transcriptSource={transcriptSource}
       onForkAssistantTurn={onForkAssistantTurn}
     >
       {recommendedPrompts && promptActions ? (
@@ -104,6 +110,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   timing,
   startIndex,
   supportsTimelineCursor,
+  transcriptSource,
   onForkAssistantTurn,
   children,
 }: {
@@ -112,6 +119,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   timing?: TurnTiming;
   startIndex: number;
   supportsTimelineCursor: boolean;
+  transcriptSource?: TranscriptCopySource;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   /** Rendered under the action row, inside the footer's bottom spacing. */
   children?: ReactNode;
@@ -124,6 +132,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         timing={timing}
         startIndex={startIndex}
         supportsTimelineCursor={supportsTimelineCursor}
+        transcriptSource={transcriptSource}
         onForkAssistantTurn={onForkAssistantTurn}
       >
         {children}
@@ -135,9 +144,11 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
 const WorkingIndicator = memo(function WorkingIndicator({
   inFlightTurnStartedAt = null,
   onForkInFlightTurn,
+  transcriptSource,
 }: {
   inFlightTurnStartedAt?: Date | null;
   onForkInFlightTurn?: InFlightTurnForkHandler;
+  transcriptSource?: TranscriptCopySource;
 }) {
   const active = useRetainedPanelActive();
   return (
@@ -146,7 +157,9 @@ const WorkingIndicator = memo(function WorkingIndicator({
         <ThemedSyncedLoader size={14} uniProps={workingIndicatorColorMapping} />
       </View>
       {/* Match the completed-turn footer: actions precede timing metadata. */}
-      {onForkInFlightTurn ? <AssistantForkMenu onFork={onForkInFlightTurn} /> : null}
+      {onForkInFlightTurn ? (
+        <AssistantForkMenu onFork={onForkInFlightTurn} transcriptSource={transcriptSource} />
+      ) : null}
       {inFlightTurnStartedAt ? (
         <LiveElapsed
           startedAt={inFlightTurnStartedAt}
@@ -162,15 +175,18 @@ const WorkingIndicator = memo(function WorkingIndicator({
 function RunningTurnFooter({
   inFlightTurnStartedAt,
   onForkInFlightTurn,
+  transcriptSource,
 }: {
   inFlightTurnStartedAt: Date | null;
   onForkInFlightTurn?: InFlightTurnForkHandler;
+  transcriptSource?: TranscriptCopySource;
 }) {
   return (
     <View style={stylesheet.turnFooterSlot} testID="turn-working-indicator">
       <WorkingIndicator
         inFlightTurnStartedAt={inFlightTurnStartedAt}
         onForkInFlightTurn={onForkInFlightTurn}
+        transcriptSource={transcriptSource}
       />
     </View>
   );
@@ -182,6 +198,7 @@ function CompletedTurnFooter({
   timing,
   startIndex,
   supportsTimelineCursor,
+  transcriptSource,
   onForkAssistantTurn,
   children,
 }: {
@@ -190,6 +207,7 @@ function CompletedTurnFooter({
   timing?: TurnTiming;
   startIndex: number;
   supportsTimelineCursor: boolean;
+  transcriptSource?: TranscriptCopySource;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   children?: ReactNode;
 }) {
@@ -202,11 +220,19 @@ function CompletedTurnFooter({
       }),
     [strategy, items, startIndex],
   );
-  const boundary = resolveAssistantTurnForkBoundary({
-    items,
-    startIndex,
-    supportsTimelineCursor,
-  });
+  const boundary = useMemo(
+    () =>
+      resolveAssistantTurnForkBoundary({
+        items,
+        startIndex,
+        supportsTimelineCursor,
+      }),
+    [items, startIndex, supportsTimelineCursor],
+  );
+  const boundedTranscriptSource = useMemo(
+    () => (boundary && transcriptSource ? { ...transcriptSource, boundary } : undefined),
+    [boundary, transcriptSource],
+  );
   const handleFork = useCallback(
     (target: AssistantForkTarget) => {
       if (!boundary) {
@@ -224,6 +250,7 @@ function CompletedTurnFooter({
           completedAt={timing?.completedAt}
           durationMs={timing?.durationMs}
           onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
+          transcriptSource={boundedTranscriptSource}
         />
       </View>
       {children}

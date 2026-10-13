@@ -1,0 +1,9 @@
+
+ RUN  v4.1.6 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/precious-flamingo/packages/server
+
+
+ Test Files  1 passed (1)
+      Tests  26 passed (26)
+   Start at  18:11:10
+   Duration  210ms (transform 79ms, setup 25ms, import 95ms, tests 7ms, environment 0ms)
+

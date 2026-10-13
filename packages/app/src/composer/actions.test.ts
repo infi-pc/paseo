@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createTranscriptAttachment } from "@/transcript/attachment";
 import type { AgentAttachment, ForgeSearchItem } from "@getpaseo/protocol/messages";
 import type {
   AttachmentMetadata,
@@ -754,6 +755,36 @@ describe("queueComposerMessage", () => {
 });
 
 describe("editQueuedComposerMessage", () => {
+  it("restores a pasted transcript when a queued message is edited", () => {
+    const transcript = createTranscriptAttachment({
+      transcript: {
+        metadata: {
+          title: "Source",
+          cwd: "/source",
+          source: { serverId: "source-host", agentId: "source-agent" },
+        },
+        body: "## User\n\nSource prompt\n\n## Assistant\n\nSource answer",
+      },
+      id: "transcript-1",
+      title: "Transcript · Source",
+    });
+    const queue = createFakeQueue();
+    const queued = queueComposerMessage({
+      agentId: "destination",
+      text: "Use this context",
+      attachments: [transcript],
+      queue,
+    });
+    expect(queue.state.get("destination")?.[0]?.attachments).toEqual([transcript]);
+    const edited = editQueuedComposerMessage({
+      agentId: "destination",
+      messageId: queued.queued!.id,
+      queue,
+    });
+    expect(edited).toEqual({ text: "Use this context", attachments: [transcript] });
+    expect(queue.state.get("destination")).toEqual([]);
+  });
+
   it("returns null and leaves the queue untouched when the message id is missing", () => {
     const queue = createFakeQueue(
       new Map([["agent", [{ id: "other", text: "other", attachments: [] }]]]),

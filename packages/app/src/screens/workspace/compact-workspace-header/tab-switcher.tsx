@@ -1,3 +1,6 @@
+import { useHostFeature } from "@/runtime/host-features";
+// FORK(transcript-clipboard): compact tab menus share the full export action.
+import { useTranscriptCopy } from "@/transcript/use-copy";
 import { memo, useCallback, useMemo, useRef, useState } from "react";
 import { Keyboard, Pressable, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -163,6 +166,8 @@ function MobileWorkspaceTabOption({
   active,
   onPress,
   onCopyResumeCommand,
+  onCopyTranscript,
+  transcriptCopyPending,
   onCopyAgentId,
   onCopyTerminalId,
   onCopyFilePath,
@@ -183,6 +188,8 @@ function MobileWorkspaceTabOption({
   active: boolean;
   onPress: () => void;
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
+  onCopyTranscript: ((agentId: string) => Promise<void>) | undefined;
+  transcriptCopyPending: boolean;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   onCopyFilePath: (path: string) => Promise<void> | void;
@@ -221,6 +228,8 @@ function MobileWorkspaceTabOption({
     tabCount,
     menuTestIDBase,
     onCopyResumeCommand,
+    onCopyTranscript,
+    transcriptCopyPending,
     onCopyAgentId,
     onCopyTerminalId,
     onCopyFilePath,
@@ -308,6 +317,12 @@ export const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitch
   onCloseOtherTabs,
 }: MobileWorkspaceTabSwitcherProps) {
   const { t } = useTranslation();
+  const supportsTranscriptExport = useHostFeature(normalizedServerId, "agentTranscriptExport");
+  const { copyTranscript, pending: transcriptCopyPending } = useTranscriptCopy(
+    normalizedServerId,
+    supportsTranscriptExport,
+  );
+  const onCopyTranscript = supportsTranscriptExport ? copyTranscript : undefined;
   const tabFallbackLabels = useMemo(
     () => ({
       chapters: t("chapters.title"),
@@ -421,6 +436,8 @@ export const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitch
           active={active}
           onPress={onPress}
           onCopyResumeCommand={onCopyResumeCommand}
+          onCopyTranscript={onCopyTranscript}
+          transcriptCopyPending={transcriptCopyPending}
           onCopyAgentId={onCopyAgentId}
           onCopyTerminalId={onCopyTerminalId}
           onCopyFilePath={onCopyFilePath}
@@ -441,6 +458,8 @@ export const MobileWorkspaceTabSwitcher = memo(function MobileWorkspaceTabSwitch
       normalizedServerId,
       normalizedWorkspaceId,
       onCopyResumeCommand,
+      onCopyTranscript,
+      transcriptCopyPending,
       onCopyAgentId,
       onCopyTerminalId,
       onCopyFilePath,

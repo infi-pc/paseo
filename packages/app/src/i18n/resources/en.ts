@@ -1,4 +1,15 @@
 export const en = {
+  transcript: {
+    label: "Transcript",
+    copyFull: "Copy full transcript",
+    copyUpToHere: "Copy transcript up to here",
+    copying: "Copying transcript…",
+    copyFailed: "Failed to copy transcript",
+    attachmentTitle: "Transcript · {{title}}",
+    open: "Open transcript",
+    remove: "Remove transcript",
+  },
+
   workspaceSnooze: {
     title: "Snooze workspace",
     action: "Snooze…",

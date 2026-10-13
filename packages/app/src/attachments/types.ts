@@ -4,6 +4,8 @@ import type {
   UploadedFileAttachment,
 } from "@getpaseo/protocol/messages";
 import type { PluginResourceComposerAttachment } from "@/plugins/attachments";
+// FORK(transcript-clipboard): copied context is owned by one composer draft.
+import type { TranscriptAttachment } from "@/transcript/attachment";
 
 export type AttachmentStorageType = "web-indexeddb" | "desktop-file" | "native-file";
 
@@ -104,6 +106,7 @@ export interface WorkspaceFileComposerAttachment {
 }
 
 export type UserComposerAttachment =
+  | TranscriptAttachment
   | { kind: "image"; metadata: AttachmentMetadata }
   | { kind: "file"; attachment: UploadedFileAttachment }
   | WorkspaceFileComposerAttachment

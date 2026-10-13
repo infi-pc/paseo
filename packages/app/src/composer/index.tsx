@@ -1,3 +1,4 @@
+import { useStableEvent } from "@/hooks/use-stable-event";
 import type { ComposerTextSource } from "./text-source";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -83,6 +84,10 @@ import {
 } from "@/composer/actions";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import { useToast } from "@/contexts/toast-context";
+import { parseCopiedTranscript } from "@getpaseo/protocol/transcript";
+import { createTranscriptAttachment } from "@/transcript/attachment";
+import { TranscriptAttachmentPill } from "@/transcript/pill";
+import { generateAttachmentId } from "@/attachments/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
@@ -397,6 +402,17 @@ interface RenderComposerAttachmentPillArgs {
 
 function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): ReactElement {
   const { attachment, index, disabled, onOpen, onRemove, labels } = args;
+  if (attachment.kind === "transcript") {
+    return (
+      <TranscriptAttachmentPill
+        key={attachment.id}
+        attachment={attachment}
+        disabled={disabled}
+        onRemove={onRemove}
+        index={index}
+      />
+    );
+  }
   if (attachment.kind === "image") {
     return (
       <ImageAttachmentPill
@@ -1292,6 +1308,18 @@ function ComposerContentImpl({
     onOpenWorkspaceAttachment,
   });
   const setSelectedAttachments = onChangeAttachments;
+  // FORK(transcript-clipboard): attach snapshots without replacing the destination prompt.
+  const handlePasteText = useStableEvent((text: string): boolean => {
+    const transcript = parseCopiedTranscript(text);
+    if (!transcript) return false;
+    const attachment = createTranscriptAttachment({
+      transcript,
+      id: generateAttachmentId(),
+      title: t("transcript.attachmentTitle", { title: transcript.metadata.title }),
+    });
+    setSelectedAttachments((current) => [...current, attachment]);
+    return true;
+  });
   const checkoutStatusQuery = useCheckoutStatusQuery({ serverId, cwd });
   const supportsForgeSearch = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.forgeSearch === true,
@@ -2404,6 +2432,7 @@ function ComposerContentImpl({
                   onAttachButtonRef={handleAttachButtonRef}
                   onAddImages={addImages}
                   onPasteImages={handleNativePasteImages}
+                  onPasteText={handlePasteText}
                   client={client}
                   isReadyForDictation={isDictationReady}
                   placeholder={messagePlaceholder}

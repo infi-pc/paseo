@@ -1,3 +1,5 @@
+// FORK(transcript-clipboard): completed turn actions carry their copy checkpoint.
+import type { TranscriptCopySource } from "@/transcript/use-copy";
 import { ToolCallSummaryLabel } from "@/tool-calls/summary-label";
 import type { AgentMessage } from "@getpaseo/protocol/agent-message";
 import { ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO } from "@/utils/assistant-image-metadata";
@@ -586,6 +588,7 @@ interface AssistantTurnFooterProps {
   getContent: () => string;
   completedAt?: Date;
   durationMs?: number | null;
+  transcriptSource?: TranscriptCopySource;
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
 }
 
@@ -631,6 +634,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   completedAt,
   durationMs,
   onFork,
+  transcriptSource,
 }: AssistantTurnFooterProps) {
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
@@ -687,7 +691,9 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
         getContent={getContent}
         containerStyle={assistantTurnFooterStylesheet.copyButton}
       />
-      {canFork ? <AssistantForkMenu onFork={handleFork} /> : null}
+      {canFork ? (
+        <AssistantForkMenu onFork={handleFork} transcriptSource={transcriptSource} />
+      ) : null}
       {primaryLabel ? (
         <Pressable
           onPress={handlePress}

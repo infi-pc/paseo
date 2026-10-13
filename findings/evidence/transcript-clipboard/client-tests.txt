@@ -1,0 +1,9 @@
+
+ RUN  v4.1.7 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/precious-flamingo/packages/client
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed | 163 skipped (167)
+   Start at  17:59:44
+   Duration  2.71s (transform 2.13s, setup 0ms, import 2.44s, tests 89ms, environment 0ms)
+
