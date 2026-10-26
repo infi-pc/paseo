@@ -1,50 +1,63 @@
-import { describe, expect, it } from "vitest";
-import { openWorkspaceFileFromExplorer } from "@/screens/workspace/workspace-file-open-command";
-import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { beforeEach, describe, expect, it } from "vitest";
+import { openWorkspaceFileFromExplorer } from "./workspace-file-open-command";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { usePanelStore } from "@/stores/panel-store";
+import { revealWorkspaceTab } from "@/workspace-tabs/navigation";
 
-function createInput(closeExplorerAfterOpen: boolean) {
-  const opened: WorkspaceTabTarget[] = [];
-  const focused: string[] = [];
-  let closed = 0;
-  const input = {
-    location: { path: "src/app.tsx", lineStart: 4, columnStart: 2, lineEnd: 4, columnEnd: 8 },
-    persistenceKey: "server:workspace",
-    closeExplorerAfterOpen,
-    showMobileAgent: () => {
-      closed++;
-    },
-    openWorkspaceTabInFocusedPane: (_key: string, target: WorkspaceTabTarget) => {
-      opened.push(target);
-      return "file-tab";
-    },
-    focusWorkspaceTab: (key: string, tab: string) => {
-      focused.push(`${key}/${tab}`);
-    },
-  };
-  return {
-    input,
-    opened,
-    focused,
-    get closed() {
-      return closed;
-    },
-  };
-}
-
-describe("openWorkspaceFileFromExplorer", () => {
-  it("preserves the selected range and closes the phone overlay after opening a file", () => {
-    const fixture = createInput(true);
-    openWorkspaceFileFromExplorer(fixture.input);
-    expect(fixture.closed).toBe(1);
-    expect(fixture.opened).toEqual([{ kind: "file", ...fixture.input.location }]);
-    expect(fixture.focused).toEqual(["server:workspace/file-tab"]);
+const workspaceKey = "server:workspace";
+function openFile(filePath: string, persistenceKey: string | null = workspaceKey) {
+  openWorkspaceFileFromExplorer({
+    location: { path: filePath },
+    persistenceKey,
+    openWorkspaceTabInFocusedPane: (key, target, placement) =>
+      useWorkspaceLayoutStore
+        .getState()
+        .openTab({ workspaceKey: key, target, placement, intent: "reveal" }),
+    revealWorkspaceTab,
   });
-
-  it("keeps the tablet dock open after opening a file", () => {
-    const fixture = createInput(false);
-    openWorkspaceFileFromExplorer(fixture.input);
-    expect(fixture.closed).toBe(0);
-    expect(fixture.opened).toEqual([{ kind: "file", ...fixture.input.location }]);
-    expect(fixture.focused).toEqual(["server:workspace/file-tab"]);
+}
+beforeEach(() => {
+  useWorkspaceLayoutStore.setState({
+    layoutMode: "compact",
+    layoutByWorkspace: {},
+    sheetsByWorkspace: {},
+    explorerSidebarPaneIdByWorkspace: {},
+  });
+  usePanelStore.getState().showMobileFileExplorer();
+});
+describe("file search destination", () => {
+  it("preserves Explorer under a new file sheet", () => {
+    openFile("new.ts");
+    expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
+    expect(useWorkspaceLayoutStore.getState().sheetsByWorkspace[workspaceKey]).toHaveLength(1);
+  });
+  it.each([null, workspaceKey])("preserves context when no file opens (%s)", (key) => {
+    openFile("", key);
+    expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
+  });
+  it("reveals an existing main tab", () => {
+    const store = useWorkspaceLayoutStore.getState();
+    store.setLayoutMode("split-panes");
+    store.openTab({
+      workspaceKey,
+      target: { kind: "file", path: "existing.ts" },
+      intent: "reveal",
+    });
+    store.setLayoutMode("compact");
+    openFile("existing.ts");
+    expect(usePanelStore.getState().mobilePanel.target).toBe("agent");
+  });
+  it("reveals the existing Explorer tab from the left sidebar", () => {
+    const store = useWorkspaceLayoutStore.getState();
+    const paneId = store.showExplorerSidebar(workspaceKey)!;
+    store.openTab({
+      workspaceKey,
+      target: { kind: "file", path: "existing.ts" },
+      intent: "reveal",
+      placement: { mode: "pane", paneId },
+    });
+    usePanelStore.getState().showMobileAgentList();
+    openFile("existing.ts");
+    expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
   });
 });

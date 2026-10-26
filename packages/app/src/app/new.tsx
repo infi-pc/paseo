@@ -1,7 +1,16 @@
 import { parseInitialChangeRequest } from "@/screens/project-pull-requests/model";
 import { useLocalSearchParams } from "expo-router";
+import { useMemo } from "react";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
+import {
+  ComposerEditingScope,
+  WorkspaceComposerEditingSessionsProvider,
+} from "@/composer/editing-session";
 import { NewWorkspaceScreen } from "@/screens/new-workspace-screen";
+import { buildNewWorkspaceDraftKey } from "@/stores/draft-keys";
+
+/** New workspace drafts share one editing-session home, keyed like a tab by draft. */
+const NEW_WORKSPACE_SESSIONS_KEY = "new-workspace";
 
 export default function NewWorkspaceRoute() {
   const params = useLocalSearchParams<{
@@ -27,17 +36,29 @@ export default function NewWorkspaceRoute() {
     params.changeRequest ?? null,
   ]);
 
+  // The shell remounts this route when the viewport crosses the compact breakpoint;
+  // the draft's editing session (fullscreen, retained caret) lives above the shell.
+  const draftKey = buildNewWorkspaceDraftKey(draftId);
+  const sessionTabIds = useMemo(() => [draftKey], [draftKey]);
+
   return (
     <HostRouteBootstrapBoundary>
-      <NewWorkspaceScreen
-        key={screenKey}
-        serverId={serverId}
-        sourceDirectory={sourceDirectory}
-        displayName={displayName}
-        projectId={projectId}
-        draftId={draftId}
-        initialChangeRequest={initialChangeRequest}
-      />
+      <WorkspaceComposerEditingSessionsProvider
+        workspaceKey={NEW_WORKSPACE_SESSIONS_KEY}
+        tabIds={sessionTabIds}
+      >
+        <ComposerEditingScope tabId={draftKey} targetKey={draftKey}>
+          <NewWorkspaceScreen
+            key={screenKey}
+            serverId={serverId}
+            sourceDirectory={sourceDirectory}
+            displayName={displayName}
+            projectId={projectId}
+            draftId={draftId}
+            initialChangeRequest={initialChangeRequest}
+          />
+        </ComposerEditingScope>
+      </WorkspaceComposerEditingSessionsProvider>
     </HostRouteBootstrapBoundary>
   );
 }

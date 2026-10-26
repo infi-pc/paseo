@@ -6,7 +6,7 @@ import {
   readToolCallSummaryFilePath,
 } from "@getpaseo/protocol/tool-call-summary";
 import type { AgentMessage } from "@getpaseo/protocol/agent-message";
-import { buildAgentMessageDisplay } from "@getpaseo/protocol/agent-message-display";
+import { buildAgentMessageDisplay } from "@getpaseo/protocol/paseo-tool-presentation/index";
 import type { PlanOutcome } from "@/components/plan-card";
 import type { ComponentType } from "react";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
@@ -29,6 +29,7 @@ interface BuildToolCallPresentationInput {
   detail?: ToolCallDetail;
   cwd?: string;
   metadata?: Record<string, unknown>;
+  targetAgentTitle?: string;
   resolveIcon: ToolCallIconResolver;
 }
 
@@ -53,6 +54,7 @@ export interface ToolCallPresentation {
 export type ToolCallIconResolver = (
   toolName: string,
   detail: ToolCallDetail | undefined,
+  agentMessage: AgentMessage | undefined,
 ) => ToolCallPresentationIcon;
 
 function displayStatus(status: ToolCallStatus): ToolCallDisplayInput["status"] {
@@ -78,6 +80,7 @@ export function buildToolCallPresentation(
     detail: detailForDisplay,
     metadata: input.metadata,
     cwd: input.cwd,
+    targetAgentTitle: input.targetAgentTitle,
   });
   const isLoadingDetails = isPendingToolCallDetail({
     detail,
@@ -119,7 +122,7 @@ export function buildToolCallPresentation(
     summary: displayModel.summary,
     description: input.agentMessage ? undefined : readToolCallSummary(input.metadata),
     errorText: displayModel.errorText,
-    icon: input.resolveIcon(input.toolName, detail),
+    icon: input.resolveIcon(input.toolName, detail, input.agentMessage),
     isLoadingDetails,
     hasDetails,
     canOpenDetails: hasDetails || isLoadingDetails,

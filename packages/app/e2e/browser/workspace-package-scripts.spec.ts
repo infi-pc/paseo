@@ -118,12 +118,12 @@ test("long script lists stay bounded, scroll, and filter by name", async ({ page
     await page.screenshot({ path: testInfo.outputPath("scrollable-scripts.png") });
     await page.keyboard.press("Escape");
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByTestId("workspace-scripts-button").click();
-    const sheet = page.getByTestId("workspace-scripts-menu-content");
-    await expect(sheet).toBeVisible();
+    await page.getByTestId("workspace-header-menu-trigger").click();
+    await page.getByTestId("workspace-header-scripts").click();
     await page.getByTestId("workspace-scripts-search").fill("task-79");
-    await expect(sheet.locator('[data-testid^="workspace-scripts-item-"]')).toHaveCount(1);
-    await expect(lastRow).toBeInViewport();
+    const mobileRows = page.locator('[data-testid^="workspace-scripts-row-"]');
+    await expect(mobileRows).toHaveCount(1);
+    await expect(mobileRows).toBeInViewport();
     await page.screenshot({ path: testInfo.outputPath("compact-script-search.png") });
   } finally {
     await client.close();

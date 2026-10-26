@@ -1,12 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useId, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  Pressable,
-  StyleSheet as RNStyleSheet,
-  Text,
-  View,
-  type LayoutChangeEvent,
-} from "react-native";
+import { StyleSheet as RNStyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import Animated, { FadeIn, FadeOut, useReducedMotion } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -92,7 +87,7 @@ function PinnedPromptBubble({
       entering={prefersReducedMotion ? undefined : FadeIn.duration(140)}
       exiting={prefersReducedMotion ? undefined : FadeOut.duration(140)}
     >
-      <Pressable
+      <PressHighlight
         style={styles.bubble}
         onPress={handlePress}
         accessibilityRole="button"
@@ -105,7 +100,7 @@ function PinnedPromptBubble({
           </View>
         </View>
         {isOverflowing ? <PinnedPromptFade /> : null}
-      </Pressable>
+      </PressHighlight>
     </Animated.View>
   );
 }

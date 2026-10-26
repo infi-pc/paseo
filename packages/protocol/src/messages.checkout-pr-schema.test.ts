@@ -1,6 +1,6 @@
 import { ForgeSearchItemSchema } from "./messages";
 import { describe, expect, test } from "vitest";
-import { WSOutboundMessageSchema as GeneratedOutboundSchema } from "./generated/validation/ws-outbound.aot.js";
+import { validateWSOutboundMessage } from "./validation/ws-outbound.js";
 
 import {
   CheckoutGithubGetCheckDetailsRequestSchema,
@@ -43,7 +43,7 @@ describe("checkout PR schemas", () => {
         },
       },
     };
-    expect(GeneratedOutboundSchema.safeParse(response)).toMatchObject({
+    expect(validateWSOutboundMessage(response)).toMatchObject({
       success: true,
       data: response,
     });
@@ -66,7 +66,7 @@ describe("checkout PR schemas", () => {
     };
     expect(SessionInboundMessageSchema.parse(request)).toEqual(request);
     expect(
-      GeneratedOutboundSchema.safeParse({
+      validateWSOutboundMessage({
         type: "session",
         message: {
           type: "checkout.linear.link_issue.response",
@@ -892,3 +892,14 @@ describe("checkout PR schemas", () => {
     });
   });
 });
+
+test.each([undefined, false, true])(
+  "accepts optional Hoplite capability (%s)",
+  (hopliteProvider) => {
+    const features = hopliteProvider === undefined ? {} : { hopliteProvider };
+    expect(
+      ServerInfoStatusPayloadSchema.parse({ status: "server_info", serverId: "test", features })
+        .features,
+    ).toEqual(features);
+  },
+);

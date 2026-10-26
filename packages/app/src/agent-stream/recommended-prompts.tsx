@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { CornerDownRight, Pencil } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -90,13 +91,10 @@ const RecommendedPromptRow = memo(function RecommendedPromptRow({
 
   // Hover lives on a plain View; both Pressables sit inside it. See docs/hover.md.
   return (
-    <View
-      style={styles.row}
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
-      testID="recommended-prompt"
-    >
-      <Pressable
+    <View style={styles.row} testID="recommended-prompt">
+      <PressHighlight
+        onHoverIn={handlePointerEnter}
+        onHoverOut={handlePointerLeave}
         onPress={handleSend}
         disabled={isSending}
         style={sendStyle}
@@ -109,12 +107,14 @@ const RecommendedPromptRow = memo(function RecommendedPromptRow({
           uniProps={isHovered ? foregroundColorMapping : foregroundMutedColorMapping}
         />
         <Text style={[styles.text, isHovered ? styles.textHighlighted : null]}>{prompt}</Text>
-      </Pressable>
+      </PressHighlight>
       <View style={editSlotStyle} pointerEvents={showEdit ? "auto" : "none"}>
         <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild>
             <View collapsable={false}>
-              <Pressable
+              <PressHighlight
+                onHoverIn={handlePointerEnter}
+                onHoverOut={handlePointerLeave}
                 onPress={handleUseEdited}
                 disabled={isSending}
                 style={styles.edit}
@@ -128,7 +128,7 @@ const RecommendedPromptRow = memo(function RecommendedPromptRow({
                     uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
                   />
                 )}
-              </Pressable>
+              </PressHighlight>
             </View>
           </TooltipTrigger>
           {tooltipContent}

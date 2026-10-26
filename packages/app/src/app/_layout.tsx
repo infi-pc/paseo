@@ -1,12 +1,15 @@
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { useIsExplorerSidebarOpen } from "@/workspace-tabs/explorer-sidebar";
+import { ComposerEditingSessionsProvider } from "@/composer/editing-session";
+import { SheetHostScope } from "@/components/ui/isolated-bottom-sheet-modal";
 import "@/styles/unistyles";
 // FORK(workspace-snooze): dialog host and workspace-only notification navigation.
 import { WorkspaceSnoozeHost } from "@/workspace-snooze/dialog";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { PortalProvider } from "@gorhom/portal";
 import { LucideProvider } from "lucide-react-native";
 import * as Linking from "expo-linking";
-import * as Notifications from "expo-notifications";
 import { Stack, useNavigationContainerRef, usePathname, useRouter } from "expo-router";
 import {
   createContext,
@@ -15,7 +18,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -45,7 +47,7 @@ import { DesktopWindowControls } from "@/components/desktop/window-controls";
 import { SidebarModelProvider } from "@/components/sidebar/sidebar-model";
 import { WorkspacePinShortcutHandler } from "@/components/workspace-pin-shortcut-handler";
 import { WorkspaceRenameHost } from "@/components/workspace-rename-host";
-import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sidebar-host";
+import { WorkspaceExplorerOpenGesture } from "@/mobile-panels/explorer-open-gesture";
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
@@ -53,11 +55,7 @@ import { NavigationHistoryRecorder } from "@/navigation/history/recorder";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import { HostConfirmationSheet } from "@/hosts/host-confirmation-sheet";
-import {
-  getIsElectronRuntime,
-  HEADER_INNER_HEIGHT,
-  useIsCompactFormFactor,
-} from "@/constants/layout";
+import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import {
   canDesktopAppSidebarShare,
   resolveDesktopAppChromeLayout,
@@ -79,6 +77,7 @@ import {
   type StartupBlocker,
 } from "@/navigation/host-runtime-bootstrap";
 import { registerWorkspaceRouteNavigationRef } from "@/navigation/workspace-route-navigation";
+import { useSettingsRouteEntry } from "@/navigation/settings-presentation";
 import { ThemedStack } from "@/navigation/themed-stack";
 import { shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { AgentNavigationListener } from "@/desktop/agent-navigation";
@@ -95,12 +94,10 @@ import { useGlobalNewWorkspaceAction } from "@/hooks/use-global-new-workspace-ac
 import { useLatchedBoolean } from "@/hooks/use-latched-boolean";
 import { useFaviconStatus } from "@/hooks/use-favicon-status";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { resolveExplorerSidebarPresentation } from "@/workspace-tabs/explorer-sidebar";
 import { KeyboardShiftProvider } from "@/keyboard/shift";
 import { useCompactWebViewportZoomLock } from "@/hooks/use-compact-web-viewport-zoom-lock";
 import { useOpenProject } from "@/hooks/use-open-project";
 import { useAppSettings } from "@/hooks/use-settings";
-import { useStableEvent } from "@/hooks/use-stable-event";
 import { useOpenAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelsProvider, useIsMobilePanelActive } from "@/mobile-panels/provider";
 import {
@@ -108,7 +105,6 @@ import {
   useKeyboardActionDispatcher,
 } from "@/keyboard/keyboard-action-dispatcher-context";
 import { polyfillCrypto } from "@/polyfills/crypto";
-import { polyfillNavigator } from "@/polyfills/navigator";
 import {
   getHostRuntimeStore,
   hasConfiguredLocalDaemonOverride,
@@ -122,6 +118,7 @@ import { usePanelStore } from "@/stores/panel-store";
 import { flushDraftPersistStorage } from "@/stores/draft-store";
 import { getNextThemePreference, ICON_STROKE_WIDTH } from "@/styles/theme";
 import { useSessionStore } from "@/stores/session-store";
+import { WorkspaceLayoutModePublisher } from "@/workspace-tabs/layout-mode-publisher";
 import { installWebScrollbarStyles } from "@/styles/install-web-scrollbar-styles";
 import type { HostProfile } from "@/types/host-connection";
 import {
@@ -135,16 +132,10 @@ import {
   parseHostWorkspaceRouteFromPathname,
   parseServerIdFromPathname,
 } from "@/utils/host-routes";
-import { buildNotificationRoute, resolveNotificationTarget } from "@/utils/notification-routing";
-import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { PluginCatalogSync } from "@/plugins";
-import {
-  ensureOsNotificationPermission,
-  WEB_NOTIFICATION_CLICK_EVENT,
-  type WebNotificationClickDetail,
-} from "@/utils/os-notifications";
+import { NotificationOpenRouter } from "@/notification-open/react";
+import { ensureOsNotificationPermission } from "@/utils/os-notifications";
 
-polyfillNavigator();
 polyfillCrypto();
 
 export interface HostRuntimeBootstrapState {
@@ -162,119 +153,6 @@ const HostRuntimeBootstrapContext = createContext<HostRuntimeBootstrapState>({
   storeReady: false,
   startupBlocker: { kind: "none" },
 });
-
-function PushNotificationRouter() {
-  const router = useRouter();
-  const lastHandledIdRef = useRef<string | null>(null);
-  const openNotification = useStableEvent((data: Record<string, unknown> | undefined) => {
-    const target = resolveNotificationTarget(data);
-    const serverId = target.serverId;
-    const workspaceId = target.workspaceId;
-    const agentId = target.agentId;
-    if (serverId && workspaceId && agentId) {
-      navigateToAgent({ serverId, workspaceId, agentId, pin: true });
-      return;
-    }
-
-    // FORK(workspace-snooze): a wake notification selects its workspace.
-    if (serverId && workspaceId && !target.terminalId) {
-      navigateToWorkspace({ serverId, workspaceId });
-      return;
-    }
-    router.navigate(buildNotificationRoute(data));
-  });
-
-  useEffect(() => {
-    if (isWeb) {
-      let removeDesktopNotificationListener: (() => void) | null = null;
-      let cancelled = false;
-
-      if (getIsElectronRuntime()) {
-        void ensureOsNotificationPermission();
-
-        const unlistenResult = getDesktopHost()?.events?.on?.(
-          "notification-click",
-          (payload: unknown) => {
-            const data =
-              typeof payload === "object" &&
-              payload !== null &&
-              "data" in payload &&
-              typeof (payload as { data?: unknown }).data === "object" &&
-              (payload as { data?: unknown }).data !== null
-                ? (payload as { data: Record<string, unknown> }).data
-                : undefined;
-            openNotification(data);
-          },
-        );
-
-        void Promise.resolve(unlistenResult).then((unlisten) => {
-          if (typeof unlisten !== "function") {
-            return;
-          }
-          if (cancelled) {
-            unlisten();
-            return;
-          }
-          removeDesktopNotificationListener = unlisten;
-          return;
-        });
-      }
-
-      const openFromWebClick = (event: Event) => {
-        const customEvent = event as CustomEvent<WebNotificationClickDetail>;
-        event.preventDefault();
-        openNotification(customEvent.detail?.data);
-      };
-
-      window.addEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
-
-      return () => {
-        cancelled = true;
-        removeDesktopNotificationListener?.();
-        window.removeEventListener(WEB_NOTIFICATION_CLICK_EVENT, openFromWebClick as EventListener);
-      };
-    }
-
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        // When the app is open, don't show OS banners.
-        shouldShowAlert: false,
-        shouldShowBanner: false,
-        shouldShowList: false,
-        shouldPlaySound: false,
-        shouldSetBadge: false,
-      }),
-    });
-
-    const openFromResponse = (response: Notifications.NotificationResponse) => {
-      const identifier = response.notification.request.identifier;
-      if (lastHandledIdRef.current === identifier) {
-        return;
-      }
-      lastHandledIdRef.current = identifier;
-
-      const data = response.notification.request.content.data as
-        | Record<string, unknown>
-        | undefined;
-      openNotification(data);
-    };
-
-    const subscription = Notifications.addNotificationResponseReceivedListener(openFromResponse);
-
-    void Notifications.getLastNotificationResponseAsync().then((response) => {
-      if (response) {
-        openFromResponse(response);
-      }
-      return;
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [openNotification]);
-
-  return null;
-}
 
 function ManagedDaemonSession({ daemon }: { daemon: HostProfile }) {
   const client = useHostRuntimeClient(daemon.serverId);
@@ -476,7 +354,9 @@ function TopLeftWindowChromeSlot({
   showToggle: boolean;
   showKeepAwake: boolean;
 }) {
-  if (!showToggle && !showKeepAwake) return null;
+  const isPreventingSleep = useIsPreventingSleep();
+  const keepAwakeVisible = showKeepAwake && isPreventingSleep;
+  if (!showToggle && !keepAwakeVisible) return null;
   return (
     <WindowChromeRegion corners="top-left">
       <WindowChromeSafeArea
@@ -486,7 +366,7 @@ function TopLeftWindowChromeSlot({
         style={layoutStyles.windowSidebarToggle}
       >
         {showToggle ? <WindowSidebarMenuToggle /> : null}
-        {showKeepAwake ? <KeepAwakeIndicator /> : null}
+        {keepAwakeVisible ? <KeepAwakeIndicator /> : null}
       </WindowChromeSafeArea>
     </WindowChromeRegion>
   );
@@ -502,17 +382,15 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   const isFocusModeEnabled = usePanelStore((state) => state.desktop.focusModeEnabled);
   const isDesktopAgentListOpen = usePanelStore((state) => state.desktop.agentListOpen);
   const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
-  const { width: viewportWidth } = useWindowDimensions();
+  const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const viewportWidth = windowWidth - insets.left - insets.right;
 
   const cycleTheme = useCallback(() => {
     void updateSettings({ theme: getNextThemePreference(settings.theme) });
   }, [settings.theme, updateSettings]);
 
   const isCompactLayout = useIsCompactFormFactor();
-  const explorerSidebarPresentation = resolveExplorerSidebarPresentation({
-    isCompact: isCompactLayout,
-  });
-  const usesCompactExplorerHost = explorerSidebarPresentation !== "pane";
   useCompactWebViewportZoomLock(isCompactLayout);
   const pathname = usePathname();
   const isWorkspaceRoute = parseHostWorkspaceRouteFromPathname(pathname) !== null;
@@ -550,11 +428,18 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   useActiveWorktreeNewAction();
   useGlobalNewWorkspaceAction();
 
+  const activeWorkspace = useActiveWorkspaceSelection();
+  const explorerVisible = useIsExplorerSidebarOpen({
+    isCompact: isCompactLayout,
+    workspaceKey: activeWorkspace
+      ? `${activeWorkspace.serverId}:${activeWorkspace.workspaceId}`
+      : null,
+  });
   const appContentMinimumWidth = resolveDesktopAppContentMinimum({
+    explorerVisible: isWorkspaceRoute && explorerVisible,
     isSettingsRoute: pathname.includes("/settings"),
   });
   const desktopSidebarMounted = hasMountedDesktopSidebar && !isWorkspaceFocusModeEnabled;
-  const isPreventingSleep = useIsPreventingSleep();
   const desktopSidebarVisible = resolveDesktopSidebarVisibility({
     chromeEnabled,
     isCompactLayout,
@@ -577,7 +462,7 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   // The sidebar's own chrome row owns the indicator whenever the sidebar is
   // rendered; this window-level slot covers the collapsed case, so the two can
   // never both show a coffee icon.
-  const showWindowKeepAwake = !isCompactLayout && !desktopSidebarVisible && isPreventingSleep;
+  const showWindowKeepAwake = !isCompactLayout && !desktopSidebarVisible;
   const sidebarChrome = (
     <SidebarChrome
       mounted={isCompactLayout ? chromeEnabled : desktopSidebarMounted}
@@ -589,27 +474,25 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   if (isWeb) {
     themedSidebarChrome = <AppearanceStyleBoundary>{sidebarChrome}</AppearanceStyleBoundary>;
   }
+  const workspaceChromeStyle = useMemo(
+    () => [rowStyle, !isCompactLayout && { paddingLeft: insets.left, paddingRight: insets.right }],
+    [insets.left, insets.right, isCompactLayout],
+  );
   const workspaceChrome = (
-    <View style={rowStyle}>
+    <View style={workspaceChromeStyle}>
+      <WorkspaceLayoutModePublisher />
       {!isCompactLayout ? (
         <WindowChromeRegion corners={appChromeLayout.sidebarCorners}>
           {themedSidebarChrome}
         </WindowChromeRegion>
       ) : null}
-      {usesCompactExplorerHost ? (
-        <CompactExplorerSidebarHost
-          enabled={chromeEnabled}
-          presentation={explorerSidebarPresentation === "dock" ? "dock" : "overlay"}
+      <WorkspaceExplorerOpenGesture enabled={chromeEnabled && isCompactLayout}>
+        <WindowChromeRegion
+          corners={isCompactLayout && chromeEnabled ? "both" : appChromeLayout.contentCorners}
         >
-          <WindowChromeRegion corners={chromeEnabled ? "both" : appChromeLayout.contentCorners}>
-            <View style={flexStyle}>{children}</View>
-          </WindowChromeRegion>
-        </CompactExplorerSidebarHost>
-      ) : (
-        <WindowChromeRegion corners={appChromeLayout.contentCorners}>
           <View style={flexStyle}>{children}</View>
         </WindowChromeRegion>
-      )}
+      </WorkspaceExplorerOpenGesture>
     </View>
   );
 
@@ -652,18 +535,29 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     </View>
   );
 
-  const content = isCompactLayout ? (
-    <MobileGestureWrapper chromeEnabled={chromeEnabled}>{surface}</MobileGestureWrapper>
-  ) : (
-    surface
-  );
-
   return (
-    <CommandCenterProvider>
-      {content}
-      {/* FORK(workspace-snooze): preserve edits when the layout changes between sidebar and overlay. */}
-      <WorkspaceSnoozeHost />
-    </CommandCenterProvider>
+    <AppContainerLifetime compactGesturesEnabled={chromeEnabled && isCompactLayout}>
+      <SheetHostScope enabled={isCompactLayout}>{surface}</SheetHostScope>
+    </AppContainerLifetime>
+  );
+}
+
+function AppContainerLifetime({
+  children,
+  compactGesturesEnabled,
+}: {
+  children: ReactNode;
+  compactGesturesEnabled: boolean;
+}) {
+  return (
+    <ComposerEditingSessionsProvider>
+      <CommandCenterProvider>
+        <MobileGestureWrapper chromeEnabled={compactGesturesEnabled}>
+          {children}
+          <WorkspaceSnoozeHost />
+        </MobileGestureWrapper>
+      </CommandCenterProvider>
+    </ComposerEditingSessionsProvider>
   );
 }
 
@@ -696,10 +590,15 @@ function MobileGestureWrapper({
   chromeEnabled: boolean;
 }) {
   const openGesture = useOpenAgentListGesture(chromeEnabled);
+  const isCompactLayout = useIsCompactFormFactor();
 
   return (
     <GestureDetector gesture={openGesture} touchAction={MOBILE_WEB_GESTURE_TOUCH_ACTION}>
-      <View collapsable={false} style={layoutStyles.surfaceFill}>
+      <View
+        collapsable={false}
+        style={layoutStyles.surfaceFill}
+        testID={isCompactLayout ? "compact-shell" : "wide-shell"}
+      >
         {children}
       </View>
     </GestureDetector>
@@ -891,6 +790,7 @@ function OpenProjectListener() {
 }
 
 function AppWithSidebar({ children }: { children: ReactNode }) {
+  useSettingsRouteEntry();
   const pathname = usePathname();
   const hosts = useHosts();
   const storeReady = useStoreReady();
@@ -958,6 +858,9 @@ function WorkspaceRouteNavigationBridge() {
 }
 
 function AppShell() {
+  useEffect(() => {
+    if (getDesktopHost()) void ensureOsNotificationPermission();
+  }, []);
   return (
     <MobilePanelsProvider>
       <HorizontalScrollProvider>
@@ -972,10 +875,15 @@ function AppShell() {
   );
 }
 
+function NotificationOpenBridge() {
+  const { startupBlocker } = useHostRuntimeBootstrapState();
+  return <NotificationOpenRouter startupBlocked={startupBlocker.kind !== "none"} />;
+}
+
 function RuntimeProviders({ children }: { children: ReactNode }) {
   return (
     <HostRuntimeBootstrapProvider>
-      <PushNotificationRouter />
+      <NotificationOpenBridge />
       <SidebarCalloutProvider>
         <ProvidersWrapper>{children}</ProvidersWrapper>
       </SidebarCalloutProvider>

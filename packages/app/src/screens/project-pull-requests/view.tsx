@@ -1,6 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Pressable,
   Text,
   View,
   type GestureResponderEvent,
@@ -259,7 +259,7 @@ function PullRequestRow({
     [],
   );
   return (
-    <Pressable
+    <PressHighlight
       style={rowStyle}
       onPress={select}
       accessibilityRole="button"
@@ -298,7 +298,7 @@ function PullRequestRow({
         onPress={openExternal}
         accessibilityLabel={t("projectPullRequests.external", { number: item.number })}
       />
-    </Pressable>
+    </PressHighlight>
   );
 }
 

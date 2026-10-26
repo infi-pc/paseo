@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import React, { useCallback, useEffect, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import type { BackgroundRequest } from "@getpaseo/protocol/messages";
@@ -28,7 +29,7 @@ function RequestRow({
   if (request.purpose === "chapters") title = t("chapters.title");
   if (request.snoozeCheck) title = t("workspaceSnooze.checkTitle");
   return (
-    <Pressable
+    <PressHighlight
       onPress={open}
       disabled={!attempt}
       accessibilityRole="button"
@@ -60,7 +61,7 @@ function RequestRow({
           {request.error}
         </Text>
       ) : null}
-    </Pressable>
+    </PressHighlight>
   );
 }
 

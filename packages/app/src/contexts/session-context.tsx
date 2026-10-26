@@ -40,7 +40,6 @@ import {
   useSessionStore,
   type SessionState,
 } from "@/stores/session-store";
-import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { sendOsNotification } from "@/utils/os-notifications";
 import { getIsAppActivelyVisible, getIsAppVisible } from "@/utils/app-visibility";
 import {
@@ -61,10 +60,7 @@ export type { DraftInput } from "@/stores/draft-store";
 export type {
   Agent,
   ExplorerEntry,
-  ExplorerFile,
   ExplorerEntryKind,
-  ExplorerFileKind,
-  ExplorerEncoding,
   AgentFileExplorerState,
 } from "@/stores/session-store";
 
@@ -172,11 +168,6 @@ function resolveAgentAttentionNotification(
   });
 }
 
-type WorkspaceSetupProgressPayload = Extract<
-  SessionOutboundMessage,
-  { type: "workspace_setup_progress" }
->["payload"];
-
 function notifyVoiceAbortFailure(
   data: Extract<SessionOutboundMessage, { type: "activity_log" }>["payload"],
   notifyError: (message: string) => void,
@@ -232,7 +223,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
   const updateSessionServerInfo = useSessionStore((state) => state.updateSessionServerInfo);
   const setSleepPrevention = useSessionStore((state) => state.setSleepPrevention);
   const setViewedTimelineSync = useSessionStore((state) => state.setViewedTimelineSync);
-  const upsertWorkspaceSetupProgress = useWorkspaceSetupStore((state) => state.upsertProgress);
 
   // Track focused agent for heartbeat
   const focusedAgentId = useSessionStore(
@@ -372,13 +362,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     }
   }, [flushAgentLastActivity, serverId, isConnected, setInitializingAgents]);
 
-  const applyWorkspaceSetupProgress = useCallback(
-    (payload: WorkspaceSetupProgressPayload) => {
-      upsertWorkspaceSetupProgress({ serverId, payload });
-    },
-    [serverId, upsertWorkspaceSetupProgress],
-  );
-
   useEffect(() => {
     const setAgentInitializing = createSetAgentInitializing(serverId, setInitializingAgents);
     const onStream = (message: SessionOutboundMessage) => {
@@ -515,7 +498,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         "agent_permission_resolved",
         "agent.provider_subagents.update",
         "checkout_status_update",
-        "workspace_setup_progress",
         "status.server_info",
       ],
       { notifications: true },
@@ -552,11 +534,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     const unsubCheckoutStatusUpdate = onFeed("checkout_status_update", (message) => {
       if (message.type !== "checkout_status_update") return;
       applyCheckoutStatusUpdateFromEvent({ queryClient, serverId, message });
-    });
-
-    const unsubWorkspaceSetupProgress = onFeed("workspace_setup_progress", (message) => {
-      if (message.type !== "workspace_setup_progress") return;
-      applyWorkspaceSetupProgress(message.payload);
     });
 
     const unsubStatus = onFeed("status", (message) => {
@@ -727,7 +704,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       unsubProviderSubagentUpdate();
       unsubAgentAttention();
       unsubCheckoutStatusUpdate();
-      unsubWorkspaceSetupProgress();
       unsubStatus();
       unsubPermissionRequest();
       unsubPermissionResolved();
@@ -749,7 +725,6 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
     setAgents,
     setPendingPermissions,
     notifyAgentAttention,
-    applyWorkspaceSetupProgress,
     updateSessionServerInfo,
     setSleepPrevention,
     toast,

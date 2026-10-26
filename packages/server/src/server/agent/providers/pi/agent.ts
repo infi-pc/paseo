@@ -1005,6 +1005,8 @@ function isProcessExitEvent(
 
 function isPiAgentSessionEvent(event: PiRuntimeEvent): event is PiAgentSessionEvent {
   switch (event.type) {
+    case "thinking_level_changed":
+      return typeof event.level === "string" && normalizePiThinkingOption(event.level) !== null;
     case "agent_start":
     case "turn_start":
     case "message_start":
@@ -1579,6 +1581,22 @@ export class PiRpcAgentSession implements AgentSession {
     return await resultPromise;
   }
 
+  async canStopRuntime(): Promise<boolean> {
+    if (
+      this.closed ||
+      this.activeTurnId ||
+      this.pendingExtensionUiRequests.size ||
+      this.pendingExtensionResults.size ||
+      this.pendingExtensionHydrations.size ||
+      this.pendingSteerSubmissions.length ||
+      this.pendingNoTurnOutputs.length ||
+      this.interruptingTurn
+    )
+      return false;
+    const state = await this.runtimeSession.getState();
+    return !state.isStreaming && !state.isCompacting && state.pendingMessageCount === 0;
+  }
+
   async close(): Promise<void> {
     if (this.closed) {
       return;
@@ -2136,6 +2154,15 @@ export class PiRpcAgentSession implements AgentSession {
     }
 
     switch (event.type) {
+      case "thinking_level_changed":
+        this.state = { ...this.state, thinkingLevel: event.level };
+        this.config.thinkingOptionId = event.level;
+        this.emit({
+          type: "thinking_option_changed",
+          provider: this.provider,
+          thinkingOptionId: event.level,
+        });
+        return;
       case "agent_start":
         this.activeTurnStarted = true;
         this.clearNoTurnBuffers();

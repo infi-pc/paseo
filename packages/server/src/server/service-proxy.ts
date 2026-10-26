@@ -1,12 +1,11 @@
 import http, { createServer as createHTTPServer } from "node:http";
 import net from "node:net";
+import { connectToLocalService, requestLocalService } from "./local-service-connection.js";
 import { createHash } from "node:crypto";
 import { existsSync, unlinkSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import express, { type RequestHandler } from "express";
 import type { Logger } from "pino";
-// FORK(service-loopback): health checks and forwarding share both loopback address families.
-import { serviceLoopbackOptions } from "./service-loopback.js";
 
 export type ServiceProxyListenTarget =
   | { type: "tcp"; host: string; port: number }
@@ -330,9 +329,8 @@ function proxyHttpRequest({
 }): void {
   const forwardedHeaders = buildForwardedHeaders({ req, route, protocol: req.protocol });
 
-  const proxyReq = http.request(
+  const proxyReq = requestLocalService(
     {
-      ...serviceLoopbackOptions,
       port: route.port,
       path: req.originalUrl,
       method: req.method,
@@ -370,7 +368,8 @@ function proxyUpgradeRequest({
   route: ServiceProxyRoute;
   logger: Logger;
 }): void {
-  const targetSocket = net.connect({ ...serviceLoopbackOptions, port: route.port }, () => {
+  const targetSocket = connectToLocalService(route.port);
+  targetSocket.on("connect", () => {
     const forwardedHeaders = buildForwardedHeaders({ req, route, protocol: "http" });
     forwardedHeaders.connection = "Upgrade";
     forwardedHeaders.upgrade = req.headers.upgrade ?? "websocket";

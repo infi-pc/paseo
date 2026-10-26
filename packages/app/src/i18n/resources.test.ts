@@ -22,6 +22,30 @@ function flattenKeys(value: unknown, prefix = ""): string[] {
   return entries.flatMap(([key, child]) => flattenKeys(child, prefix ? `${prefix}.${key}` : key));
 }
 
+const pluralSuffixPattern = /_(zero|one|two|few|many|other)$/;
+const arabicPluralSuffixes = ["zero", "one", "two", "few", "many", "other"] as const;
+const arabicProviderUsagePluralKeys = [
+  "providerUsage.duration.days",
+  "providerUsage.duration.hours",
+  "providerUsage.duration.minutes",
+  "providerUsage.timing.daysAgo",
+  "providerUsage.timing.hoursAgo",
+  "providerUsage.timing.minutesAgo",
+] as const;
+
+function canonicalKeys(value: unknown): string[] {
+  const keys = flattenKeys(value);
+  const keySet = new Set(keys);
+  return [
+    ...new Set(
+      keys.map((key) => {
+        const baseKey = key.replace(pluralSuffixPattern, "");
+        return baseKey !== key && keySet.has(baseKey) ? baseKey : key;
+      }),
+    ),
+  ].sort();
+}
+
 function flattenStrings(value: unknown, prefix = ""): Record<string, string> {
   if (typeof value === "string") {
     return { [prefix]: value };
@@ -42,6 +66,7 @@ function findInterpolationMismatches(resource: unknown): string[] {
   const englishStrings = flattenStrings(en);
   const localeStrings = flattenStrings(resource);
   return Object.entries(localeStrings).flatMap(([key, value]) => {
+    if (!(key in englishStrings)) return [];
     const expected = [...(englishStrings[key] ?? "").matchAll(interpolationPattern)]
       .map((match) => match[0])
       .sort();
@@ -139,9 +164,18 @@ function findUntranslatedConnectionErrors(): string[] {
 
 describe("translation resources", () => {
   it("requires English source keys for existing translations", () => {
-    const englishKeys = new Set(flattenKeys(en));
+    const englishKeys = new Set(canonicalKeys(en));
     for (const resource of [ar, es, fr, ja, ko, ptBR, ru, zhCN]) {
-      expect(flattenKeys(resource).filter((key) => !englishKeys.has(key))).toEqual([]);
+      expect(canonicalKeys(resource).filter((key) => !englishKeys.has(key))).toEqual([]);
+    }
+  });
+
+  it("includes every Arabic form for provider-usage durations", () => {
+    const arabicStrings = flattenStrings(ar);
+    for (const key of arabicProviderUsagePluralKeys) {
+      for (const suffix of arabicPluralSuffixes) {
+        expect(arabicStrings[`${key}_${suffix}`]).toBeTypeOf("string");
+      }
     }
   });
 
@@ -321,9 +355,6 @@ describe("translation resources", () => {
 
   it("includes Settings expansion keys for the Batch 3A migration", () => {
     expect(en.settings.diagnostics.title).toBe("Diagnostics");
-    expect(en.settings.diagnostics.legacyTerminalRenderer.label).toBe(
-      "Use legacy terminal renderer",
-    );
     expect(en.settings.about.title).toBe("About");
     expect(en.settings.about.releaseChannel.label).toBe("Release channel");
     expect(en.settings.appearance.theme.title).toBe("Theme");

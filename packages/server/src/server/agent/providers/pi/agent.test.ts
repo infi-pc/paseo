@@ -1943,6 +1943,48 @@ describe("PiRpcAgentSession", () => {
     expect(session.describePersistence()?.metadata?.thinkingOptionId).toBe("off");
   });
 
+  test.each(["high", "off", "max"] as const)(
+    "publishes an extension's thinking change to %s before refreshing state",
+    async (level) => {
+      const { pi, session } = await createSession();
+      onTestFinished(() => session.close());
+      const changes: AgentStreamEvent[] = [];
+      session.subscribe((event) => {
+        if (event.type === "thinking_option_changed") {
+          expect(session.describePersistence()?.metadata?.thinkingOptionId).toBe(level);
+          changes.push(event);
+        }
+      });
+      const runtime = pi.latestSession();
+      runtime.state = { ...runtime.state, thinkingLevel: level };
+      runtime.emit({ type: "thinking_level_changed", level });
+
+      expect(changes).toEqual([
+        { type: "thinking_option_changed", provider: "pi", thinkingOptionId: level },
+      ]);
+      expect(session.describePersistence()?.metadata?.thinkingOptionId).toBe(level);
+      await expect(session.getRuntimeInfo()).resolves.toMatchObject({ thinkingOptionId: level });
+    },
+  );
+
+  test.each([undefined, null, "invalid", 123])(
+    "ignores a thinking change with invalid level %s",
+    async (level) => {
+      const { pi, session } = await createSession();
+      onTestFinished(() => session.close());
+      const initialThinking = session.describePersistence()?.metadata?.thinkingOptionId;
+      const changes: AgentStreamEvent[] = [];
+      session.subscribe((event) => {
+        if (event.type === "thinking_option_changed") changes.push(event);
+      });
+
+      pi.latestSession().emit({ type: "thinking_level_changed", level });
+
+      expect(changes).toEqual([]);
+      expect(session.describePersistence()?.metadata?.thinkingOptionId).toBe(initialThinking);
+    },
+  );
+
   test("surfaces state refresh failures after a Pi thinking update", async () => {
     const { pi, session } = await createSession();
     onTestFinished(() => session.close());
@@ -3445,4 +3487,24 @@ describe("transformPiModels", () => {
       },
     ]);
   });
+});
+
+test("pi runtime safety protects queued replies and runtime-owned activity", async () => {
+  const runtime = new FakePi();
+  const session = await createClient(runtime).createSession(createConfig());
+  onTestFinished(() => session.close());
+  const native = runtime.latestSession();
+  expect(await session.canStopRuntime!()).toBe(true);
+  native.state.pendingMessageCount = 1;
+  expect(await session.canStopRuntime!()).toBe(false);
+  native.state.pendingMessageCount = 0;
+  native.state.isStreaming = true;
+  expect(await session.canStopRuntime!()).toBe(false);
+  native.state.isStreaming = false;
+  native.state.isCompacting = true;
+  expect(await session.canStopRuntime!()).toBe(false);
+  native.state.isCompacting = false;
+  expect(await session.canStopRuntime!()).toBe(true);
+  native.getStateError = new Error("Unable to prove idle");
+  await expect(session.canStopRuntime!()).rejects.toThrow("Unable to prove idle");
 });

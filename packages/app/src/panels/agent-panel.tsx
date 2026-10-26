@@ -20,6 +20,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
+import { useAgentStreamTail } from "@/agent-stream/use-agent-stream-tail";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ComposerDock } from "@/composer/dock";
@@ -27,6 +28,11 @@ import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { RetainedChatContent } from "./retained-chat-content";
 import { Composer } from "@/composer";
+import {
+  useComposerEditingSession,
+  useComposerFullscreen,
+  type ComposerEditingSession,
+} from "@/composer/editing-session";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import {
   COMPOSER_DIFF_STAT_PILL_HEIGHT,
@@ -44,7 +50,7 @@ import { dispatchComposerAgentMessage } from "@/composer/actions";
 import { resolveComposerAttachmentSubmitFormat } from "@/composer/attachments/submit";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { encodeImages } from "@/utils/encode-images";
-import { useProviderIcon } from "@/components/provider-icons";
+import { useAgentDescriptor } from "@/agent-presentation";
 import { useToastHost, type ToastApi, type ToastState } from "@/components/toast-host";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import { useWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -65,7 +71,9 @@ import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { reconcileMissingAgentStateWithPresentAgent } from "@/panels/agent-panel-load-state";
 import { TimelineSyncStatus } from "@/timeline/sync-status";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
-import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
+import { useAgentFactsLine } from "@/panels/agent-facts-line";
+import { PaneSubtitle } from "@/panels/pane-subtitle";
+import { definePanel } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useHasPluginComposerPills } from "@/plugins";
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
@@ -83,6 +91,7 @@ import {
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
 import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
 import { AgentTracks, hasAgentTracks } from "@/panels/agent-tracks";
+import { ParentAgentCallout, useParentAgentId } from "@/subagents/parent";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import {
@@ -104,7 +113,6 @@ import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
-import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
 
 interface ChatAgentStateShape {
@@ -259,31 +267,6 @@ function renderChatAgentNonReadyView(args: {
   return null;
 }
 
-function formatProviderLabel(provider: Agent["provider"]): string {
-  if (!provider) {
-    return "Agent";
-  }
-  return provider
-    .split(/[-_\s]+/)
-    .filter((part) => part.length > 0)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-
-function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string | null {
-  if (typeof title !== "string") {
-    return null;
-  }
-  const normalized = title.trim();
-  if (!normalized) {
-    return null;
-  }
-  if (normalized.toLowerCase() === "new agent") {
-    return null;
-  }
-  return normalized;
-}
-
 function shouldStoreFetchedAgentInActiveDirectory(agent: Agent): boolean {
   return !agent.archivedAt && Boolean(agent.projectPlacement);
 }
@@ -329,65 +312,6 @@ function storeFetchedAgentDetail(input: {
   });
 
   return hydrated;
-}
-
-function useAgentPanelDescriptor(
-  target: { kind: "agent"; agentId: string },
-  context: { serverId: string },
-): PanelDescriptor {
-  const descriptorState = useSessionStore(
-    useShallow((state) => {
-      const session = state.sessions[context.serverId];
-      const agent =
-        session?.agents?.get(target.agentId) ?? session?.agentDetails?.get(target.agentId) ?? null;
-      const isTurnActive = selectAgentTurnPresentation(session, target.agentId).isActive;
-      if (!agent) {
-        return {
-          provider: "codex" as const,
-          title: null,
-          emoji: undefined,
-          status: null,
-          pendingPermissionCount: 0,
-          requiresAttention: false,
-          attentionReason: null,
-          attentionTimestamp: null,
-          isTurnActive,
-        };
-      }
-      return {
-        provider: agent.provider,
-        title: agent.title,
-        emoji: agent.icon,
-        status: agent.status,
-        pendingPermissionCount: agent.pendingPermissions.length,
-        requiresAttention: agent.requiresAttention,
-        attentionReason: agent.attentionReason ?? null,
-        attentionTimestamp: agent.attentionTimestamp?.getTime() ?? null,
-        isTurnActive,
-      };
-    }),
-  );
-  const provider = descriptorState.provider;
-  const label = resolveWorkspaceAgentTabLabel(descriptorState.title);
-  const icon = useProviderIcon(provider, context.serverId);
-
-  return {
-    label: label ?? "",
-    subtitle: `${formatProviderLabel(provider)} agent`,
-    tooltip: label ?? `${formatProviderLabel(provider)} agent`,
-    titleState: label ? "ready" : "loading",
-    icon,
-    emoji: descriptorState.emoji,
-    attentionTimestamp: descriptorState.attentionTimestamp,
-    statusBucket: descriptorState.status
-      ? deriveSidebarStateBucket({
-          status: descriptorState.isTurnActive ? "running" : descriptorState.status,
-          pendingPermissionCount: descriptorState.pendingPermissionCount,
-          requiresAttention: descriptorState.requiresAttention,
-          attentionReason: descriptorState.attentionReason,
-        })
-      : null,
-  };
 }
 
 function AgentPanel() {
@@ -459,7 +383,7 @@ export function AgentConversationPanel() {
 
 export const agentPanelRegistration = definePanel("agent", {
   component: AgentConversationPanel,
-  useDescriptor: useAgentPanelDescriptor,
+  useDescriptor: useAgentDescriptor,
 });
 
 export function useDraftPanelDescriptor(
@@ -1181,6 +1105,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  // The workspace sheet is for looking; Open as tab brings the agent back with its composer.
+  const showsComposer = usePaneContext().host !== "sheet";
+  // The dock lays out fullscreen for the same session the composer edits in.
+  const composerEditingSession = useComposerEditingSession("chat");
+  const isComposerFullscreen = useComposerFullscreen(composerEditingSession);
   const subagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId });
   const tasks = useSessionStore((state): TodoEntry[] | undefined =>
     state.sessions[serverId]?.agentTasks.get(agentId),
@@ -1192,7 +1121,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   });
   const hasPluginComposerPills = useHasPluginComposerPills(serverId, workspaceId, agentId);
   const hasActiveComposer = !agentState.archivedAt && !isArchivingCurrentAgent;
+  const parentAgentId = useParentAgentId(serverId, agentId);
+  // With a composer the parent is a pill above it; without one, the box takes the composer's place.
+  const parentPillAgentId = showsComposer ? parentAgentId : null;
   const hasVisibleAgentTracks = hasAgentTracks({
+    parentAgentId: parentPillAgentId,
     subagentRows,
     tasks,
     archiveFinishedStatus: archiveFinishedSubagents.status,
@@ -1303,7 +1236,10 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     },
     [textSource, replaceText],
   );
-  const composerSection = (
+  const parentCallout = parentAgentId ? (
+    <ParentAgentCallout serverId={serverId} parentAgentId={parentAgentId} />
+  ) : null;
+  const composerSection = showsComposer ? (
     <RenderProfile id={`AgentComposerSection:${agentId}`}>
       <AgentComposerSection
         agentId={agentId}
@@ -1314,6 +1250,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         cwd={cwd}
         isSubmitLoading={false}
         agentInputDraft={agentInputDraft}
+        editingSession={composerEditingSession}
         onAttentionInputFocus={onAttentionInputFocus}
         onAttentionPromptSend={onAttentionPromptSend}
         onComposerHeightChange={handleComposerHeightChange}
@@ -1321,9 +1258,12 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
         onFocusInput={handleFocusInput}
       />
     </RenderProfile>
+  ) : (
+    parentCallout
   );
   const streamContent = (
     <View style={animatedStaticStyles.content}>
+      {showsComposer ? null : <SheetAgentFacts serverId={serverId} agentId={agentId} />}
       <RenderProfile id={`AgentStreamSection:${agentId}`}>
         <AgentStreamSection
           streamViewRef={streamViewRef}
@@ -1345,7 +1285,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           serverId={serverId}
           workspaceId={workspaceId}
           agentId={agentId}
-          cwd={cwd}
+          parentAgentId={parentPillAgentId}
           subagentRows={subagentRows}
           tasks={tasks}
           archiveFinishedStatus={archiveFinishedSubagents.status}
@@ -1379,7 +1319,11 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   );
 
   const dock = (
-    <ChatSurface disabled={isArchivingCurrentAgent} promptActions={recommendedPromptActions}>
+    <ChatSurface
+      disabled={isArchivingCurrentAgent}
+      fullscreen={isComposerFullscreen}
+      promptActions={recommendedPromptActions}
+    >
       {dockContent}
       {composerSection}
       {dockOverlay}
@@ -1411,10 +1355,12 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
 function ChatSurface({
   children,
   disabled,
+  fullscreen,
   promptActions,
 }: {
   children: [ReactNode, ReactNode, ReactNode];
   disabled: boolean;
+  fullscreen: boolean;
   promptActions: RecommendedPromptActions;
 }) {
   // FORK(response-control): recommended prompts render in turn footers inside the dock and
@@ -1422,7 +1368,7 @@ function ChatSurface({
   return (
     <RecommendedPromptActionsProvider value={promptActions}>
       <FileDropZone style={styles.container} disabled={disabled}>
-        <ComposerDock>{children}</ComposerDock>
+        <ComposerDock fullscreen={fullscreen}>{children}</ComposerDock>
       </FileDropZone>
     </RecommendedPromptActionsProvider>
   );
@@ -1456,6 +1402,15 @@ function TimelineSyncErrorCallout({
       </View>
     </View>
   );
+}
+
+/**
+ * What the composer's controls and context meter would show, as one line, for an agent shown
+ * without its composer.
+ */
+function SheetAgentFacts({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const text = useAgentFactsLine(serverId, agentId);
+  return text ? <PaneSubtitle text={text} testID="agent-pane-subtitle" /> : null;
 }
 
 const AgentStreamSection = memo(function AgentStreamSection({
@@ -1498,9 +1453,7 @@ const AgentStreamSection = memo(function AgentStreamSection({
   const bottomOverlayControlClearance = hasVisibleComposerTracks
     ? resolveComposerTrackControlClearance(isCompactFormFactor, trackControlHeight)
     : 0;
-  const streamItemsRaw = useSessionStore((state) =>
-    agentId ? state.sessions[serverId]?.agentStreamTail?.get(agentId) : undefined,
-  );
+  const streamItemsRaw = useAgentStreamTail(serverId, agentId);
   const pendingMessageSubmissions = useSessionStore(
     useShallow((state) =>
       agentId
@@ -1573,6 +1526,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   cwd,
   isSubmitLoading,
   agentInputDraft,
+  editingSession,
   onAttentionInputFocus,
   onAttentionPromptSend,
   onComposerHeightChange,
@@ -1587,6 +1541,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
   cwd: string;
   isSubmitLoading: boolean;
   agentInputDraft: AgentInputDraft;
+  editingSession: ComposerEditingSession;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
@@ -1611,6 +1566,7 @@ const AgentComposerSection = memo(function AgentComposerSection({
       cwd={cwd}
       isSubmitLoading={isSubmitLoading}
       agentInputDraft={agentInputDraft}
+      editingSession={editingSession}
       onAttentionInputFocus={onAttentionInputFocus}
       onAttentionPromptSend={onAttentionPromptSend}
       onComposerHeightChange={onComposerHeightChange}
@@ -1627,6 +1583,7 @@ function ActiveAgentComposer({
   cwd,
   isSubmitLoading,
   agentInputDraft,
+  editingSession,
   onAttentionInputFocus,
   onAttentionPromptSend,
   onComposerHeightChange,
@@ -1639,6 +1596,7 @@ function ActiveAgentComposer({
   cwd: string;
   isSubmitLoading: boolean;
   agentInputDraft: AgentInputDraft;
+  editingSession: ComposerEditingSession;
   onAttentionInputFocus: () => void;
   onAttentionPromptSend: () => void;
   onComposerHeightChange: (height: number) => void;
@@ -1674,11 +1632,10 @@ function ActiveAgentComposer({
       openWorkspaceChanges({
         isCompact: isCompactFormFactor,
         workspaceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
-        checkout: { serverId, cwd, isGit: true },
         preferences: openInSidePane,
       });
     },
-    [cwd, isCompactFormFactor, openInSidePane, serverId, workspaceId],
+    [isCompactFormFactor, openInSidePane, serverId, workspaceId],
   );
 
   const handleClientSlashCommand = useCallback(
@@ -1736,6 +1693,7 @@ function ActiveAgentComposer({
         onChangeAttachments={agentInputDraft.setAttachments}
         cwd={cwd}
         clearDraft={agentInputDraft.clear}
+        editingSession={editingSession}
         autoFocus
         autoFocusKey={String(agentInputDraft.attachmentFocusRequestId)}
         isSubmitLoading={isSubmitLoading}
@@ -1829,6 +1787,8 @@ const animatedStaticStyles = RNStyleSheet.create({
   inputAreaWrapper: {
     width: "100%",
     flexShrink: 1,
+    // Content-sized inline; fills the dock's fullscreen slot.
+    flexGrow: 1,
   },
 });
 

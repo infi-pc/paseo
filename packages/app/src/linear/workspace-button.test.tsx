@@ -17,7 +17,7 @@ vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeClient: () => mocks,
   useHostRuntimeIsConnected: () => true,
 }));
-vi.mock("@react-navigation/native", () => ({ useIsFocused: () => true }));
+vi.mock("expo-router/react-navigation", () => ({ useIsFocused: () => true }));
 vi.mock("@/stores/session-store", () => ({
   useSessionStore: (select: (state: unknown) => unknown) =>
     select({

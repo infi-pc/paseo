@@ -1,9 +1,9 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { View } from "react-native";
+import { useWorkspaceTabDrag } from "@/components/workspace-tab-drag-context";
 import { StyleSheet } from "react-native-unistyles";
 import { RetainedPanel } from "@/components/retained-panel";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import type { TabDropPreview } from "@/components/split-container-tab-drop-preview";
 import { WorkspacePanelHost } from "@/screens/workspace/workspace-panel-host";
 import { deriveWorkspacePaneState } from "@/screens/workspace/workspace-pane-state";
 import {
@@ -26,6 +26,7 @@ interface ExplorerSidebarDockProps extends Pick<
   | "onCopyFilePath"
   | "onReloadAgent"
   | "onRenameTab"
+  | "onUseAutomaticNaming"
   | "onCreateNewTab"
   | "onExitFocusMode"
 > {
@@ -39,8 +40,6 @@ interface ExplorerSidebarDockProps extends Pick<
   normalizedWorkspaceId: string;
   isWorkspaceFocused: boolean;
   closingTabIds: Set<string>;
-  activeDragTabId: string | null;
-  tabDropPreview: TabDropPreview | null;
   onSelectTab: (paneId: string, tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   onReorderTabsInPane: (paneId: string, tabIds: string[]) => void;
@@ -59,8 +58,6 @@ export function ExplorerSidebarDock({
   normalizedWorkspaceId,
   isWorkspaceFocused,
   closingTabIds,
-  activeDragTabId,
-  tabDropPreview,
   onSelectTab,
   onCloseTab,
   onCreateNewTab,
@@ -72,6 +69,7 @@ export function ExplorerSidebarDock({
   onCopyFilePath,
   onReloadAgent,
   onRenameTab,
+  onUseAutomaticNaming,
   onCloseTabsToLeft,
   onCloseTabsToRight,
   onCloseOtherTabs,
@@ -80,6 +78,7 @@ export function ExplorerSidebarDock({
   buildPaneContentModel,
   headerAction,
 }: ExplorerSidebarDockProps) {
+  const { activeDragTabId, tabDropPreview, externalDndContext } = useWorkspaceTabDrag();
   const paneState = useMemo(() => deriveWorkspacePaneState({ pane, tabs: uiTabs }), [pane, uiTabs]);
   const tabs = useMemo(() => paneState.tabs.map((tab) => tab.descriptor), [paneState.tabs]);
   const activeTabId = paneState.activeTabId;
@@ -139,12 +138,13 @@ export function ExplorerSidebarDock({
                 onCopyFilePath={onCopyFilePath}
                 onReloadAgent={onReloadAgent}
                 onRenameTab={onRenameTab}
+                onUseAutomaticNaming={onUseAutomaticNaming}
                 onCloseTabsToLeft={handleCloseTabsToLeft}
                 onCloseTabsToRight={handleCloseTabsToRight}
                 onCloseOtherTabs={handleCloseOtherTabs}
                 focusModeEnabled={false}
                 onExitFocusMode={onExitFocusMode}
-                externalDndContext
+                externalDndContext={externalDndContext}
                 paneId={pane.id}
                 tabs={tabItems}
                 normalizedServerId={normalizedServerId}

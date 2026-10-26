@@ -1,5 +1,6 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import React, { useCallback, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { chapterChangedLines } from "@getpaseo/protocol/chapters";
 import type { ChapterOutline, ChapterStory, ChapterState } from "@getpaseo/protocol/messages";
@@ -63,7 +64,7 @@ export function ChapterRow({
     [openTab, chapter.id],
   );
   return (
-    <Pressable
+    <PressHighlight
       accessibilityRole="button"
       style={styles.row}
       onPress={open}
@@ -73,7 +74,7 @@ export function ChapterRow({
       <Text style={styles.muted}>
         {t("chapters.lines", { count: chapterChangedLines(chapter.sections, story.files) })}
       </Text>
-    </Pressable>
+    </PressHighlight>
   );
 }
 
@@ -106,9 +107,9 @@ function CategoryRow({
         >
           {collapsed ? "+" : "−"}
         </Button>
-        <Pressable accessibilityRole="button" style={styles.fill} onPress={open}>
+        <PressHighlight accessibilityRole="button" style={styles.fill} onPress={open}>
           <Text style={styles.title}>{category.title}</Text>
-        </Pressable>
+        </PressHighlight>
       </View>
       {!collapsed
         ? chapters.map((chapter) => (

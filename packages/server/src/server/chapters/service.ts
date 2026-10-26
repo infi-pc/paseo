@@ -58,7 +58,7 @@ export class ChaptersService {
       mode: input.comparison.mode,
       ignoreWhitespace: input.comparison.ignoreWhitespace === true,
     };
-    if (comparison.mode === "base" && input.comparison.baseRef)
+    if (comparison.mode !== "uncommitted" && input.comparison.baseRef)
       comparison.baseRef = input.comparison.baseRef;
     const key = createHash("sha256").update(JSON.stringify({ cwd, comparison })).digest("hex");
     const snapshot = await this.options.read(cwd, comparison);

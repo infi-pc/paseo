@@ -1,6 +1,7 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, type ReactElement } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, type GestureResponderEvent } from "react-native";
+import { Text, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Archive } from "lucide-react-native";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -50,7 +51,7 @@ export function SidebarMergedArchiveAction({
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild>
-        <Pressable
+        <PressHighlight
           accessibilityRole="button"
           accessibilityLabel={label}
           testID={`sidebar-workspace-archive-merged-${workspace.workspaceKey}`}
@@ -65,7 +66,7 @@ export function SidebarMergedArchiveAction({
               uniProps={hovered || pressed ? foregroundMapping : mutedMapping}
             />
           )}
-        </Pressable>
+        </PressHighlight>
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
         <Text style={styles.tooltipText}>{label}</Text>

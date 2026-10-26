@@ -154,28 +154,40 @@ describe("ScriptHealthMonitor", () => {
     servers.clear();
   });
 
-  it("marks an IPv6-only localhost service healthy", async () => {
-    vi.useFakeTimers();
-    const healthy = await startTcpServer("::1");
-    servers.add(healthy.server);
-    const routeStore = new ScriptRouteStore();
-    routeStore.registerRoute({
-      hostname: "api--repo.localhost",
-      port: healthy.port,
+  it.each(["127.0.0.1", "::1"])("reports a service bound only to %s as healthy", async (host) => {
+    const service = await startTcpServer(host);
+    servers.add(service.server);
+    const serviceProxy = new ScriptRouteStore();
+    serviceProxy.registerWorkspaceService({
       workspaceId: "workspace-a",
       projectSlug: "repo",
+      branchName: "main",
       scriptName: "api",
+      port: service.port,
     });
+    const updates: ScriptHealthEntry[][] = [];
     const monitor = new ScriptHealthMonitor({
-      serviceProxy: routeStore,
-      onChange: () => {},
-      pollIntervalMs: 1_000,
+      serviceProxy,
+      onChange: (_workspaceId, scripts) => updates.push(scripts),
+      pollIntervalMs: 10,
+      probeTimeoutMs: 100,
       graceMs: 0,
+      failuresBeforeStopped: 1,
     });
     monitor.start();
     try {
-      await advancePoll(1_000);
-      expect(monitor.getHealthForHostname("api--repo.localhost")).toBe("healthy");
+      await vi.waitFor(() => {
+        expect(updates).toEqual([
+          [
+            {
+              scriptName: "api",
+              hostname: "api--repo.localhost",
+              port: service.port,
+              health: "healthy",
+            },
+          ],
+        ]);
+      });
     } finally {
       monitor.stop();
     }

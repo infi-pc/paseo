@@ -1,5 +1,4 @@
 import { responseDisplayText } from "@getpaseo/protocol/response-control/footer";
-import type { AssistantImageContext } from "@/utils/assistant-image-metadata";
 import type { ComponentType, ReactElement, ReactNode, RefObject } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import type { StreamItem } from "@/types/stream";
@@ -53,8 +52,12 @@ export interface ScrollToMessageOccurrence {
 }
 
 export interface StreamViewportHandle {
+  /** Give keyboard navigation back to the scrolling surface on web. */
+  focus?: () => void;
   scrollToBottom: (reason?: BottomAnchorLocalRequest["reason"]) => void;
   prepareForViewportChange: () => void;
+  /** Stop following output so the rows on screen stay put while rows below them open or close. */
+  holdReadingPosition: () => void;
   scrollToMessage?: (messageId: string, occurrence?: ScrollToMessageOccurrence) => void;
 }
 
@@ -96,7 +99,6 @@ export interface StreamRenderInput {
   forwardListContentContainerStyle: StyleProp<ViewStyle>;
   // The chat column's max width. The web viewport estimates unmeasured row heights with it.
   contentMaxWidth: number;
-  imageContext?: AssistantImageContext;
 }
 
 export interface ResolveStreamRenderStrategyInput {

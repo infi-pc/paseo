@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useState, useMemo } from "react";
 import { View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -27,6 +27,11 @@ import {
 } from "@getpaseo/protocol/terminal-profiles";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
 import type { Theme } from "@/styles/theme";
+import {
+  useWorkspaceScriptsMenuPages,
+  type UseWorkspaceScriptsMenuPagesInput,
+} from "@/screens/workspace/scripts";
+import { usePluginWorkspaceMenu } from "@/plugins";
 
 const ThemedEllipsis = withUnistyles(Ellipsis);
 const ThemedCopy = withUnistyles(Copy);
@@ -46,6 +51,16 @@ function WorkspaceHeaderMenuTriggerIcon() {
       size={iconButtonChromeGlyphSize("large")}
       uniProps={extraMutedIconColorMapping}
     />
+  );
+}
+
+/** The ⋯ with a dot on it, for when something inside the menu needs looking at. */
+function WorkspaceHeaderMenuAttentionTriggerIcon() {
+  return (
+    <View>
+      <WorkspaceHeaderMenuTriggerIcon />
+      <View style={styles.attentionDot} testID="workspace-header-menu-attention" />
+    </View>
   );
 }
 
@@ -192,6 +207,8 @@ function HeaderMenuProfileItem({
 
 export interface WorkspaceHeaderMenuMobileProps extends WorkspaceHeaderWorkspaceActions {
   normalizedServerId: string;
+  normalizedWorkspaceId: string;
+  scripts: Omit<UseWorkspaceScriptsMenuPagesInput, "enabled">;
   showCreateBrowserTab: boolean;
   createTerminalDisabled: boolean;
   onCreateTerminalWithProfile: (profile: TerminalProfile) => void;
@@ -201,9 +218,15 @@ export interface WorkspaceHeaderMenuMobileProps extends WorkspaceHeaderWorkspace
 /**
  * Compact layouts have no tab strip. New agent and New terminal sit in the tab switcher's footer;
  * the rarer launches stay here alongside the workspace actions.
+ *
+ * The header has no room for a scripts button either, so scripts are a page of this menu, and the
+ * ⋯ carries a dot while a running service is unhealthy. Plugin header buttons are rows here for the
+ * same reason.
  */
 export function WorkspaceHeaderMenuMobile({
   normalizedServerId,
+  normalizedWorkspaceId,
+  scripts,
   showCreateBrowserTab,
   createTerminalDisabled,
   onCreateTerminalWithProfile,
@@ -222,24 +245,44 @@ export function WorkspaceHeaderMenuMobile({
   const handleEditProfiles = useCallback(() => {
     router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
   }, [normalizedServerId, router]);
+  // FORK(package-scripts): discover packages while the compact menu is open.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const scriptsMenu = useWorkspaceScriptsMenuPages({ ...scripts, enabled: menuOpen });
+  const pluginMenu = usePluginWorkspaceMenu(normalizedServerId, normalizedWorkspaceId);
+  const pages = useMemo(
+    () => [...scriptsMenu.pages, ...pluginMenu.pages],
+    [scriptsMenu.pages, pluginMenu.pages],
+  );
 
   return (
-    <DropdownMenu compactMode="sheet">
+    <DropdownMenu compactMode="sheet" onOpenChange={setMenuOpen}>
       <DropdownMenuTrigger
         testID="workspace-header-menu-trigger"
         style={triggerStyle}
         hitSlop={COMPACT_HEADER_BUTTON_HIT_SLOP}
         accessibilityRole="button"
-        accessibilityLabel={t("workspace.header.actions.workspaceActions")}
+        accessibilityLabel={
+          scriptsMenu.needsAttention
+            ? t("workspace.header.actions.workspaceActionsUnhealthy")
+            : t("workspace.header.actions.workspaceActions")
+        }
       >
-        <WorkspaceHeaderMenuTriggerIcon />
+        {scriptsMenu.needsAttention ? (
+          <WorkspaceHeaderMenuAttentionTriggerIcon />
+        ) : (
+          <WorkspaceHeaderMenuTriggerIcon />
+        )}
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
         width={220}
         testID="workspace-header-menu"
+        pages={pages}
         sheetTitle={t("workspace.header.actions.workspaceActions")}
       >
+        {scriptsMenu.trigger}
+        {pluginMenu.rows}
+        {pluginMenu.rows.length > 0 ? <DropdownMenuSeparator /> : null}
         {showCreateBrowserTab ? (
           <DropdownMenuItem
             testID="workspace-header-new-browser"
@@ -272,9 +315,21 @@ export function WorkspaceHeaderMenuMobile({
   );
 }
 
-const styles = StyleSheet.create({
+const ATTENTION_DOT_SIZE = 6;
+
+const styles = StyleSheet.create((theme) => ({
   headerMenuProfileIconWrapper: {
     width: 16,
     height: 16,
   },
-});
+  // Same red as the Scripts row's unhealthy ▶, so the dot and the row it leads to agree.
+  attentionDot: {
+    position: "absolute",
+    top: -1,
+    right: -2,
+    width: ATTENTION_DOT_SIZE,
+    height: ATTENTION_DOT_SIZE,
+    borderRadius: theme.borderRadius.full,
+    backgroundColor: theme.colors.palette.red[500],
+  },
+}));

@@ -1,8 +1,12 @@
+import type { SidebarWorkspaceEntry } from "@/hooks/sidebar-workspaces-view-model";
 import type { StatusSnoozeInput } from "@getpaseo/protocol/workspace-status-snooze";
 import { expect, test } from "vitest";
 import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
 import { calendarDays, customDate, dateText, openSnoozeForm, presetDate } from "./form-model";
-import { selectSnoozableGroup } from "./sidebar";
+import {
+  selectSidebarGroupVisibility,
+  createWorkspaceVisibilityPolicy,
+} from "@/components/sidebar/sidebar-group-visibility";
 
 const now = new Date(2026, 9, 5, 12, 30);
 test("relative presets measure elapsed time while calendar presets use the next local morning", () => {
@@ -105,14 +109,34 @@ test("snoozed-only and pinned groups remain reachable through Show all without c
     lastCheck: null,
     config: { mode: "ai" as const, prompt: "CI passes", intervalHours: 1 as const },
   };
-  const hidden = { workspaceKey: "hidden", snooze };
-  const awake = { workspaceKey: "awake" };
-  expect(selectSnoozableGroup([hidden], false)).toEqual({ visibleItems: [], canToggle: true });
-  expect(selectSnoozableGroup([hidden, awake], false).visibleItems).toEqual([awake]);
-  expect(selectSnoozableGroup([hidden, awake], true).visibleItems).toEqual([awake, hidden]);
-  expect(
-    selectSnoozableGroup([{ workspaceKey: "hidden" }], false, new Map([["hidden", hidden]])),
-  ).toEqual({ visibleItems: [], canToggle: true });
+  const hidden = { workspaceKey: "hidden", snooze, statusBucket: "running" as const };
+  const awake = { workspaceKey: "awake", snooze: null, statusBucket: "done" as const };
+  const entries = new Map<string, Pick<SidebarWorkspaceEntry, "snooze" | "statusBucket">>([
+    ["hidden", hidden],
+    ["awake", awake],
+  ]);
+  const workspacePolicy = createWorkspaceVisibilityPolicy(entries);
+  const pinnedPolicy = {
+    kind: "pinned" as const,
+    isSnoozed: (item: { workspaceKey: string }) => Boolean(entries.get(item.workspaceKey)?.snooze),
+  };
+  for (const policy of [workspacePolicy, pinnedPolicy]) {
+    expect(selectSidebarGroupVisibility([hidden], false, policy)).toEqual({
+      visibleItems: [],
+      canToggle: true,
+    });
+    expect(selectSidebarGroupVisibility([hidden, awake], false, policy).visibleItems).toEqual([
+      awake,
+    ]);
+    expect(selectSidebarGroupVisibility([hidden, awake], true, policy).visibleItems).toEqual([
+      awake,
+      hidden,
+    ]);
+    expect(selectSidebarGroupVisibility([{ workspaceKey: "hidden" }], false, policy)).toEqual({
+      visibleItems: [],
+      canToggle: true,
+    });
+  }
 });
 
 test("status discovery seeds selections, retry preserves choices, and save sends identities without trusting preview values", async () => {
