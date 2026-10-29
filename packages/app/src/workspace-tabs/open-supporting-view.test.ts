@@ -210,6 +210,7 @@ describe("autoOpenWorkspacePullRequest", () => {
       "files",
       "changes_tree",
       "pull_request",
+      "chapters",
       "terminal_terminal-1",
     ]);
     expect(explorer.hidden).toBe(true);
@@ -332,6 +333,6 @@ describe("automatic PR placement", () => {
         useWorkspaceLayoutStore.getState().layoutByWorkspace[WORKSPACE_KEY].root,
         "explorer",
       )!.tabIds,
-    ).toEqual(["files", "pull_request"]);
+    ).toEqual(["files", "chapters", "pull_request"]);
   });
 });

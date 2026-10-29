@@ -521,6 +521,7 @@ function StatusWorkspaceRowInnerContent({
               disabled={isArchiving}
               accessibilityRole="button"
               accessibilityState={accessibilityState}
+              aria-selected={selected}
               style={workspaceRowStyle}
               highlightStyle={styles.workspaceRowPressed}
               onPressIn={handlePressIn}

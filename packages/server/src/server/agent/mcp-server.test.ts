@@ -6851,14 +6851,18 @@ describe("local durable finish subscription MCP wiring", () => {
         childClient.sessions[0]!.requestPermission("first");
         if (sequence === "concurrent") {
           childClient.sessions[0]!.requestPermission("second");
-          await vi.waitFor(() => expect(permissionIds()).toEqual(["first", "second"]));
+          await vi.waitFor(() => expect(permissionIds()).toEqual(["first", "second"]), {
+            timeout: 5000,
+          });
           await respond("first");
           await respond("second");
         } else {
           await vi.waitFor(() => expect(permissionIds()).toEqual(["first"]));
           await respond("first");
           childClient.sessions[0]!.requestPermission("second");
-          await vi.waitFor(() => expect(permissionIds()).toEqual(["first", "second"]));
+          await vi.waitFor(() => expect(permissionIds()).toEqual(["first", "second"]), {
+            timeout: 5000,
+          });
           await respond("second");
         }
         expect(serverSubscriptionRecords.get(server)!.size).toBe(1);

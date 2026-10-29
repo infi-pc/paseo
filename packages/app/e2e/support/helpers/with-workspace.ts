@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import path from "node:path";
 import type { Page } from "@playwright/test";
 import { waitForTabBar } from "./launcher";
-import { selectWorkspaceInSidebar } from "./sidebar";
+import { revealSidebarProjectWorkspaces, selectWorkspaceInSidebar } from "./sidebar";
 import { createTempGitRepo, resolveTempRoot } from "./workspace";
 import {
   connectWorkspaceSetupClient,
@@ -77,11 +77,17 @@ export function createWithWorkspace(page: Page): WithWorkspaceHandle {
     const workspaceId = created.workspace.id;
     projectIds.add(created.workspace.projectId);
 
+    const project = (await client.listProjects()).projects.find(
+      (candidate) => candidate.projectId === created.workspace!.projectId,
+    );
+    if (!project?.projectKey) throw new Error("Workspace project is missing its project key");
+    const projectKey = project.projectKey;
     return {
       workspaceId,
       repoPath: workspacePath,
       navigateTo: async () => {
         await openHomeWithProject(page, repo.path);
+        await revealSidebarProjectWorkspaces(page, projectKey);
         await selectWorkspaceInSidebar(page, workspaceId);
         await waitForTabBar(page);
       },

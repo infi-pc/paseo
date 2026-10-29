@@ -1,3 +1,4 @@
+import { escapeRegex } from "./regex";
 import { readFileSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -147,10 +148,15 @@ export function usageModal(page: Page): Locator {
   return visible(page, "usage-modal-body");
 }
 
-/** Each pinned window as it reads: its percent and short label, "31% 5h". */
+/** Window labels appear when the available width fits them; percentages always remain. */
 export async function expectPinnedUsage(page: Page, windows: string[]): Promise<void> {
   const pinned = usageItem(page).getByTestId("sidebar-usage-pinned-window");
-  await expect(pinned).toHaveText(windows);
+  await expect(pinned).toHaveText(
+    windows.map((window) => {
+      const [percent, label] = window.split(" ");
+      return new RegExp(`^${escapeRegex(percent!)}(?: ${escapeRegex(label!)})?$`);
+    }),
+  );
 }
 
 /** Without a summary window with data the footer has no Usage item, only the Usage icon. */

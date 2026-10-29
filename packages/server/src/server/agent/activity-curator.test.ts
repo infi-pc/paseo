@@ -539,7 +539,7 @@ it("bounds fork history to 100,000 characters while preserving the newest messag
     rows: [
       row(1, { type: "user_message", text: "old-message " + "x".repeat(1_100_000) }),
       row(2, { type: "assistant_message", messageId: "checkpoint", text: "Latest answer." }),
-      row(3, { type: "user_message", text: "Beyond the selected checkpoint." }),
+      row(3, { type: "user_message", text: "Current follow-up prompt." }),
     ],
     boundaryMessageId: "checkpoint",
   });
@@ -547,7 +547,7 @@ it("bounds fork history to 100,000 characters while preserving the newest messag
   expect(result.attachment.text).toContain("[Earlier chat history omitted]");
   expect(result.attachment.text).toContain("[Assistant] Latest answer.");
   expect(result.attachment.text).not.toContain("old-message");
-  expect(result.attachment.text).not.toContain("Beyond the selected checkpoint.");
+  expect(result.attachment.text).toContain("[User] Current follow-up prompt.");
   expect(result.attachment.text).toMatch(/^<chat-history-summary>\n/);
   expect(result.attachment.text).toMatch(/\n<\/chat-history-summary>$/);
 });

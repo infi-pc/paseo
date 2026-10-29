@@ -98,7 +98,7 @@ const pullRequestPanelSources = [
   "git/pull-request-panel/pane.tsx",
   "git/pull-request-panel/data.ts",
   "git/pull-request-panel/checks-section.tsx",
-  "components/sidebar/sidebar-status-list.tsx",
+  "components/sidebar/sidebar-flat-list.tsx",
 ] as const;
 const untranslatedPullRequestPanelLabels = [
   "Activity",
@@ -262,7 +262,7 @@ describe("translation resources", () => {
     expect(en.workspace.fileActions.addToChat).toBe("Add to chat");
   });
 
-  it("keeps pull request panel and sidebar status group labels translated", () => {
+  it("keeps pull request panel and sidebar workspace labels translated", () => {
     expect(findUntranslatedPullRequestPanelLabels()).toEqual([]);
     for (const resource of [ar, es, fr, ja, ko, ptBR, ru, zhCN]) {
       const pr = resource.workspace.git.pr;

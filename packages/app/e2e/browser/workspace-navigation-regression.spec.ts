@@ -1,3 +1,4 @@
+import { revealSidebarProjectWorkspaces } from "../support/helpers/sidebar";
 import {
   buildHostAgentDetailRoute,
   buildHostWorkspaceOpenRoute,
@@ -336,6 +337,7 @@ test.describe("Workspace navigation regression", () => {
         timeout: 30_000,
       });
 
+      await revealSidebarProjectWorkspaces(page, secondWorkspace.projectKey);
       const secondRow = page.getByTestId(
         `sidebar-workspace-row-${serverId}:${secondWorkspace.workspaceId}`,
       );

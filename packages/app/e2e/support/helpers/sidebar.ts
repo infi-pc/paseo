@@ -337,7 +337,11 @@ export async function revealSidebarProjectWorkspaces(
   page: Page,
   projectKey: string,
 ): Promise<void> {
-  await page
-    .getByTestId(`sidebar-project-show-more-${projectEquivalenceViewKey(projectKey)}`)
-    .click();
+  await selectSidebarProject(page, projectKey);
+  const key = projectEquivalenceViewKey(projectKey);
+  await expect(page.getByTestId(`sidebar-project-row-${key}`)).toBeVisible();
+  const showAll = page
+    .getByTestId(`sidebar-project-show-more-${key}`)
+    .filter({ hasText: "Show all" });
+  if (await showAll.isVisible()) await showAll.click();
 }

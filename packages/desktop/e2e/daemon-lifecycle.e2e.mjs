@@ -94,7 +94,7 @@ try {
   assert.equal(attached.pid, captured.pid);
   assert.equal(attached.desktopManaged, true);
   assert.equal(attached.ownedByDesktop, false);
-  for (const reason of ["quit", "settings", "app_update", "host_remove", "version_mismatch"]) {
+  for (const reason of ["settings", "app_update", "host_remove", "version_mismatch"]) {
     const status = await command("stop_desktop_daemon", { reason });
     assert.equal(status.pid, captured.pid, `${reason} stopped an attached daemon`);
     process.kill(captured.pid, 0);
@@ -135,13 +135,10 @@ try {
   process.kill(captured.pid, 0);
   await openDesktop();
   assert.equal((await command("start_desktop_daemon")).ownedByDesktop, false);
+  // FORK(daemon-shutdown-confirmation): quit reaches this command only after confirmation,
+  // including when this app session attached to an earlier desktop-managed daemon.
   await command("stop_desktop_daemon", { reason: "quit" });
-  process.kill(captured.pid, 0);
-  await command("stop_desktop_daemon", {
-    reason: "manual_ipc",
-    pid: captured.pid,
-    startedAt: captured.startedAt,
-  });
+  assert.equal(await readDaemonInstance(home), null);
   captured = null;
   const next = await command("start_desktop_daemon");
   captured = await readDaemonInstance(home);
@@ -195,7 +192,7 @@ try {
     );
   }
   console.log(
-    "PASS: attached legacy daemon survives automatic actions; explicit captured stop, owned launch, managed settings, worker restart, and next-session attachment.",
+    "PASS: attached legacy daemon survives automatic actions; captured stop, owned launch, managed settings, worker restart, and confirmed quit after next-session attachment.",
   );
 } finally {
   await closeDesktop();

@@ -1,3 +1,4 @@
+import { emptyChangeBreakdown } from "@getpaseo/protocol/diff-stat";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -56,13 +57,25 @@ test("retains refreshed Git changes without a workspace subscription", async () 
     writeFileSync(path.join(repo, "README.md"), "# Temp\none\ntwo\n");
     await service.refresh(repo);
     expect(service.getMetrics().workspaceListenerCount).toBe(0);
-    expect((await service.getSnapshot(repo)).git.diffStat).toEqual({ additions: 2, deletions: 0 });
-    expect(store.get(repo)?.git.diffStat).toEqual({ additions: 2, deletions: 0 });
+    expect((await service.getSnapshot(repo)).git.diffStat).toEqual({
+      additions: 2,
+      deletions: 0,
+      breakdown: { ...emptyChangeBreakdown(), docs: { additions: 2, deletions: 0 } },
+    });
+    expect(store.get(repo)?.git.diffStat).toEqual({
+      additions: 2,
+      deletions: 0,
+      breakdown: { ...emptyChangeBreakdown(), docs: { additions: 2, deletions: 0 } },
+    });
 
     now += 3_000;
     writeFileSync(path.join(repo, "README.md"), "# Temp\none\ntwo\nthree\n");
     await service.refresh(repo);
-    expect(store.get(repo)?.git.diffStat).toEqual({ additions: 3, deletions: 0 });
+    expect(store.get(repo)?.git.diffStat).toEqual({
+      additions: 3,
+      deletions: 0,
+      breakdown: { ...emptyChangeBreakdown(), docs: { additions: 3, deletions: 0 } },
+    });
   } finally {
     await service.dispose();
     rmSync(root, { recursive: true, force: true });

@@ -57,6 +57,7 @@ test.describe("Agent stream UI", () => {
     });
     try {
       await awaitAssistantMessage(page);
+      await waitForScrollableChat(page, { minScrollableDistance: 100, timeout: 30_000 });
       await expectScrollFollowsNewContent(page);
     } finally {
       await agent.cleanup();

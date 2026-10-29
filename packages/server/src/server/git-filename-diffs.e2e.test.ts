@@ -1,3 +1,4 @@
+import { emptyChangeBreakdown } from "@getpaseo/protocol/diff-stat";
 import { test, expect } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -33,6 +34,7 @@ test("a rename-only commit returns zero added or deleted lines through the clien
         isDeleted: false,
         additions: 0,
         deletions: 0,
+        breakdown: emptyChangeBreakdown(),
         hunks: [],
       },
     });

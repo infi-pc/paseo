@@ -277,6 +277,7 @@ export async function createCreationScenario(page: Page) {
           source: { kind: "directory", path: project.repoPath },
         });
         if (!result.workspace) throw new Error(result.error ?? "Failed to seed eviction workspace");
+        await revealSidebarProjectWorkspaces(page, project.projectKey);
         await switchWorkspaceViaSidebar({
           page,
           serverId: getServerId(),

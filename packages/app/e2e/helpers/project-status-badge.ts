@@ -1,4 +1,5 @@
 import { expect, type Page } from "@playwright/test";
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { gotoAppShell } from "../support/helpers/app";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
@@ -30,6 +31,7 @@ export async function openAndCollapseStatusProject(
 ): Promise<void> {
   await gotoAppShell(page);
   await waitForSidebarHydration(page);
+  await selectSidebarProject(page, project.seed.projectKey);
   await projectRow(page, project).click();
   await page.mouse.move(1200, 850);
   await expect(workspaceRow(page, "Working workspace")).toHaveCount(0);
@@ -90,15 +92,8 @@ export async function expectWorkspaceStatus(
   ).toBeVisible({ timeout: 60_000 });
 }
 
-function projectGroup(page: Page, project: StatusProject) {
-  return page.getByRole("group", { name: project.seed.projectDisplayName, exact: true });
-}
-
 function projectRow(page: Page, project: StatusProject) {
-  return projectGroup(page, project)
-    .getByRole("button")
-    .filter({ hasText: project.seed.projectDisplayName })
-    .first();
+  return page.getByTestId(`sidebar-project-row-${project.seed.projectKey}`);
 }
 
 function workspaceRow(page: Page, workspaceName: string) {

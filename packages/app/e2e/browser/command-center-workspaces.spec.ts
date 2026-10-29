@@ -203,13 +203,16 @@ test.describe("Compact sidebar inspection", () => {
     await expect(page.getByTestId("sidebar-search")).toBeVisible();
   }
 
-  test("canceling Search retains the compact sidebar", async ({ page }) => {
+  test("canceling Search returns to the workspace after closing the compact drawer", async ({
+    page,
+  }) => {
     await gotoAppShell(page);
     await openSidebar(page);
     await openCommandCenter(page);
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("command-center-panel")).not.toBeVisible();
-    await expectSidebarPreserved(page);
+    await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+    await expect(page.getByTestId("sidebar-search")).not.toBeVisible();
   });
   test("canceling Import session returns to workspace setup and the compact drawer", async ({
     page,

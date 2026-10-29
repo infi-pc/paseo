@@ -53,3 +53,35 @@ it("delivers summaries and retained detail across reconnect without exposing hel
     await reconnected.close();
   }
 });
+
+it("keeps equal subscription IDs separate for sockets sharing a client session", async () => {
+  ctx = await createDaemonTestContext();
+  const url = `ws://127.0.0.1:${ctx.daemon.port}/ws`;
+  const first = new DaemonClient({ url, clientId: "background-shared-client" });
+  const second = new DaemonClient({ url, clientId: "background-shared-client" });
+  const revisions = [0, 0];
+  const stops = [first, second].map((client, index) =>
+    client.subscribeRawMessages((message) => {
+      if (message.type === "background.activity.changed")
+        revisions[index] = message.payload.revision;
+    }),
+  );
+  try {
+    await first.connect();
+    await second.connect();
+    await first.setBackgroundActivitySubscription("index", true);
+    await second.setBackgroundActivitySubscription("index", true);
+    await first.setBackgroundActivitySubscription("index", false);
+    ctx.daemon.daemon.agentManager.backgroundActivity.create({
+      kind: "commit",
+      title: "Commit",
+      cwd: "/tmp",
+    });
+    await expect.poll(() => revisions[1]).toBeGreaterThan(0);
+    expect(revisions[0]).toBe(0);
+  } finally {
+    for (const stop of stops) stop();
+    await first.close();
+    await second.close();
+  }
+});

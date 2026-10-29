@@ -205,7 +205,7 @@ test("manual scrolling cancels a pending file-search reveal and query editing re
 
 test.describe("Compact file search context", () => {
   test.use({ viewport: { width: 390, height: 844 } });
-  test("a file result opens a sheet above the left sidebar", async ({ page }) => {
+  test("a file result opens a sheet after Search closes the compact drawer", async ({ page }) => {
     const seeded = await seedWorkspace({
       repoPrefix: "compact-search-file-",
       title: "Compact file lookup",
@@ -224,11 +224,8 @@ test.describe("Compact file search context", () => {
         .getByRole("button", { name: "Close", exact: true })
         .click();
       await expect(page.getByTestId("sheet-tab-body")).not.toBeVisible();
-      await expect(page.getByRole("button", { name: "Close menu", exact: true })).toHaveAttribute(
-        "aria-expanded",
-        "true",
-      );
-      await expect(page.getByTestId("sidebar-search")).toBeVisible();
+      await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+      await expect(page.getByTestId("sidebar-search")).not.toBeVisible();
     } finally {
       await seeded.cleanup();
     }

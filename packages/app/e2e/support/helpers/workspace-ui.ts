@@ -109,7 +109,10 @@ export async function expectWorkspaceHeader(
       .locator('[data-testid^="sidebar-workspace-row-"][aria-selected="true"]')
       .getByText(input.title, { exact: true })
       .filter({ visible: true });
-    await expect(subtitleLocator.or(selectedProjectWorkspace).first()).toBeVisible({
+    const projectTab = page
+      .getByTestId("sidebar-project-rail")
+      .getByRole("button", { name: input.subtitle, exact: true });
+    await expect(subtitleLocator.or(selectedProjectWorkspace).or(projectTab).first()).toBeVisible({
       timeout: 30_000,
     });
   }

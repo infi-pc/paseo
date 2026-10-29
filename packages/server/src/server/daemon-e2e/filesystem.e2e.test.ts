@@ -1,3 +1,4 @@
+import { emptyChangeBreakdown } from "@getpaseo/protocol/diff-stat";
 import { describe, test, expect, beforeEach, afterEach, onTestFinished } from "vitest";
 import {
   mkdtempSync,
@@ -694,6 +695,7 @@ describe("commit file diffs", () => {
         isDeleted: false,
         additions: 1,
         deletions: 1,
+        breakdown: { ...emptyChangeBreakdown(), other: { additions: 1, deletions: 1 } },
         hunks: [
           {
             oldStart: 1,

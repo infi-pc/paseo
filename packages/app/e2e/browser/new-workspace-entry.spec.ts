@@ -1,5 +1,6 @@
 import {
   selectSidebarProject,
+  revealSidebarProjectWorkspaces,
   clickArchiveWorkspaceMenuItem,
   expectWorkspaceAbsentFromSidebar,
 } from "../support/helpers/sidebar";
@@ -194,6 +195,7 @@ test.describe("New workspace entry points", () => {
       await composer.fill(draftText);
       await expect(composer).toHaveValue(draftText);
 
+      await revealSidebarProjectWorkspaces(page, rememberedProject.projectKey);
       await clickArchiveWorkspaceMenuItem(page, rememberedProject.workspaceId);
       await expectWorkspaceAbsentFromSidebar(page, rememberedProject.workspaceId);
 

@@ -1,9 +1,16 @@
+import {
+  AgentSnapshotPayloadSchema,
+  AgentListItemPayloadSchema,
+  type AgentResponseMetadata,
+} from "@getpaseo/protocol/messages";
+import { ensureValidJson } from "../json-utils.js";
 import { describe, expect, it } from "vitest";
 
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-manager.js";
 import {
   buildStoredAgentPayload,
   toAgentPayload,
+  toAgentListItemPayload,
   toRecentProviderSessionDescriptorPayload,
   toStoredAgentRecord,
   type ManagedAgent,
@@ -226,6 +233,33 @@ describe("toStoredAgentRecord", () => {
 });
 
 describe("toAgentPayload", () => {
+  it.each<AgentResponseMetadata | undefined>([
+    undefined,
+    {
+      namingMode: "automatic",
+      icon: undefined,
+      automaticTitle: undefined,
+      lastTurn: { turnId: "turn-1", message: undefined },
+    },
+    { namingMode: "manual", icon: "🎛️", automaticTitle: "Workspace navigation" },
+  ])(
+    "keeps optional response metadata valid through MCP JSON serialization: %j",
+    (responseMetadata) => {
+      const snapshot = toAgentPayload(createManagedAgent({ responseMetadata, labels: {} }));
+      const listItem = toAgentListItemPayload(snapshot);
+      expect(() => AgentSnapshotPayloadSchema.parse(ensureValidJson(snapshot))).not.toThrow();
+      expect(() => AgentListItemPayloadSchema.parse(ensureValidJson(listItem))).not.toThrow();
+      if (responseMetadata?.icon === undefined) {
+        expect(snapshot).not.toHaveProperty("icon");
+        expect(listItem).not.toHaveProperty("icon");
+      }
+      if (responseMetadata === undefined) {
+        expect(snapshot).not.toHaveProperty("responseMetadata");
+        expect(listItem).not.toHaveProperty("responseMetadata");
+      }
+    },
+  );
+
   it("serializes dates, clones arrays, and hides session", () => {
     const permissionA = createPermission({ id: "perm-a" });
     const permissionB = createPermission({

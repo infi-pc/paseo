@@ -2794,15 +2794,29 @@ export class Session {
     }
   }
 
-  private readonly backgroundSubscriptions = new Map<string, () => void>();
+  private readonly backgroundSubscriptions = new Map<object, Map<string, () => Promise<void>>>();
 
-  private handleBackgroundSubscription(
+  private async handleBackgroundSubscription(
     msg: Extract<SessionInboundMessage, { type: "background.activity.subscribe.request" }>,
-  ): void {
-    this.backgroundSubscriptions.get(msg.subscriptionId)?.();
-    this.backgroundSubscriptions.delete(msg.subscriptionId);
+  ): Promise<void> {
+    const source = this.delivery.currentSource;
+    if (!source) throw new Error("Background activity subscription requires a source");
+    const subscriptions =
+      this.backgroundSubscriptions.get(source) ?? new Map<string, () => Promise<void>>();
+    await subscriptions.get(msg.subscriptionId)?.();
     if (msg.enabled) {
+      this.backgroundSubscriptions.set(source, subscriptions);
       let timer: ReturnType<typeof setTimeout> | undefined;
+      let unsubscribe = () => {};
+      const owner = this.delivery.operation(
+        (message) => message.type === "background.activity.changed",
+        () => {
+          unsubscribe();
+          if (timer) clearTimeout(timer);
+          subscriptions.delete(msg.subscriptionId);
+          if (subscriptions.size === 0) this.backgroundSubscriptions.delete(source);
+        },
+      );
       const notify = (conversationId?: string) => {
         if (msg.conversationId && conversationId && msg.conversationId !== conversationId) return;
         if (timer) return;
@@ -2813,7 +2827,7 @@ export class Session {
               msg.conversationId,
               Number.MAX_SAFE_INTEGER,
             );
-            this.emit({
+            owner.emit({
               type: "background.activity.changed",
               payload: {
                 subscriptionId: msg.subscriptionId,
@@ -2826,11 +2840,8 @@ export class Session {
         );
         timer.unref();
       };
-      const unsubscribe = this.agentManager.backgroundActivity.subscribe(notify);
-      this.backgroundSubscriptions.set(msg.subscriptionId, () => {
-        unsubscribe();
-        if (timer) clearTimeout(timer);
-      });
+      unsubscribe = this.agentManager.backgroundActivity.subscribe(notify);
+      subscriptions.set(msg.subscriptionId, () => owner.release());
     }
     this.emit({
       type: "background.activity.subscribe.response",
@@ -2897,8 +2908,7 @@ export class Session {
         });
         return Promise.resolve();
       case "background.activity.subscribe.request":
-        this.handleBackgroundSubscription(msg);
-        return Promise.resolve();
+        return this.handleBackgroundSubscription(msg);
       case "fetch_agent_timeline_request":
         return this.handleFetchAgentTimelineRequest(msg, source);
       case "agent.timeline.append.request":
@@ -8942,8 +8952,6 @@ export class Session {
    * Clean up session resources
    */
   public async cleanup(): Promise<void> {
-    for (const unsubscribe of this.backgroundSubscriptions.values()) unsubscribe();
-    this.backgroundSubscriptions.clear();
     this.sessionLogger.trace({}, "agent.session.lifecycle.cleanup");
     this.isCleanedUp = true;
     this.unsubscribeSetupObservation();

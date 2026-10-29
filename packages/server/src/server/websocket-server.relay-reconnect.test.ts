@@ -271,6 +271,7 @@ function createServer(options?: {
       subscribe: vi.fn(() => () => {}),
       setAgentAttentionCallback: vi.fn(),
       getAgent: vi.fn(() => null),
+      supportsToolCallSummaries: () => false,
       getMetricsSnapshot: vi.fn(() => ({
         totalAgents: 0,
         idleAgents: 0,
