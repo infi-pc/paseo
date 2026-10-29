@@ -34,6 +34,7 @@ import {
   type MigrateLegacyImages,
   PersistedDraftStoreSchema,
 } from "./migration";
+import { flushDraftTextPublication } from "./text-publication";
 import { createDraftPersistStorage } from "./persistence";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
@@ -388,6 +389,7 @@ export const useDraftStore = create<DraftStore>()(
           });
         }
         await get().hydrateDraftInput({ draftKey });
+        flushDraftTextPublication(draftKey);
         set((state) => {
           const existing = state.drafts[draftKey];
           const draft = toDraftInputIfReady(existing) ?? { text: "", attachments: [] };

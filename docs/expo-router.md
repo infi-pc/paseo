@@ -109,6 +109,8 @@ route name. A single catch-all Settings route would make project detail and the
 projects index the same route; Back would update params in place and leave a
 phantom detail entry underneath. The host routes also stay outside the
 store-ready protected group so a cold host deep link can survive daemon startup.
+Keep `/compose` outside it too: its bootstrap boundary waits without discarding
+the source reference supplied at launch.
 Do not collapse this topology with a catch-all, `getId`, or
 `dangerouslySingular` workaround.
 

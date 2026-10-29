@@ -249,13 +249,18 @@ describe("useAgentInputDraft live contract", () => {
     expect(getLatest().textReplacement.text).toBe("replacement text");
 
     await act(async () => {
+      getLatest().editText("replacement text plus newest typing");
       await useDraftStore
         .getState()
         .appendDraftText({ draftKey: "draft:setup", text: "src/Button.tsx:42:7" });
     });
     expect(getLatest().textReplacement.kind).toBe("replace");
-    expect(getLatest().textReplacement.text).toBe("replacement text\nsrc/Button.tsx:42:7");
-    expect(getLatest().textSource.getSnapshot()).toBe("replacement text\nsrc/Button.tsx:42:7");
+    expect(getLatest().textReplacement.text).toBe(
+      "replacement text plus newest typing\nsrc/Button.tsx:42:7",
+    );
+    expect(getLatest().textSource.getSnapshot()).toBe(
+      "replacement text plus newest typing\nsrc/Button.tsx:42:7",
+    );
 
     await act(async () => {
       getLatest().editText("hello world");

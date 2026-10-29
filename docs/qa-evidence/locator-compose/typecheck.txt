@@ -23,7 +23,7 @@
 > npm --prefix ../../plugin-examples/markdown-panel install --ignore-scripts --no-audit --no-fund && tsgo -p tsconfig.examples.json --noEmit
 
 
-up to date in 104ms
+up to date in 110ms
 
 > @getpaseo/protocol@0.13.1 pretypecheck
 > npm run generate:validators
