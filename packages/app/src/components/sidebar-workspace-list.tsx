@@ -215,6 +215,7 @@ function selectionForSelectedWorkspace(
 }
 
 interface SidebarWorkspaceListProps {
+  flatRows?: SidebarWorkspaceEntry[];
   workspaceGroups: SidebarWorkspaceGroup[];
   /** What `useProjectIcons` is asked for, straight from the projection. See `SidebarProjection`. */
   projectIconTargets: SidebarProjectIconTarget[];
@@ -1010,7 +1011,7 @@ function ProjectHeaderRow({
         onPointerLeave={handlePointerLeave}
       >
         <PressHighlight
-          accessibilityRole="button"
+          accessibilityRole={platformIsWeb ? undefined : "button"}
           style={projectRowStyle}
           highlightStyle={styles.projectRowPressed}
           onPressIn={handleProjectPressIn}
@@ -1036,7 +1037,7 @@ function ProjectHeaderRow({
       >
         <ContextMenuTrigger
           enabledOnMobile={false}
-          accessibilityRole="button"
+          accessibilityRole={platformIsWeb ? undefined : "button"}
           style={projectRowStyle}
           highlightStyle={styles.projectRowPressed}
           onPressIn={handleProjectPressIn}
@@ -1960,6 +1961,7 @@ export function SidebarWorkspaceList({
   onToggleProjectCollapsed,
   shortcutIndexByWorkspaceKey,
   groupMode,
+  flatRows,
   isRefreshing: _isRefreshing = false,
   onRefresh: _onRefresh,
   onWorkspacePress,
@@ -2026,8 +2028,9 @@ export function SidebarWorkspaceList({
   // list of grouped rows, so a new mode lands in the grouped branch rather than silently in this
   // one's `else`.
   const content =
-    groupMode !== "project" ? (
+    flatRows || groupMode !== "project" ? (
       <SidebarGroupedModeList
+        flatRows={flatRows}
         workspaceGroups={workspaceGroups}
         pinnedGroups={pinnedGroups}
         workspaceEntriesByKey={workspaceEntriesByKey}
@@ -2080,6 +2083,7 @@ export function SidebarWorkspaceList({
  * above it was status-only.
  */
 function SidebarGroupedModeList({
+  flatRows,
   workspaceGroups,
   pinnedGroups,
   workspaceEntriesByKey,
@@ -2095,6 +2099,7 @@ function SidebarGroupedModeList({
   parentGestureRef,
   dragGestureHostActive,
 }: {
+  flatRows?: SidebarWorkspaceEntry[];
   workspaceGroups: SidebarWorkspaceGroup[];
   pinnedGroups: PinnedSidebarGroups;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
@@ -2122,6 +2127,7 @@ function SidebarGroupedModeList({
 
   return (
     <SidebarStatusWorkspaceList
+      flatRows={flatRows}
       groups={workspaceGroups}
       pinnedWorkspaces={pinnedWorkspaces}
       projectIconByProjectViewKey={projectIconByProjectViewKey}
@@ -2194,7 +2200,7 @@ function ProjectModeList({
     (state) => state.togglePinnedCollapsed,
   );
 
-  const manualSort = useSidebarViewStore((state) => state.workspaceSort === "manual");
+  const manualSort = false;
   const getWorkspaceOrder = useSidebarOrderStore((state) => state.getWorkspaceOrder);
   const setWorkspaceOrder = useSidebarOrderStore((state) => state.setWorkspaceOrder);
   const getProjectOrder = useSidebarOrderStore((state) => state.getProjectOrder);

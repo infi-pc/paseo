@@ -37,6 +37,7 @@ export interface SidebarProjection {
 }
 
 export interface SidebarProjectionInput {
+  flatWorkspaces?: SidebarWorkspaceEntry[];
   projects: SidebarProjectEntry[];
   pinnedKeys: PinnedSidebarKeys;
   pinnedWorkspaceOrder: string[];
@@ -50,6 +51,16 @@ export interface SidebarProjectionInput {
 }
 
 export function buildSidebarProjection(input: SidebarProjectionInput): SidebarProjection {
+  if (input.flatWorkspaces) {
+    return {
+      pinnedGroups: { pinnedChats: [], unpinnedProjects: input.projects },
+      workspaceGroups: [],
+      projectIconTargets: resolveSidebarProjectIconTargets(input.projects),
+      shortcutModel: buildSidebarShortcutSections({
+        sections: [{ workspaces: input.flatWorkspaces }],
+      }),
+    };
+  }
   const pinnedGroups = splitPinnedSidebarGroups({
     projects: input.projects,
     keys: input.pinnedKeys,

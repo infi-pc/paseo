@@ -1,5 +1,8 @@
 import { EXPLORER_WORKSPACE_MIN_WIDTH } from "@/components/explorer-sidebar-layout";
-import { SETTINGS_DESKTOP_SPLIT_MIN_WIDTH } from "@/constants/layout";
+import {
+  SETTINGS_DESKTOP_SPLIT_MIN_WIDTH,
+  SIDEBAR_NAVIGATION_RAIL_WIDTH,
+} from "@/constants/layout";
 import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH } from "@/stores/panel-store";
 
 const MIN_DESKTOP_CENTER_WIDTH = 400;
@@ -58,7 +61,7 @@ export function resolveDesktopSidebarWidth(input: {
   "worklet";
   return resolveDesktopPanelWidth({
     ...input,
-    minimumWidth: MIN_SIDEBAR_WIDTH,
+    minimumWidth: MIN_SIDEBAR_WIDTH + SIDEBAR_NAVIGATION_RAIL_WIDTH,
     maximumWidth: MAX_SIDEBAR_WIDTH,
   });
 }

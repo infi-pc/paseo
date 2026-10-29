@@ -71,6 +71,12 @@ One entry per fork feature: the commits that built it, the files that own it, an
 
 Commits are the fork commits that built the feature (`git show --stat <sha>` for the full file list). "Owns" lists the fork-owned entry points. "Wires into" lists the upstream files the feature edits, largest first.
 
+### Inbox and project navigation
+
+- Owns: `packages/app/src/components/sidebar/navigation/`.
+- Wires into: sidebar shell, shared projection and shortcuts, navigation actions, display preferences, desktop width calculation, and English resources.
+- Desktop project rail and compact drawer picker share selection. See [Inbox and project navigation](mobile-panels.md#inbox-and-project-navigation) for the activity and retention contract.
+
 ### Codex MCP consent for a session
 
 - Wires into: `codex-app-server-agent.ts`, its provider test suite, `agent-stream/view.tsx`, and English permission labels.

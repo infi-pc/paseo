@@ -113,6 +113,7 @@ function statusWorkspaceKeyExtractor(workspace: SidebarWorkspaceEntry): string {
 }
 
 interface StatusWorkspaceListProps {
+  flatRows?: SidebarWorkspaceEntry[];
   groups: SidebarWorkspaceGroup[];
   pinnedWorkspaces: SidebarWorkspaceEntry[];
   projectIconByProjectViewKey: ReadonlyMap<string, string | null>;
@@ -131,6 +132,7 @@ interface StatusWorkspaceListProps {
 }
 
 export function SidebarStatusWorkspaceList({
+  flatRows,
   groups,
   pinnedWorkspaces,
   projectIconByProjectViewKey,
@@ -235,9 +237,32 @@ export function SidebarStatusWorkspaceList({
         </View>
       ) : null}
       {listHeaderComponent}
-      {sidebarFilterEmpty ? (
-        <SidebarFilterEmptyState />
-      ) : (
+      {flatRows ? (
+        <View testID="sidebar-flat-workspaces">
+          {flatRows.map((workspace) => (
+            <StatusWorkspaceRow
+              key={workspace.workspaceKey}
+              workspace={workspace}
+              {...buildStatusRowProjectPresentation({
+                workspace,
+                projectIconByProjectViewKey,
+                hostBadgeByServerId,
+              })}
+              inStatusGroup={false}
+              shortcutNumber={statusShortcutIndex.get(workspace.workspaceKey) ?? null}
+              showShortcutBadge={showShortcutBadges}
+              canPin={supportsPinningByServerId.get(workspace.serverId) === true}
+              onToggleWorkspacePin={onToggleWorkspacePin}
+              onWorkspacePress={onWorkspacePress}
+            />
+          ))}
+          {flatRows.length === 0 ? (
+            <Text style={styles.emptyNavigation}>{t("sidebar.navigation.empty")}</Text>
+          ) : null}
+        </View>
+      ) : null}
+      {!flatRows && sidebarFilterEmpty ? <SidebarFilterEmptyState /> : null}
+      {!flatRows && !sidebarFilterEmpty ? (
         <StatusGroupList
           groups={groups}
           collapsedWorkspaceGroupKeys={collapsedWorkspaceGroupKeys}
@@ -249,7 +274,7 @@ export function SidebarStatusWorkspaceList({
           supportsPinningByServerId={supportsPinningByServerId}
           onToggleWorkspacePin={onToggleWorkspacePin}
         />
-      )}
+      ) : null}
     </>
   );
 
@@ -1049,6 +1074,11 @@ function getStatusWorkspaceRowStyle({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  emptyNavigation: {
+    padding: theme.spacing[4],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+  },
   container: {
     flex: 1,
   },

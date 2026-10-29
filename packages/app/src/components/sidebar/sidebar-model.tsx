@@ -19,13 +19,14 @@ import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
 import { buildSidebarProjection } from "./sidebar-projection";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
 import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
-import { filterWorkspacesByProjects, resolveActiveProjectFilters } from "./sidebar-project-filter";
+import { useSidebarNavigation } from "./navigation/use-navigation";
 import {
   hasAuthoritativeWorkspaceLabelCatalog,
   useWorkspaceLabelProjection,
 } from "@/workspace-labels";
 
 interface SidebarModel extends SidebarWorkspacesListResult {
+  navigation: ReturnType<typeof useSidebarNavigation>;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   /**
    * Every project the sidebar could show, before any filter narrows it.
@@ -34,8 +35,6 @@ interface SidebarModel extends SidebarWorkspacesListResult {
    * narrowing the filter deletes the rows that would undo it.
    */
   allProjects: SidebarProjectEntry[];
-  /** The project filter as it is actually being applied — see `resolveActiveProjectFilters`. */
-  resolvedProjectFilters: readonly string[];
   hasProjectsBeforeFilter: boolean;
   groupMode: SidebarGroupMode;
   workspaceGroups: SidebarWorkspaceGroup[];
@@ -58,9 +57,9 @@ export function SidebarModelProvider({
   const { t } = useTranslation();
   const list = useSidebarWorkspacesList({ enabled: active });
   const showBackground = useSidebarViewStore((state) => state.showBackground);
-  const groupMode = useSidebarViewStore((state) => state.groupMode);
+
   const labelFilter = useSidebarViewStore((state) => state.labelFilter);
-  const projectFilters = useSidebarViewStore((state) => state.projectFilters);
+
   const reconcileLabelFilter = useSidebarViewStore((state) => state.reconcileLabelFilter);
   const { hosts: labelHosts } = useWorkspaceLabelProjection();
   const collapsedProjectKeys = useSidebarCollapsedSectionsStore(
@@ -84,50 +83,22 @@ export function SidebarModelProvider({
     reconcileLabelFilter(availableLabelNames);
   }, [availableLabelNames, hasAuthoritativeLabelCatalog, reconcileLabelFilter]);
   const hasActiveLabelFilter = hasActiveSidebarLabelFilter(labelFilter);
-  const resolvedProjectFilters = useMemo(
-    () =>
-      resolveActiveProjectFilters(
-        projectFilters,
-        new Set(list.projects.map((project) => project.viewKey)),
-      ),
-    [projectFilters, list.projects],
-  );
-  const hasActiveProjectFilter = resolvedProjectFilters.length > 0;
-  // The project filter is deliberately absent from this gate. It reads `projectViewKey`, which
-  // lives on the project and the placement, so it can narrow the project list without hydrating
-  // anything; the label filter reads `labels`, which only exists on an entry. Hydration opens a
-  // live session-store subscription over every workspace on every visible host, so widening this
-  // for a filter that does not need it costs a retained-but-inactive sidebar real work.
-  const needsWorkspaceEntries = groupMode !== "project" || hasActiveLabelFilter;
-  const workspaceEntriesByKey = useSidebarWorkspaceEntries(
-    list.workspacePlacements,
-    active !== false || needsWorkspaceEntries,
-  );
+  const workspaceEntriesByKey = useSidebarWorkspaceEntries(list.workspacePlacements, true);
   const filteredWorkspaceEntriesByKey = useMemo(() => {
-    const byProject = filterWorkspacesByProjects({
-      workspaces: [...workspaceEntriesByKey.values()],
-      projectFilters: resolvedProjectFilters,
-    });
     const filtered = filterWorkspacesByLabels({
-      workspaces: byProject.filter((workspace) => showBackground || !workspace.background),
+      workspaces: [...workspaceEntriesByKey.values()].filter(
+        (workspace) => showBackground || !workspace.background,
+      ),
       ...labelFilter,
     });
     return new Map(filtered.map((workspace) => [workspace.workspaceKey, workspace]));
-  }, [showBackground, labelFilter, resolvedProjectFilters, workspaceEntriesByKey]);
+  }, [showBackground, labelFilter, workspaceEntriesByKey]);
   const visibleWorkspaceKeys = useMemo(
     () => new Set(filteredWorkspaceEntriesByKey.keys()),
     [filteredWorkspaceEntriesByKey],
   );
-  // The two filters prune differently on purpose. The project filter is a membership test on the
-  // project itself, so a project you filtered TO survives even with no workspaces — it still owns
-  // a header row you can create your first workspace under. The label filter can only ask about
-  // workspaces, so a project it empties has nothing left to show.
   const filteredProjects = useMemo(() => {
     let projects = list.projects;
-    if (hasActiveProjectFilter) {
-      const included = new Set(resolvedProjectFilters);
-      projects = projects.filter((project) => included.has(project.viewKey));
-    }
     if (hasActiveLabelFilter || !showBackground) {
       projects = projects.flatMap((project) => {
         const workspaces = project.workspaces.filter((workspace) =>
@@ -139,21 +110,35 @@ export function SidebarModelProvider({
       });
     }
     return projects;
-  }, [
-    showBackground,
-    hasActiveLabelFilter,
-    hasActiveProjectFilter,
-    resolvedProjectFilters,
-    list.projects,
-    visibleWorkspaceKeys,
-  ]);
-  const pinnedKeys = usePinnedSidebarKeys(filteredProjects);
+  }, [showBackground, hasActiveLabelFilter, list.projects, visibleWorkspaceKeys]);
+  const navigation = useSidebarNavigation(list.projects, filteredWorkspaceEntriesByKey);
+  const groupMode = navigation.flat ? "project" : navigation.grouping;
+  const navigationEntries = useMemo(
+    () => new Map(navigation.rows.map((row) => [row.workspaceKey, row])),
+    [navigation.rows],
+  );
+  const navigationProjects = useMemo(
+    () =>
+      filteredProjects
+        .filter(
+          (project) =>
+            !navigation.selectedProject || project.viewKey === navigation.selectedProject.viewKey,
+        )
+        .map((project) =>
+          Object.assign({}, project, {
+            workspaces: navigation.rows.filter((row) => row.projectViewKey === project.viewKey),
+          }),
+        ),
+    [filteredProjects, navigation.selectedProject, navigation.rows],
+  );
+  const pinnedKeys = usePinnedSidebarKeys(navigationProjects);
   const projectionInput = useMemo(
     () => ({
-      projects: filteredProjects,
+      projects: navigationProjects,
+      flatWorkspaces: !navigation.selectedProject ? navigation.rows : undefined,
       pinnedKeys,
       pinnedWorkspaceOrder,
-      workspaceEntriesByKey: filteredWorkspaceEntriesByKey,
+      workspaceEntriesByKey: navigationEntries,
       projectNamesByViewKey: list.projectNamesByViewKey,
       groupMode,
       pinnedCollapsed,
@@ -166,11 +151,12 @@ export function SidebarModelProvider({
       collapsedWorkspaceGroupKeys,
       groupMode,
       list.projectNamesByViewKey,
-      filteredProjects,
+      navigationProjects,
+      navigation,
+      navigationEntries,
       pinnedCollapsed,
       pinnedKeys,
       pinnedWorkspaceOrder,
-      filteredWorkspaceEntriesByKey,
       t,
     ],
   );
@@ -178,11 +164,11 @@ export function SidebarModelProvider({
   const value = useMemo(
     () => ({
       ...list,
-      projects: filteredProjects,
+      navigation,
+      projects: navigationProjects,
       allProjects: list.projects,
-      resolvedProjectFilters,
       hasProjectsBeforeFilter: list.projects.length > 0,
-      workspaceEntriesByKey: filteredWorkspaceEntriesByKey,
+      workspaceEntriesByKey: navigationEntries,
       groupMode,
       workspaceGroups: projection.workspaceGroups,
       projectIconTargets: projection.projectIconTargets,
@@ -192,14 +178,14 @@ export function SidebarModelProvider({
       shortcutModel: projection.shortcutModel,
     }),
     [
-      resolvedProjectFilters,
       collapsedProjectKeys,
       groupMode,
       list,
-      filteredProjects,
+      navigationProjects,
+      navigation,
+      navigationEntries,
       projection,
       toggleProjectCollapsed,
-      filteredWorkspaceEntriesByKey,
     ],
   );
 

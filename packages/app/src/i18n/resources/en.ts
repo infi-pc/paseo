@@ -1382,6 +1382,12 @@ export const en = {
     },
   },
   sidebar: {
+    navigation: {
+      inbox: "Inbox",
+      select: "Inbox and projects",
+      empty: "No recent or unread workspaces",
+      flat: "No grouping",
+    },
     statusGroupAccessibility: "{{label}} group",
     statusBucket: {
       needsInput: "Needs input",

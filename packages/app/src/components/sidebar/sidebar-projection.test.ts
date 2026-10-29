@@ -1,3 +1,11 @@
+import {
+  buildSessionActivity,
+  inboxWorkspaceKeys,
+  retainInboxKeys,
+  sortBySessionActivity,
+  INBOX_ACTIVITY_WINDOW_MS,
+} from "./navigation/model";
+import { useSidebarNavigationStore } from "./navigation/store";
 import { i18n } from "@/i18n/i18next";
 import { describe, expect, it } from "vitest";
 import type {
@@ -173,6 +181,111 @@ describe("buildSidebarProjection", () => {
 
     expect(projection.shortcutModel.shortcutTargets).toEqual([
       { serverId: "srv", workspaceId: "unpinned" },
+    ]);
+  });
+});
+
+// FORK(project-navigation): Inbox membership and keyboard order share the visible row projection.
+describe("Inbox navigation", () => {
+  const now = Date.parse("2026-10-29T12:00:00Z");
+  const old = now - INBOX_ACTIVITY_WINDOW_MS - 1;
+
+  it("includes the 48-hour boundary and older unread sessions, excluding old read and snoozed workspaces", () => {
+    const entries = ["recent", "boundary", "unread", "old", "snoozed"].map(
+      (id) => makeWorkspace(id).entry,
+    );
+    const snoozed = entries[4];
+    snoozed.snooze = {
+      id: "snooze",
+      createdAt: new Date(now).toISOString(),
+      config: { mode: "time", wakeAt: "2026-11-01T12:00:00Z", timezone: "UTC" },
+      nextCheckAt: "2026-11-01T12:00:00Z",
+      lastCheck: null,
+    };
+    const workspaces = new Map(entries.map((entry) => [entry.workspaceKey, entry]));
+    const activity = new Map([
+      ["srv:recent", { lastActivityAt: now, unread: false }],
+      ["srv:boundary", { lastActivityAt: now - INBOX_ACTIVITY_WINDOW_MS, unread: false }],
+      ["srv:unread", { lastActivityAt: old, unread: true }],
+      ["srv:old", { lastActivityAt: old, unread: false }],
+      ["srv:snoozed", { lastActivityAt: now, unread: true }],
+    ]);
+    expect([...inboxWorkspaceKeys({ workspaces, activity, now })]).toEqual([
+      "srv:recent",
+      "srv:boundary",
+      "srv:unread",
+    ]);
+  });
+
+  it("uses the latest session activity while retaining unread from a different session in the workspace", () => {
+    const activity = buildSessionActivity(
+      [
+        {
+          serverId: "srv",
+          agents: new Map([
+            [
+              "older",
+              {
+                id: "older",
+                workspaceId: "one",
+                lastActivityAt: new Date(old),
+                requiresAttention: true,
+              },
+            ],
+            [
+              "newer",
+              {
+                id: "newer",
+                workspaceId: "one",
+                lastActivityAt: new Date(now - 100),
+                requiresAttention: false,
+              },
+            ],
+            [
+              "archived",
+              {
+                id: "archived",
+                workspaceId: "two",
+                lastActivityAt: new Date(now),
+                archivedAt: new Date(now),
+              },
+            ],
+          ]),
+        },
+      ],
+      new Map([["newer", new Date(now)]]),
+    );
+    expect(activity.get("srv:one")).toEqual({ lastActivityAt: now, unread: true });
+    expect(activity.has("srv:two")).toBe(false);
+  });
+
+  it("retains read workspaces through the Inbox visit, and adds incoming workspaces", () => {
+    const held = new Set(["srv:old-unread"]);
+    expect(retainInboxKeys(held, new Set())).toBe(held);
+    expect([...retainInboxKeys(held, new Set(["srv:new"]))]).toEqual(["srv:old-unread", "srv:new"]);
+    const before = useSidebarNavigationStore.getState().inboxVisit;
+    useSidebarNavigationStore.getState().selectProject("another-project");
+    expect(useSidebarNavigationStore.getState().inboxVisit).toBe(before + 1);
+    useSidebarNavigationStore.getState().selectProject(null);
+    expect(useSidebarNavigationStore.getState().inboxVisit).toBe(before + 2);
+  });
+
+  it("keeps pinned Inbox workspaces in activity order and gives shortcuts the same order", () => {
+    const input = projectionInput();
+    const rows = sortBySessionActivity(
+      [...input.workspaceEntriesByKey.values()],
+      new Map([
+        ["srv:pinned", { lastActivityAt: old, unread: true }],
+        ["srv:unpinned", { lastActivityAt: now, unread: false }],
+      ]),
+    );
+    const projection = buildSidebarProjection({ ...input, flatWorkspaces: rows });
+    expect(rows.map((row) => row.workspaceId)).toEqual(["unpinned", "pinned"]);
+    expect(projection.pinnedGroups.pinnedChats).toEqual([]);
+    expect(projection.workspaceGroups).toEqual([]);
+    expect(projection.shortcutModel.shortcutTargets.map((target) => target.workspaceId)).toEqual([
+      "unpinned",
+      "pinned",
     ]);
   });
 });

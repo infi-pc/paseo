@@ -1,3 +1,7 @@
+import {
+  SidebarProjectRail,
+  SidebarProjectSelector,
+} from "@/components/sidebar/navigation/controls";
 import { router } from "expo-router";
 import {
   CircleGauge,
@@ -82,6 +86,7 @@ const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() ||
 
 interface SidebarSharedProps {
   theme: SidebarTheme;
+  flatRows?: SidebarWorkspaceEntry[];
   workspaceGroups: SidebarWorkspaceGroup[];
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
@@ -134,9 +139,9 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   const showMobileAgent = usePanelStore((state) => state.showMobileAgent);
 
   const {
+    navigation,
     projects,
     hasProjectsBeforeFilter,
-    resolvedProjectFilters,
     workspaceEntriesByKey,
     isInitialLoad,
     isRevalidating,
@@ -228,7 +233,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     pinnedGroups,
     projects,
     hasProjectsBeforeFilter,
-    hasActiveProjectFilter: resolvedProjectFilters.length > 0,
+    hasActiveProjectFilter: navigation.selectedProject !== null,
     workspaceEntriesByKey,
     isInitialLoad,
     isRevalidating,
@@ -253,6 +258,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
             closeSidebar={showMobileAgent}
             handleOpenProject={handleOpenProjectMobile}
             handleImportSession={handleImportSessionMobile}
+            flatRows={!navigation.selectedProject ? navigation.rows : undefined}
             handleSettings={handleSettingsMobile}
             handleAddHost={handleAddHostMobile}
             handleOpenHostSettings={handleOpenHostSettingsMobile}
@@ -272,6 +278,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
           active={active}
           handleOpenProject={handleOpenProjectDesktop}
           handleImportSession={openImportSession}
+          flatRows={!navigation.selectedProject ? navigation.rows : undefined}
           handleSettings={handleSettingsDesktop}
           handleAddHost={handleAddHostDesktop}
           handleOpenHostSettings={handleOpenHostSettingsDesktop}
@@ -413,6 +420,7 @@ function SidebarFooter({
   handleAddHost,
   handleOpenHostSettings,
   onBeforeNavigate,
+  rail = false,
 }: {
   handleOpenProject: () => void;
   handleSettings: () => void;
@@ -426,6 +434,7 @@ function SidebarFooter({
   handleAddHost: () => void;
   handleOpenHostSettings: (serverId: string) => void;
   onBeforeNavigate?: () => void;
+  rail?: boolean;
 }) {
   const newAgentKeys = useShortcutKeys("new-agent");
   const settingsKeys = useShortcutKeys("toggle-settings");
@@ -434,22 +443,27 @@ function SidebarFooter({
   return (
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
-        <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />
-        <View style={styles.sidebarFooter} testID="sidebar-footer-bottom-line">
-          <FooterIconButton
-            onPress={handleOpenProject}
-            testID="sidebar-add-project"
-            label={labels.addProject}
-            icon={FolderPlus}
-            shortcutKeys={newAgentKeys}
-          />
+        {rail ? null : <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />}
+        <View
+          style={[styles.sidebarFooter, rail && styles.railFooter]}
+          testID="sidebar-footer-bottom-line"
+        >
+          {rail ? null : (
+            <FooterIconButton
+              onPress={handleOpenProject}
+              testID="sidebar-add-project"
+              label={labels.addProject}
+              icon={FolderPlus}
+              shortcutKeys={newAgentKeys}
+            />
+          )}
           <SidebarUsageIcon label={labels.usage} />
           <SidebarHostPicker
             label={labels.hosts}
             onAddHost={handleAddHost}
             onOpenHostSettings={handleOpenHostSettings}
           />
-          <View style={styles.footerSpacer} />
+          {rail ? null : <View style={styles.footerSpacer} />}
           <SidebarHelpMenu />
           <FooterIconButton
             onPress={handleSettings}
@@ -513,6 +527,7 @@ function SidebarFooterRows({ onBeforeNavigate }: { onBeforeNavigate?: () => void
 function MobileSidebar({
   active,
   theme,
+  flatRows,
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
@@ -575,16 +590,25 @@ function MobileSidebar({
     >
       <View style={styles.sidebarContent} pointerEvents="auto">
         <WindowChromeSafeArea placement="below" />
+        <View style={styles.mobileNavigationHeader}>
+          <View style={styles.navigationTitle}>
+            <SidebarProjectSelector />
+          </View>
+          {closeButton}
+        </View>
         <SidebarNavRows
-          style={styles.sidebarHeaderGroup}
+          iconOnly
+          itemsKind="builtin"
+          style={styles.mobileNavigationActions}
           onBeforeNavigate={closeSidebar}
-          firstRowTrailing={closeButton}
         />
+        <SidebarNavRows itemsKind="plugin" onBeforeNavigate={closeSidebar} />
 
         {isInitialLoad && !hasActiveHostFilter ? (
           <SidebarAgentListSkeleton />
         ) : (
           <SidebarWorkspaceList
+            flatRows={flatRows}
             collapsedProjectKeys={collapsedProjectKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
@@ -622,6 +646,7 @@ function MobileSidebar({
 
 function DesktopSidebar({
   theme,
+  flatRows,
   workspaceGroups,
   projectIconTargets,
   pinnedGroups,
@@ -730,9 +755,19 @@ function DesktopSidebar({
     ],
     [insetsTop, insets.bottom],
   );
-  const sidebarHeaderGroupStyle = useMemo(
-    () => [styles.sidebarHeaderGroup, ownsTopLeft && styles.sidebarHeaderGroupBelowChrome],
-    [ownsTopLeft],
+
+  const railFooter = useMemo(
+    () => (
+      <SidebarFooter
+        rail
+        handleOpenProject={handleOpenProject}
+        handleSettings={handleSettings}
+        labels={labels}
+        handleAddHost={handleAddHost}
+        handleOpenHostSettings={handleOpenHostSettings}
+      />
+    ),
+    [handleOpenProject, handleSettings, labels, handleAddHost, handleOpenHostSettings],
   );
   return (
     <Animated.View
@@ -764,41 +799,43 @@ function DesktopSidebar({
           ) : (
             <TitlebarDragRegion />
           )}
-          <SidebarNavRows style={sidebarHeaderGroupStyle} />
         </View>
 
-        {isInitialLoad && !hasActiveHostFilter ? (
-          <SidebarAgentListSkeleton />
-        ) : (
-          <SidebarWorkspaceList
-            collapsedProjectKeys={collapsedProjectKeys}
-            onToggleProjectCollapsed={toggleProjectCollapsed}
-            shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-            groupMode={groupMode}
-            workspaceGroups={workspaceGroups}
-            projectIconTargets={projectIconTargets}
-            pinnedGroups={pinnedGroups}
-            projects={projects}
-            hasProjectsBeforeFilter={hasProjectsBeforeFilter}
-            hasActiveProjectFilter={hasActiveProjectFilter}
-            workspaceEntriesByKey={workspaceEntriesByKey}
-            isRefreshing={isManualRefresh && isRevalidating}
-            onRefresh={handleRefresh}
-            onAddProject={handleOpenProject}
-            onImportSession={handleImportSession}
-            listHeaderComponent={workspacesSectionHeaderElement}
-          />
-        )}
+        <View style={styles.navigationColumns}>
+          <SidebarProjectRail onAddProject={handleOpenProject} footer={railFooter} />
+          <View style={styles.workspaceColumn}>
+            <SidebarNavRows itemsKind="plugin" />
+            {isInitialLoad && !hasActiveHostFilter ? (
+              <SidebarAgentListSkeleton />
+            ) : (
+              <SidebarWorkspaceList
+                flatRows={flatRows}
+                collapsedProjectKeys={collapsedProjectKeys}
+                onToggleProjectCollapsed={toggleProjectCollapsed}
+                shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+                groupMode={groupMode}
+                workspaceGroups={workspaceGroups}
+                projectIconTargets={projectIconTargets}
+                pinnedGroups={pinnedGroups}
+                projects={projects}
+                hasProjectsBeforeFilter={hasProjectsBeforeFilter}
+                hasActiveProjectFilter={hasActiveProjectFilter}
+                workspaceEntriesByKey={workspaceEntriesByKey}
+                isRefreshing={isManualRefresh && isRevalidating}
+                onRefresh={handleRefresh}
+                onAddProject={handleOpenProject}
+                onImportSession={handleImportSession}
+                listHeaderComponent={workspacesSectionHeaderElement}
+              />
+            )}
 
-        <SidebarCalloutSlot />
+            <SidebarCalloutSlot />
 
-        <SidebarFooter
-          handleOpenProject={handleOpenProject}
-          handleSettings={handleSettings}
-          labels={labels}
-          handleAddHost={handleAddHost}
-          handleOpenHostSettings={handleOpenHostSettings}
-        />
+            <UsageSidebarRoot>
+              <SidebarFooterRows />
+            </UsageSidebarRoot>
+          </View>
+        </View>
 
         <SidebarResizeHandle
           edge="right"
@@ -812,8 +849,11 @@ function DesktopSidebar({
 }
 
 function WorkspacesSectionHeader() {
+  const { t } = useTranslation();
+  const { navigation } = useSidebarModel();
+  const title = navigation.selectedProject?.projectName ?? t("sidebar.navigation.inbox");
   return (
-    <SidebarSectionHeader title="Workspaces">
+    <SidebarSectionHeader title={title}>
       <Tooltip delayDuration={300}>
         <TooltipTrigger asChild>
           <View>
@@ -845,6 +885,17 @@ const staticStyles = RNStyleSheet.create({
 });
 
 const styles = StyleSheet.create((theme) => ({
+  navigationColumns: { flex: 1, minHeight: 0, flexDirection: "row" },
+  workspaceColumn: { flex: 1, minWidth: 0 },
+  mobileNavigationHeader: { flexDirection: "row", alignItems: "center" },
+  navigationTitle: { flex: 1, minWidth: 0 },
+  mobileNavigationActions: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    paddingBottom: theme.spacing[2],
+    borderBottomWidth: theme.borderWidth[1],
+    borderBottomColor: theme.colors.border,
+  },
   sidebarHeaderGroup: {
     paddingTop: theme.spacing[2],
     gap: 2,
@@ -897,6 +948,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
   },
+  railFooter: { flexDirection: "column", paddingHorizontal: 0, gap: 4 },
   footerContainer: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,

@@ -53,3 +53,6 @@ export function useIsCompactFormFactor(): boolean {
 export function supportsDesktopPaneSplits(): boolean {
   return isWeb;
 }
+
+// FORK(project-navigation): included in the navigation sidebar’s total width.
+export const SIDEBAR_NAVIGATION_RAIL_WIDTH = 52;
