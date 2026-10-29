@@ -57,9 +57,8 @@ import { density } from "@/styles/density";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import type { PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { RetainedPanelActivity } from "@/components/retained-panel";
-import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
-import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
+import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { PluginSidebarItem } from "@/plugins/sidebar-items";
 import { builtinSidebarNavLabelKey } from "@/sidebar-nav/model";
@@ -87,7 +86,6 @@ const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() ||
 interface SidebarSharedProps {
   theme: SidebarTheme;
   flatRows?: SidebarWorkspaceEntry[];
-  workspaceGroups: SidebarWorkspaceGroup[];
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   projects: SidebarProjectEntry[];
@@ -97,7 +95,6 @@ interface SidebarSharedProps {
   isInitialLoad: boolean;
   isRevalidating: boolean;
   isManualRefresh: boolean;
-  groupMode: SidebarGroupMode;
   collapsedProjectKeys: ReadonlySet<string>;
   shortcutIndexByWorkspaceKey: Map<string, number>;
   toggleProjectCollapsed: (projectViewKey: string) => void;
@@ -146,12 +143,12 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isInitialLoad,
     isRevalidating,
     refreshAll,
-    workspaceGroups,
+
     projectIconTargets,
     pinnedGroups,
     collapsedProjectKeys,
     toggleProjectCollapsed,
-    groupMode,
+
     shortcutModel,
   } = useSidebarModel();
   const { shortcutIndexByWorkspaceKey } = shortcutModel;
@@ -228,7 +225,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
 
   const sharedProps = {
     theme,
-    workspaceGroups,
+
     projectIconTargets,
     pinnedGroups,
     projects,
@@ -238,7 +235,7 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
     isInitialLoad,
     isRevalidating,
     isManualRefresh,
-    groupMode,
+
     collapsedProjectKeys,
     shortcutIndexByWorkspaceKey,
     toggleProjectCollapsed,
@@ -528,7 +525,7 @@ function MobileSidebar({
   active,
   theme,
   flatRows,
-  workspaceGroups,
+
   projectIconTargets,
   pinnedGroups,
   projects,
@@ -538,7 +535,7 @@ function MobileSidebar({
   isInitialLoad,
   isRevalidating,
   isManualRefresh,
-  groupMode,
+
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
@@ -612,8 +609,6 @@ function MobileSidebar({
             collapsedProjectKeys={collapsedProjectKeys}
             onToggleProjectCollapsed={toggleProjectCollapsed}
             shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-            groupMode={groupMode}
-            workspaceGroups={workspaceGroups}
             projectIconTargets={projectIconTargets}
             pinnedGroups={pinnedGroups}
             projects={projects}
@@ -647,7 +642,7 @@ function MobileSidebar({
 function DesktopSidebar({
   theme,
   flatRows,
-  workspaceGroups,
+
   projectIconTargets,
   pinnedGroups,
   projects,
@@ -657,7 +652,7 @@ function DesktopSidebar({
   isInitialLoad,
   isRevalidating,
   isManualRefresh,
-  groupMode,
+
   collapsedProjectKeys,
   shortcutIndexByWorkspaceKey,
   toggleProjectCollapsed,
@@ -813,8 +808,6 @@ function DesktopSidebar({
                 collapsedProjectKeys={collapsedProjectKeys}
                 onToggleProjectCollapsed={toggleProjectCollapsed}
                 shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-                groupMode={groupMode}
-                workspaceGroups={workspaceGroups}
                 projectIconTargets={projectIconTargets}
                 pinnedGroups={pinnedGroups}
                 projects={projects}

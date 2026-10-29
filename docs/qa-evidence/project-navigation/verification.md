@@ -3,21 +3,24 @@
 The browser run used the app's Playwright harness with its isolated daemon and mock agent provider.
 It did not connect to the production daemon.
 
-| Command                                                                                                            | Result   | Raw output                                   |
-| ------------------------------------------------------------------------------------------------------------------ | -------- | -------------------------------------------- |
-| `npm run typecheck`                                                                                                | Passed   | [typecheck.txt](typecheck.txt)               |
-| `npm run lint`                                                                                                     | Passed   | [lint.txt](lint.txt)                         |
-| `npx vitest run src/components/sidebar/sidebar-projection.test.ts --bail=1` (from `packages/app`)                  | 9 passed | [projection-tests.txt](projection-tests.txt) |
-| `npx vitest run src/components/desktop-sidebar-layout.test.ts --bail=1` (from `packages/app`)                      | 8 passed | [layout-tests.txt](layout-tests.txt)         |
-| `npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/sidebar-workspace-mark-unread.spec.ts --max-failures=1` | 6 passed | [browser-tests.txt](browser-tests.txt)       |
+| Command                                                                                                            | Result    | Raw output                                               |
+| ------------------------------------------------------------------------------------------------------------------ | --------- | -------------------------------------------------------- |
+| `npm run typecheck`                                                                                                | Passed    | [typecheck.txt](typecheck.txt)                           |
+| `npm run lint`                                                                                                     | Passed    | [lint.txt](lint.txt)                                     |
+| `npx vitest run src/components/sidebar/sidebar-projection.test.ts --bail=1` (from `packages/app`)                  | 7 passed  | [projection-tests.txt](projection-tests.txt)             |
+| `npx vitest run src/components/desktop-sidebar-layout.test.ts --bail=1` (from `packages/app`)                      | 8 passed  | [layout-tests.txt](layout-tests.txt)                     |
+| `npm run test:e2e --workspace=@getpaseo/app -- e2e/browser/sidebar-workspace-mark-unread.spec.ts --max-failures=1` | 6 passed  | [browser-tests.txt](browser-tests.txt)                   |
+| Six changed unit test files, run individually with `npx vitest run <file> --bail=1`                                | 46 passed | [grouping-removal-tests.txt](grouping-removal-tests.txt) |
 
 The projection tests cover the 48-hour boundary, older unread sessions, snoozed exclusions,
 activity aggregation across sessions, read-item retention, and activity-ordered keyboard targets.
-The layout tests reserve space for the project rail beside the workspace list.
+The layout tests reserve space for the project rail beside the workspace list. Grouping-removal
+coverage verifies saved host/label/pin preferences survive removal of the grouping fields, and
+keyboard targets follow Inbox/project selection without grouping state.
 
 The browser tests exercise existing manual and ordinary unread behavior, multi-agent workspace
-selection and history restoration, desktop project switching without workspace navigation, optional
-status grouping, and mobile picker selection followed by drawer dismissal on workspace open.
+selection and history restoration, desktop project switching without workspace navigation,
+flat project presentation, and mobile picker selection followed by drawer dismissal on workspace open.
 The desktop navigation test also asserts that the browser console reports no errors.
 
 ## Visual evidence

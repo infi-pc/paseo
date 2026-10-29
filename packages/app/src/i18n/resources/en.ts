@@ -1386,7 +1386,6 @@ export const en = {
       inbox: "Inbox",
       select: "Inbox and projects",
       empty: "No recent or unread workspaces",
-      flat: "No grouping",
     },
     statusGroupAccessibility: "{{label}} group",
     statusBucket: {

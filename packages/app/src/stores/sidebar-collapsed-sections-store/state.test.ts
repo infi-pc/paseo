@@ -6,13 +6,12 @@ import {
   setProjectCollapsed,
   togglePinnedCollapsed,
   toggleProjectCollapsed,
-  toggleWorkspaceGroupCollapsed,
 } from "@/stores/sidebar-collapsed-sections-store/state";
 
 function emptyState(): CollapsedProjectsState {
   return {
     collapsedProjectKeys: new Set(),
-    collapsedWorkspaceGroupKeys: new Set(),
+
     collapsedPinned: false,
   };
 }
@@ -24,22 +23,20 @@ describe("sidebar collapsed projects transitions", () => {
     state = setProjectCollapsed(state, "project-a", true);
     state = toggleProjectCollapsed(state, "project-b");
     state = toggleProjectCollapsed(state, "project-a");
-    state = toggleWorkspaceGroupCollapsed(state, "running");
 
     expect(Array.from(state.collapsedProjectKeys)).toEqual(["project-b"]);
-    expect(Array.from(state.collapsedWorkspaceGroupKeys)).toEqual(["running"]);
   });
 
   it("serializes collapsed project keys for preference storage", () => {
     const state: CollapsedProjectsState = {
       collapsedProjectKeys: new Set(["project-a", "project-b"]),
-      collapsedWorkspaceGroupKeys: new Set(["running"]),
+
       collapsedPinned: true,
     };
 
     expect(serializeCollapsedProjects(state)).toEqual({
       collapsedProjectKeys: ["project-a", "project-b"],
-      collapsedWorkspaceGroupKeys: ["running"],
+
       collapsedPinned: true,
     });
   });
@@ -59,7 +56,6 @@ describe("sidebar collapsed projects transitions", () => {
     );
 
     expect(Array.from(restored.collapsedProjectKeys)).toEqual([]);
-    expect(Array.from(restored.collapsedWorkspaceGroupKeys)).toEqual([]);
   });
 
   it("keeps the existing state object when persisted preferences do not change collapsed keys", () => {
@@ -71,4 +67,18 @@ describe("sidebar collapsed projects transitions", () => {
       currentState,
     );
   });
+});
+
+it("ignores removed status-group collapse preferences without losing projects or pins", () => {
+  const restored = mergePersistedCollapsedProjects(
+    {
+      collapsedWorkspaceGroupKeys: ["running"],
+      collapsedProjectKeys: ["project-a"],
+      collapsedPinned: true,
+    },
+    emptyState(),
+  );
+  expect([...restored.collapsedProjectKeys]).toEqual(["project-a"]);
+  expect(restored.collapsedPinned).toBe(true);
+  expect(restored).not.toHaveProperty("collapsedWorkspaceGroupKeys");
 });

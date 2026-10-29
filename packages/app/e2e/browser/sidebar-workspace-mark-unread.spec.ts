@@ -305,9 +305,8 @@ test("project navigation keeps Inbox flat and switches projects without leaving 
   await expect(page).toHaveURL(route);
   await page.screenshot({ path: testInfo.outputPath("desktop-project.png") });
   await page.getByTestId("sidebar-display-preferences-menu").click();
-  await page.getByTestId("sidebar-display-grouping").click();
-  await page.getByTestId("sidebar-grouping-status").click();
-  await expect(page.getByTestId("sidebar-status-group-done")).toBeVisible();
+  await expect(page.getByTestId("sidebar-display-grouping")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.getByTestId("sidebar-inbox").click();
   await expect(workspaceRow(page, workspaces.other.workspaceId)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("desktop-inbox.png") });

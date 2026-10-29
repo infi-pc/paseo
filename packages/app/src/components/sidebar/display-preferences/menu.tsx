@@ -13,7 +13,6 @@ import {
   Captions,
   Circle,
   CircleCheck,
-  CircleDashed,
   Clock,
   Diff,
   EyeOff,
@@ -38,12 +37,10 @@ import {
 import { HostStatusDot } from "@/components/host-status-dot";
 import { isWeb } from "@/constants/platform";
 import { useHosts } from "@/runtime/host-runtime";
-import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import type { Theme } from "@/styles/theme";
 import {
   hasActiveSidebarLabelFilter,
   SIDEBAR_UNLABELLED_LABEL_KEY,
-  type SidebarGroupMode,
 } from "@/stores/sidebar-view-store";
 import { workspaceLabelKey, type WorkspaceLabelColor } from "@getpaseo/protocol/workspace-labels";
 import type { WorkspaceTitleSource } from "@/hooks/use-settings";
@@ -81,11 +78,6 @@ type OptionIcon = ComponentType<{
 
 // Options carry icons; the root rows deliberately do not. The root is four labels with their
 // current values, and a column of icons there would be decoration competing with the values.
-const GROUPING_ICONS: Record<SidebarGroupMode, OptionIcon> = {
-  project: withUnistyles(Folder),
-  status: withUnistyles(CircleDashed),
-};
-
 const TITLE_SOURCE_ICONS: Record<WorkspaceTitleSource, OptionIcon> = {
   title: withUnistyles(Type),
   branch: withUnistyles(GitBranch),
@@ -115,14 +107,8 @@ const TRAILING_ICONS: Record<SidebarTrailingChoice, OptionIcon> = {
   timestamp: withUnistyles(Clock),
 };
 
-const GROUPING_MODES: readonly SidebarGroupMode[] = ["project", "status"];
 const TITLE_SOURCES: readonly WorkspaceTitleSource[] = ["title", "branch"];
 const TRAILING_CHOICES: readonly SidebarTrailingChoice[] = ["diff", "timestamp"];
-
-const GROUPING_LABEL_KEYS: Record<SidebarGroupMode, string> = {
-  project: "sidebar.navigation.flat",
-  status: "sidebar.display.grouping.status",
-};
 
 const TITLE_SOURCE_LABEL_KEYS: Record<WorkspaceTitleSource, string> = {
   title: "sidebar.display.titleSource.title",
@@ -160,7 +146,6 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
   const { t } = useTranslation();
   const preferences = useSidebarDisplayPreferences();
   const hosts = useHosts();
-  const { navigation } = useSidebarModel();
   const { labels } = useWorkspaceLabelProjection();
   const [managerOpen, setManagerOpen] = useState(false);
   const openManager = useCallback(() => setManagerOpen(true), []);
@@ -183,20 +168,6 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
 
   const pages = useMemo<MenuPageDefinition[]>(() => {
     const definitions: MenuPageDefinition[] = [
-      {
-        id: "grouping",
-        title: t("sidebar.display.grouping.label"),
-        content: (
-          <OptionList
-            values={GROUPING_MODES}
-            icons={GROUPING_ICONS}
-            labelKeys={GROUPING_LABEL_KEYS}
-            selectedValue={preferences.grouping}
-            onSelect={preferences.setGrouping}
-            testIDPrefix="sidebar-grouping"
-          />
-        ),
-      },
       {
         id: "titleSource",
         title: t("sidebar.display.titleSource.label"),
@@ -269,15 +240,6 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
           sheetTitle={t("sidebar.display.heading")}
           testID="sidebar-display-preferences-content"
         >
-          {navigation.selectedProject ? (
-            <MenuSubTrigger
-              id="grouping"
-              value={t(GROUPING_LABEL_KEYS[preferences.grouping])}
-              testID="sidebar-display-grouping"
-            >
-              {t("sidebar.display.grouping.label")}
-            </MenuSubTrigger>
-          ) : null}
           <MenuSubTrigger
             id="titleSource"
             value={t(TITLE_SOURCE_LABEL_KEYS[preferences.titleSource])}

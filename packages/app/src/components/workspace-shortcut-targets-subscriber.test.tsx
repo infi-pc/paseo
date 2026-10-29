@@ -1,3 +1,4 @@
+import { useSidebarNavigationStore } from "./sidebar/navigation/store";
 /**
  * @vitest-environment jsdom
  */
@@ -90,11 +91,11 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
       projectOrder: [],
     });
     useSidebarViewStore.setState({
-      groupMode: "project",
       hostFilters: [],
     });
 
     act(() => {
+      useSidebarNavigationStore.getState().selectProject("project-1");
       setHostProfiles([hostProfile()]);
       useSessionStore.getState().initializeSession("srv", null as unknown as DaemonClient);
       seedRuntimeWorkspaces(
@@ -140,60 +141,8 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
     ]);
   });
 
-  it("publishes status-mode shortcut targets in visual status order", async () => {
-    act(() => {
-      useSidebarViewStore.getState().setGroupMode("status");
-      seedRuntimeWorkspaces(
-        "srv",
-        new Map([
-          [
-            "ws-done",
-            workspaceDescriptor({
-              id: "ws-done",
-              name: "Done",
-              projectId: "project-1",
-              projectDisplayName: "Project 1",
-              status: "done",
-              statusEnteredAt: new Date("2026-01-01T00:00:00.000Z"),
-            }),
-          ],
-          [
-            "ws-running-old",
-            workspaceDescriptor({
-              id: "ws-running-old",
-              name: "Running old",
-              projectId: "project-2",
-              projectDisplayName: "Project 2",
-              status: "running",
-              statusEnteredAt: new Date("2026-02-01T00:00:00.000Z"),
-            }),
-          ],
-          [
-            "ws-needs-input",
-            workspaceDescriptor({
-              id: "ws-needs-input",
-              name: "Needs input",
-              projectId: "project-1",
-              projectDisplayName: "Project 1",
-              status: "needs_input",
-              statusEnteredAt: new Date("2026-01-15T00:00:00.000Z"),
-            }),
-          ],
-          [
-            "ws-running-new",
-            workspaceDescriptor({
-              id: "ws-running-new",
-              name: "Running new",
-              projectId: "project-2",
-              projectDisplayName: "Project 2",
-              status: "running",
-              statusEnteredAt: new Date("2026-03-01T00:00:00.000Z"),
-            }),
-          ],
-        ]),
-      );
-    });
-
+  it("publishes no sessionless workspaces in Inbox, then updates when a project is selected", async () => {
+    useSidebarNavigationStore.getState().selectProject(null);
     await act(async () => {
       root?.render(
         <SidebarModelProvider>
@@ -201,16 +150,17 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
         </SidebarModelProvider>,
       );
     });
-
+    expect(useKeyboardShortcutsStore.getState().sidebarShortcutWorkspaceTargets).toEqual([]);
+    await act(async () => {
+      useSidebarNavigationStore.getState().selectProject("project-1");
+    });
     expect(useKeyboardShortcutsStore.getState().sidebarShortcutWorkspaceTargets).toEqual([
-      { serverId: "srv", workspaceId: "ws-needs-input" },
-      { serverId: "srv", workspaceId: "ws-running-new" },
-      { serverId: "srv", workspaceId: "ws-running-old" },
-      { serverId: "srv", workspaceId: "ws-done" },
+      { serverId: "srv", workspaceId: "ws-1" },
+      { serverId: "srv", workspaceId: "ws-2" },
     ]);
   });
 
-  it("publishes shortcut targets from the visible host filter in project and status modes", async () => {
+  it("publishes shortcut targets from the visible host filter for the selected project", async () => {
     act(() => {
       setHostProfiles([hostProfile("host-a"), hostProfile("host-b")]);
       useSessionStore.getState().initializeSession("host-a", null as unknown as DaemonClient);
@@ -234,14 +184,6 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
           <WorkspaceShortcutTargetsSubscriber enabled={true} />
         </SidebarModelProvider>,
       );
-    });
-
-    expect(useKeyboardShortcutsStore.getState().sidebarShortcutWorkspaceTargets).toEqual([
-      { serverId: "host-b", workspaceId: "b-1" },
-    ]);
-
-    await act(async () => {
-      useSidebarViewStore.getState().setGroupMode("status");
     });
 
     expect(useKeyboardShortcutsStore.getState().sidebarShortcutWorkspaceTargets).toEqual([

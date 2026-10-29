@@ -6,7 +6,6 @@ import {
   INBOX_ACTIVITY_WINDOW_MS,
 } from "./navigation/model";
 import { useSidebarNavigationStore } from "./navigation/store";
-import { i18n } from "@/i18n/i18next";
 import { describe, expect, it } from "vitest";
 import type {
   SidebarProjectEntry,
@@ -72,10 +71,7 @@ function makeProject(
   };
 }
 
-function projectionInput(options?: {
-  groupMode?: "project" | "status";
-  pinnedCollapsed?: boolean;
-}) {
+function projectionInput(options?: { pinnedCollapsed?: boolean }) {
   const pinned = makeWorkspace("pinned", "running");
   const unpinned = makeWorkspace("unpinned", "needs_input");
   return {
@@ -90,11 +86,8 @@ function projectionInput(options?: {
       [unpinned.entry.workspaceKey, unpinned.entry],
     ]),
     projectNamesByViewKey: new Map([["project", "Project"]]),
-    groupMode: options?.groupMode ?? ("project" as const),
     pinnedCollapsed: options?.pinnedCollapsed ?? false,
     collapsedProjectKeys: new Set<string>(),
-    collapsedWorkspaceGroupKeys: new Set<string>(),
-    t: i18n.t,
   };
 }
 
@@ -102,11 +95,11 @@ function projectionInput(options?: {
  * Two projects, one workspace each, both labelled — so every grouping mode puts rows from more
  * than one project on screen, and a mode that asked for fewer icons than it renders would show it.
  */
-function twoProjectInput(groupMode: "project" | "status") {
+function twoProjectInput() {
   const first = makeWorkspace("first", "running", ["Urgent"], "project");
   const second = makeWorkspace("second", "needs_input", ["Backend"], "other-project");
   return {
-    ...projectionInput({ groupMode }),
+    ...projectionInput(),
     projects: [makeProject([first.placement]), makeProject([second.placement], "other-project")],
     pinnedKeys: { pinnedWorkspaceKeys: [], pinnedAtByKey: {} },
     workspaceEntriesByKey: new Map([
@@ -121,31 +114,16 @@ function twoProjectInput(groupMode: "project" | "status") {
 }
 
 describe("buildSidebarProjection", () => {
-  // The rule that outlived the bug it was written for: a project icon is fetched per project, so
-  // whatever a mode groups by, the rows it produces can only reference projects already covered.
-  for (const groupMode of ["project", "status"] as const) {
-    it(`covers every row ${groupMode} grouping renders with a project icon target`, () => {
-      const projection = buildSidebarProjection(twoProjectInput(groupMode));
-      const covered = new Set(projection.projectIconTargets.map((target) => target.projectViewKey));
-
-      // Every leading visual the sidebar can paint from this projection: pinned rows, grouped
-      // rows, project headers and the rows under them.
-      const renderedProjectViewKeys = new Set<string>();
-      for (const entry of projection.pinnedGroups.pinnedChats) {
-        renderedProjectViewKeys.add(entry.projectViewKey);
-      }
-      for (const group of projection.workspaceGroups) {
-        for (const entry of group.rows) renderedProjectViewKeys.add(entry.projectViewKey);
-      }
-      for (const project of projection.pinnedGroups.unpinnedProjects) {
-        renderedProjectViewKeys.add(project.viewKey);
-        for (const entry of project.workspaces) renderedProjectViewKeys.add(entry.projectViewKey);
-      }
-
-      expect([...renderedProjectViewKeys].sort()).toEqual(["other-project", "project"]);
-      expect([...renderedProjectViewKeys].filter((viewKey) => !covered.has(viewKey))).toEqual([]);
-    });
-  }
+  it("fetches project icons for every rendered project and Inbox row", () => {
+    const input = twoProjectInput();
+    for (const flatWorkspaces of [undefined, [...input.workspaceEntriesByKey.values()]]) {
+      const projection = buildSidebarProjection({ ...input, flatWorkspaces });
+      expect(projection.projectIconTargets.map((target) => target.projectViewKey).sort()).toEqual([
+        "other-project",
+        "project",
+      ]);
+    }
+  });
 
   it("uses one pin-aware projection for project rows and shortcut order", () => {
     const projection = buildSidebarProjection(projectionInput());
@@ -161,23 +139,8 @@ describe("buildSidebarProjection", () => {
     ]);
   });
 
-  it("keeps pinned chats above status groups and removes them from those groups", () => {
-    const projection = buildSidebarProjection(projectionInput({ groupMode: "status" }));
-
-    expect(projection.workspaceGroups.map((group) => group.key)).toEqual(["needs_input"]);
-    expect(projection.workspaceGroups[0]?.rows.map((entry) => entry.workspaceId)).toEqual([
-      "unpinned",
-    ]);
-    expect(projection.shortcutModel.shortcutTargets).toEqual([
-      { serverId: "srv", workspaceId: "pinned" },
-      { serverId: "srv", workspaceId: "unpinned" },
-    ]);
-  });
-
   it("does not number pinned chats while the pinned section is collapsed", () => {
-    const projection = buildSidebarProjection(
-      projectionInput({ groupMode: "status", pinnedCollapsed: true }),
-    );
+    const projection = buildSidebarProjection(projectionInput({ pinnedCollapsed: true }));
 
     expect(projection.shortcutModel.shortcutTargets).toEqual([
       { serverId: "srv", workspaceId: "unpinned" },
@@ -282,7 +245,6 @@ describe("Inbox navigation", () => {
     const projection = buildSidebarProjection({ ...input, flatWorkspaces: rows });
     expect(rows.map((row) => row.workspaceId)).toEqual(["unpinned", "pinned"]);
     expect(projection.pinnedGroups.pinnedChats).toEqual([]);
-    expect(projection.workspaceGroups).toEqual([]);
     expect(projection.shortcutModel.shortcutTargets.map((target) => target.workspaceId)).toEqual([
       "unpinned",
       "pinned",

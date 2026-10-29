@@ -20,7 +20,6 @@ export function useSidebarNavigation(
 ) {
   const projectKey = useSidebarNavigationStore((state) => state.projectKey);
   const inboxVisit = useSidebarNavigationStore((state) => state.inboxVisit);
-  const grouping = useSidebarNavigationStore((state) => state.grouping);
   const serverIds = useMemo(
     () => [...new Set(projects.flatMap((project) => project.hosts.map((host) => host.serverId)))],
     [projects],
@@ -73,9 +72,7 @@ export function useSidebarNavigation(
       rows,
       selectedProject,
       unreadByProject,
-      flat: !selectedProject || grouping === "project",
-      grouping,
     }),
-    [rows, selectedProject, unreadByProject, grouping],
+    [rows, selectedProject, unreadByProject],
   );
 }

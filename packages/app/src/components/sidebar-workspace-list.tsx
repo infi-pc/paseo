@@ -69,7 +69,7 @@ import {
   type SidebarWorkspacePlacement,
 } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
-import { useSidebarViewStore, type SidebarGroupMode } from "@/stores/sidebar-view-store";
+import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import {
   ContextMenu,
@@ -91,8 +91,7 @@ import { toWorktreeArchiveRisk } from "@/git/worktree-archive-warning";
 import { hasVisibleOrderChanged, mergeWithRemainder } from "@/utils/sidebar-reorder";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
-import { SidebarStatusWorkspaceList } from "@/components/sidebar/sidebar-status-list";
-import type { SidebarWorkspaceGroup } from "@/components/sidebar/sidebar-labels";
+import { SidebarFlatWorkspaceList } from "@/components/sidebar/sidebar-flat-list";
 import {
   SidebarWorkspaceContextMenu,
   SidebarWorkspaceMenu,
@@ -216,7 +215,6 @@ function selectionForSelectedWorkspace(
 
 interface SidebarWorkspaceListProps {
   flatRows?: SidebarWorkspaceEntry[];
-  workspaceGroups: SidebarWorkspaceGroup[];
   /** What `useProjectIcons` is asked for, straight from the projection. See `SidebarProjection`. */
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
@@ -228,7 +226,6 @@ interface SidebarWorkspaceListProps {
   collapsedProjectKeys: ReadonlySet<string>;
   onToggleProjectCollapsed: (projectViewKey: string) => void;
   shortcutIndexByWorkspaceKey: Map<string, number>;
-  groupMode: SidebarGroupMode;
   isRefreshing?: boolean;
   onRefresh?: () => void;
   onWorkspacePress?: () => void;
@@ -1950,7 +1947,6 @@ function areProjectBlockSelectionsEqual(
 const MemoProjectBlock = memo(ProjectBlock, areProjectBlockPropsEqual);
 
 export function SidebarWorkspaceList({
-  workspaceGroups,
   projectIconTargets,
   pinnedGroups,
   projects,
@@ -1960,7 +1956,6 @@ export function SidebarWorkspaceList({
   collapsedProjectKeys,
   onToggleProjectCollapsed,
   shortcutIndexByWorkspaceKey,
-  groupMode,
   flatRows,
   isRefreshing: _isRefreshing = false,
   onRefresh: _onRefresh,
@@ -2024,126 +2019,45 @@ export function SidebarWorkspaceList({
   // reach the display menu to reveal their work again.
   const sidebarFilterEmpty = hasProjectsBeforeFilter && projects.length === 0;
 
-  // Project mode is the one that keeps its project headers; every other grouping mode is a flat
-  // list of grouped rows, so a new mode lands in the grouped branch rather than silently in this
-  // one's `else`.
-  const content =
-    flatRows || groupMode !== "project" ? (
-      <SidebarGroupedModeList
-        flatRows={flatRows}
-        workspaceGroups={workspaceGroups}
-        pinnedGroups={pinnedGroups}
-        workspaceEntriesByKey={workspaceEntriesByKey}
-        projectIconByProjectViewKey={projectIconByProjectViewKey}
-        shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-        onWorkspacePress={onWorkspacePress}
-        hostBadgeByServerId={hostBadgeByServerId}
-        supportsPinningByServerId={supportsPinningByServerId}
-        onToggleWorkspacePin={onToggleWorkspacePin}
-        onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
-        listHeaderComponent={listHeaderComponent}
-        sidebarFilterEmpty={sidebarFilterEmpty}
-        parentGestureRef={parentGestureRef}
-        dragGestureHostActive={dragGestureHostActive}
-      />
-    ) : (
-      <ProjectModeList
-        projects={projects}
-        pinnedGroups={pinnedGroups}
-        workspaceEntriesByKey={workspaceEntriesByKey}
-        projectIconByProjectViewKey={projectIconByProjectViewKey}
-        collapsedProjectKeys={collapsedProjectKeys}
-        onToggleProjectCollapsed={onToggleProjectCollapsed}
-        shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
-        onWorkspacePress={onWorkspacePress}
-        onAddProject={onAddProject}
-        onImportSession={onImportSession}
-        listFooterComponent={listFooterComponent}
-        listHeaderComponent={listHeaderComponent}
-        sidebarFilterEmpty={sidebarFilterEmpty}
-        hasActiveProjectFilter={hasActiveProjectFilter}
-        parentGestureRef={parentGestureRef}
-        dragGestureHostActive={dragGestureHostActive}
-        pathname={pathname}
-        hostBadgeByServerId={hostBadgeByServerId}
-        supportsMultiplicityByServerId={supportsMultiplicityByServerId}
-        supportsPinningByServerId={supportsPinningByServerId}
-        onToggleWorkspacePin={onToggleWorkspacePin}
-        onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
-      />
-    );
-
-  return content;
-}
-
-/**
- * Every grouping mode except project: the rows are grouped by something that is not a project, so
- * each row carries its own project icon. Named for what it does rather than for the first mode
- * that needed it — `SidebarStatusModeWrapper` is what made a label-mode reader believe the data
- * above it was status-only.
- */
-function SidebarGroupedModeList({
-  flatRows,
-  workspaceGroups,
-  pinnedGroups,
-  workspaceEntriesByKey,
-  projectIconByProjectViewKey,
-  shortcutIndexByWorkspaceKey: _projectShortcutIndex,
-  onWorkspacePress,
-  hostBadgeByServerId,
-  supportsPinningByServerId,
-  onToggleWorkspacePin,
-  onPinnedWorkspaceReorder,
-  listHeaderComponent,
-  sidebarFilterEmpty,
-  parentGestureRef,
-  dragGestureHostActive,
-}: {
-  flatRows?: SidebarWorkspaceEntry[];
-  workspaceGroups: SidebarWorkspaceGroup[];
-  pinnedGroups: PinnedSidebarGroups;
-  workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
-  projectIconByProjectViewKey: ReadonlyMap<string, string | null>;
-  shortcutIndexByWorkspaceKey: Map<string, number>;
-  onWorkspacePress?: () => void;
-  hostBadgeByServerId: ReadonlyMap<string, HostBadgeModel>;
-  supportsPinningByServerId: ReadonlyMap<string, boolean>;
-  onToggleWorkspacePin: ToggleSidebarWorkspacePin;
-  onPinnedWorkspaceReorder: (workspaces: SidebarWorkspacePlacement[]) => void;
-  listHeaderComponent?: ReactElement | null;
-  sidebarFilterEmpty: boolean;
-  parentGestureRef?: MutableRefObject<GestureType | undefined>;
-  dragGestureHostActive?: boolean;
-}) {
-  const showShortcutBadges = useShowShortcutBadges();
-  const pinnedWorkspaces = useMemo(
-    () =>
-      pinnedGroups.pinnedChats.flatMap((workspace) => {
-        const entry = workspaceEntriesByKey.get(workspace.workspaceKey);
-        return entry ? [entry] : [];
-      }),
-    [pinnedGroups.pinnedChats, workspaceEntriesByKey],
-  );
-
-  return (
-    <SidebarStatusWorkspaceList
+  const content = flatRows ? (
+    <SidebarFlatWorkspaceList
       flatRows={flatRows}
-      groups={workspaceGroups}
-      pinnedWorkspaces={pinnedWorkspaces}
       projectIconByProjectViewKey={projectIconByProjectViewKey}
-      shortcutIndexByWorkspaceKey={_projectShortcutIndex}
-      showShortcutBadges={showShortcutBadges}
+      shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
       onWorkspacePress={onWorkspacePress}
       hostBadgeByServerId={hostBadgeByServerId}
       supportsPinningByServerId={supportsPinningByServerId}
       onToggleWorkspacePin={onToggleWorkspacePin}
-      onPinnedWorkspaceReorder={onPinnedWorkspaceReorder}
+      listHeaderComponent={listHeaderComponent}
+    />
+  ) : (
+    <ProjectModeList
+      projects={projects}
+      pinnedGroups={pinnedGroups}
+      workspaceEntriesByKey={workspaceEntriesByKey}
+      projectIconByProjectViewKey={projectIconByProjectViewKey}
+      collapsedProjectKeys={collapsedProjectKeys}
+      onToggleProjectCollapsed={onToggleProjectCollapsed}
+      shortcutIndexByWorkspaceKey={shortcutIndexByWorkspaceKey}
+      onWorkspacePress={onWorkspacePress}
+      onAddProject={onAddProject}
+      onImportSession={onImportSession}
+      listFooterComponent={listFooterComponent}
       listHeaderComponent={listHeaderComponent}
       sidebarFilterEmpty={sidebarFilterEmpty}
+      hasActiveProjectFilter={hasActiveProjectFilter}
       parentGestureRef={parentGestureRef}
       dragGestureHostActive={dragGestureHostActive}
+      pathname={pathname}
+      hostBadgeByServerId={hostBadgeByServerId}
+      supportsMultiplicityByServerId={supportsMultiplicityByServerId}
+      supportsPinningByServerId={supportsPinningByServerId}
+      onToggleWorkspacePin={onToggleWorkspacePin}
+      onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
     />
   );
+
+  return content;
 }
 
 function ProjectModeList({
@@ -2171,12 +2085,7 @@ function ProjectModeList({
   onPinnedWorkspaceReorder,
 }: Omit<
   SidebarWorkspaceListProps,
-  | "workspaceGroups"
-  | "projectIconTargets"
-  | "groupMode"
-  | "hasProjectsBeforeFilter"
-  | "isRefreshing"
-  | "onRefresh"
+  "projectIconTargets" | "hasProjectsBeforeFilter" | "isRefreshing" | "onRefresh"
 > & {
   /** Swaps the list body for the label filter's empty state. Never the header above it. */
   sidebarFilterEmpty: boolean;

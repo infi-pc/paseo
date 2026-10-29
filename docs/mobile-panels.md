@@ -20,7 +20,8 @@ ordered by latest session activity. Keep qualifying rows for the current Inbox v
 session cannot remove the row under the user. Selecting a project ends that visit; returning to
 Inbox reevaluates membership. Snoozed and removed workspaces do not remain through this retention.
 Git refreshes and status transitions must not advance session activity. Pins remain in activity
-order in Inbox; project views retain their pinned section and optional status grouping.
+order in Inbox; project views retain their pinned section. Both lists have a fixed presentation;
+there is no grouping preference or grouping command.
 
 Sidebar selection starts at Inbox in a new app session. It is shared across layout changes, while
 the drawer's visibility remains owned by the compact panel model below.

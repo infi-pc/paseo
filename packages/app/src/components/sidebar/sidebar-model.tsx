@@ -1,4 +1,3 @@
-import { useTranslation } from "react-i18next";
 import React, { createContext, useContext, useEffect, useMemo, type ReactNode } from "react";
 import {
   useSidebarWorkspacesList,
@@ -9,16 +8,12 @@ import {
 import { useSidebarWorkspaceEntries } from "@/hooks/use-sidebar-workspace-entries";
 import { usePinnedSidebarKeys, type PinnedSidebarGroups } from "@/hooks/use-sidebar-pins";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
-import {
-  hasActiveSidebarLabelFilter,
-  useSidebarViewStore,
-  type SidebarGroupMode,
-} from "@/stores/sidebar-view-store";
+import { hasActiveSidebarLabelFilter, useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
 import type { SidebarShortcutModel } from "@/utils/sidebar-shortcuts";
 import { buildSidebarProjection } from "./sidebar-projection";
 import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model";
-import { filterWorkspacesByLabels, type SidebarWorkspaceGroup } from "./sidebar-labels";
+import { filterWorkspacesByLabels } from "./sidebar-labels";
 import { useSidebarNavigation } from "./navigation/use-navigation";
 import {
   hasAuthoritativeWorkspaceLabelCatalog,
@@ -36,8 +31,6 @@ interface SidebarModel extends SidebarWorkspacesListResult {
    */
   allProjects: SidebarProjectEntry[];
   hasProjectsBeforeFilter: boolean;
-  groupMode: SidebarGroupMode;
-  workspaceGroups: SidebarWorkspaceGroup[];
   projectIconTargets: SidebarProjectIconTarget[];
   pinnedGroups: PinnedSidebarGroups;
   collapsedProjectKeys: ReadonlySet<string>;
@@ -54,7 +47,6 @@ export function SidebarModelProvider({
   active?: boolean;
   children: ReactNode;
 }) {
-  const { t } = useTranslation();
   const list = useSidebarWorkspacesList({ enabled: active });
   const showBackground = useSidebarViewStore((state) => state.showBackground);
 
@@ -64,9 +56,6 @@ export function SidebarModelProvider({
   const { hosts: labelHosts } = useWorkspaceLabelProjection();
   const collapsedProjectKeys = useSidebarCollapsedSectionsStore(
     (state) => state.collapsedProjectKeys,
-  );
-  const collapsedWorkspaceGroupKeys = useSidebarCollapsedSectionsStore(
-    (state) => state.collapsedWorkspaceGroupKeys,
   );
   const pinnedCollapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedPinned);
   const pinnedWorkspaceOrder = useSidebarOrderStore((state) => state.pinnedWorkspaceOrder);
@@ -112,7 +101,6 @@ export function SidebarModelProvider({
     return projects;
   }, [showBackground, hasActiveLabelFilter, list.projects, visibleWorkspaceKeys]);
   const navigation = useSidebarNavigation(list.projects, filteredWorkspaceEntriesByKey);
-  const groupMode = navigation.flat ? "project" : navigation.grouping;
   const navigationEntries = useMemo(
     () => new Map(navigation.rows.map((row) => [row.workspaceKey, row])),
     [navigation.rows],
@@ -138,26 +126,16 @@ export function SidebarModelProvider({
       flatWorkspaces: !navigation.selectedProject ? navigation.rows : undefined,
       pinnedKeys,
       pinnedWorkspaceOrder,
-      workspaceEntriesByKey: navigationEntries,
-      projectNamesByViewKey: list.projectNamesByViewKey,
-      groupMode,
       pinnedCollapsed,
       collapsedProjectKeys,
-      collapsedWorkspaceGroupKeys,
-      t,
     }),
     [
       collapsedProjectKeys,
-      collapsedWorkspaceGroupKeys,
-      groupMode,
-      list.projectNamesByViewKey,
       navigationProjects,
       navigation,
-      navigationEntries,
       pinnedCollapsed,
       pinnedKeys,
       pinnedWorkspaceOrder,
-      t,
     ],
   );
   const projection = useMemo(() => buildSidebarProjection(projectionInput), [projectionInput]);
@@ -169,8 +147,6 @@ export function SidebarModelProvider({
       allProjects: list.projects,
       hasProjectsBeforeFilter: list.projects.length > 0,
       workspaceEntriesByKey: navigationEntries,
-      groupMode,
-      workspaceGroups: projection.workspaceGroups,
       projectIconTargets: projection.projectIconTargets,
       pinnedGroups: projection.pinnedGroups,
       collapsedProjectKeys,
@@ -179,7 +155,6 @@ export function SidebarModelProvider({
     }),
     [
       collapsedProjectKeys,
-      groupMode,
       list,
       navigationProjects,
       navigation,

@@ -1,15 +1,10 @@
-import { useSidebarNavigationStore } from "../navigation/store";
 import { useCallback, useMemo } from "react";
 import {
   useAppSettings,
   type SidebarWorkspaceTrailing,
   type WorkspaceTitleSource,
 } from "@/hooks/use-settings";
-import {
-  useSidebarViewStore,
-  type SidebarGroupMode,
-  type SidebarLabelFilter,
-} from "@/stores/sidebar-view-store";
+import { useSidebarViewStore, type SidebarLabelFilter } from "@/stores/sidebar-view-store";
 import { DEFAULT_SIDEBAR_CHECKS_DISPLAY, type SidebarChecksDisplay } from "./checks-display";
 import { DEFAULT_SIDEBAR_ROW_ITEMS, type SidebarRowItem, type SidebarRowItems } from "./row-items";
 
@@ -19,8 +14,6 @@ export type SidebarTrailingChoice = Exclude<SidebarWorkspaceTrailing, "none">;
 export interface SidebarDisplayPreferences {
   showBackground: boolean;
   toggleBackground: () => void;
-  grouping: SidebarGroupMode;
-  setGrouping: (mode: SidebarGroupMode) => void;
   titleSource: WorkspaceTitleSource;
   setTitleSource: (source: WorkspaceTitleSource) => void;
   rowItems: SidebarRowItems;
@@ -49,8 +42,6 @@ export interface SidebarDisplayPreferences {
 export function useSidebarDisplayPreferences(): SidebarDisplayPreferences {
   const showBackground = useSidebarViewStore((state) => state.showBackground);
   const toggleBackground = useSidebarViewStore((state) => state.toggleBackground);
-  const grouping = useSidebarNavigationStore((state) => state.grouping);
-  const setGrouping = useSidebarNavigationStore((state) => state.setGrouping);
   const hostFilters = useSidebarViewStore((state) => state.hostFilters);
   const toggleHostFilter = useSidebarViewStore((state) => state.toggleHostFilter);
   const clearHostFilters = useSidebarViewStore((state) => state.clearHostFilters);
@@ -104,8 +95,6 @@ export function useSidebarDisplayPreferences(): SidebarDisplayPreferences {
     () => ({
       showBackground,
       toggleBackground,
-      grouping,
-      setGrouping,
       titleSource: workspaceTitleSource,
       setTitleSource,
       rowItems: sidebarRowItems,
@@ -124,8 +113,6 @@ export function useSidebarDisplayPreferences(): SidebarDisplayPreferences {
     [
       showBackground,
       toggleBackground,
-      grouping,
-      setGrouping,
       workspaceTitleSource,
       setTitleSource,
       sidebarRowItems,
