@@ -71,6 +71,11 @@ One entry per fork feature: the commits that built it, the files that own it, an
 
 Commits are the fork commits that built the feature (`git show --stat <sha>` for the full file list). "Owns" lists the fork-owned entry points. "Wires into" lists the upstream files the feature edits, largest first.
 
+### Codex MCP consent for a session
+
+- Wires into: `codex-app-server-agent.ts`, its provider test suite, `agent-stream/view.tsx`, and English permission labels.
+- Remembers identical MCP consent prompts in the live agent session; closing or resuming the agent requires consent again. Data collection forms remain interactive.
+
 ### Workspace snoozing
 
 - Owns: `packages/protocol/src/workspace-snooze.ts`, `packages/protocol/src/workspace-status-snooze.ts`, `packages/server/src/server/workspace-snooze/`, `packages/app/src/workspace-snooze/`.

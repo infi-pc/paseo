@@ -1727,6 +1727,16 @@ describe("Codex app-server provider", () => {
       name: "CodexMcpElicitation",
       kind: "tool",
       title: "MCP approval: browser",
+      actions: [
+        { id: "reject", label: "Deny", behavior: "deny", variant: "danger" },
+        { id: "accept", label: "Accept", behavior: "allow", variant: "primary" },
+        {
+          id: "accept_for_session",
+          label: "Accept for this session",
+          behavior: "allow",
+          variant: "secondary",
+        },
+      ],
       description: "Allow the browser to open this page?",
       input: {
         mode: "openai/form",
@@ -1767,6 +1777,143 @@ describe("Codex app-server provider", () => {
       resolution: { behavior: "deny", interrupt: true },
     });
     await session.close();
+  });
+
+  async function setupMcpConsentSession() {
+    const appServer = createFakeCodexAppServer();
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+    await session.connect();
+    const params = {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      serverName: "cua_repl",
+      message: 'Allow Computer Use to use "Google Chrome"?',
+      requestedSchema: { type: "object" },
+    };
+    const requested = waitForNextPermission(session);
+    appServer.requestMcpElicitation(params);
+    const permission = await requested;
+    return { appServer, session, params, permission };
+  }
+
+  test("MCP elicitation session consent lasts across turns and expires in a new session", async () => {
+    const { session, appServer, params, permission } = await setupMcpConsentSession();
+    try {
+      await session.respondToPermission(permission.request.id, {
+        behavior: "allow",
+        selectedActionId: "accept_for_session",
+      });
+      await expect(appServer.waitForMcpElicitationDecision()).resolves.toEqual({
+        action: "accept",
+        content: {},
+        _meta: null,
+      });
+      appServer.resolvesMcpElicitation();
+      const events: AgentStreamEvent[] = [];
+      session.subscribe((event) => events.push(event));
+      appServer.requestMcpElicitation({ ...params, turnId: "turn-2" });
+      await expect(appServer.waitForMcpElicitationDecision()).resolves.toEqual({
+        action: "accept",
+        content: {},
+        _meta: null,
+      });
+      expect(events.filter((event) => event.type === "permission_requested")).toEqual([]);
+      expect(session.getPendingPermissions()).toEqual([]);
+    } finally {
+      await session.close();
+    }
+    const fresh = await setupMcpConsentSession();
+    try {
+      expect(fresh.permission.request.description).toBe(params.message);
+      expect(fresh.session.getPendingPermissions()).toEqual([fresh.permission.request]);
+      await fresh.session.respondToPermission(fresh.permission.request.id, { behavior: "deny" });
+      await expect(fresh.appServer.waitForMcpElicitationDecision()).resolves.toEqual({
+        action: "decline",
+        content: null,
+        _meta: null,
+      });
+    } finally {
+      await fresh.session.close();
+    }
+  });
+
+  test.each([
+    {
+      name: "another server",
+      changes: { serverName: "other_server" },
+      action: "accept_for_session",
+      behavior: "allow",
+      decision: "accept",
+      content: {},
+      actions: ["reject", "accept", "accept_for_session"],
+    },
+    {
+      name: "another message",
+      changes: { message: "Allow another app?" },
+      action: "accept_for_session",
+      behavior: "allow",
+      decision: "accept",
+      content: {},
+      actions: ["reject", "accept", "accept_for_session"],
+    },
+    {
+      name: "a data form",
+      changes: { requestedSchema: { type: "object", properties: { answer: { type: "string" } } } },
+      action: "accept_for_session",
+      behavior: "allow",
+      decision: "accept",
+      content: {},
+      actions: ["reject", "accept"],
+    },
+    {
+      name: "one-time accept",
+      changes: {},
+      action: "accept",
+      behavior: "allow",
+      decision: "accept",
+      content: {},
+      actions: ["reject", "accept", "accept_for_session"],
+    },
+    {
+      name: "denial",
+      changes: {},
+      action: "accept_for_session",
+      behavior: "deny",
+      decision: "decline",
+      content: null,
+      actions: ["reject", "accept", "accept_for_session"],
+    },
+  ] as const)("MCP elicitation asks again for $name", async (scenario) => {
+    const { session, appServer, params, permission } = await setupMcpConsentSession();
+    try {
+      await session.respondToPermission(permission.request.id, {
+        behavior: scenario.behavior,
+        selectedActionId: scenario.action,
+      });
+      await expect(appServer.waitForMcpElicitationDecision()).resolves.toEqual({
+        action: scenario.decision,
+        content: scenario.content,
+        _meta: null,
+      });
+      appServer.resolvesMcpElicitation();
+      const requested = waitForNextPermission(session);
+      appServer.requestMcpElicitation({ ...params, ...scenario.changes, turnId: "turn-2" });
+      const next = await requested;
+      expect(next.request.actions?.map((action) => action.id)).toEqual(scenario.actions);
+      await session.respondToPermission(next.request.id, { behavior: "deny" });
+      await expect(appServer.waitForMcpElicitationDecision()).resolves.toEqual({
+        action: "decline",
+        content: null,
+        _meta: null,
+      });
+    } finally {
+      await session.close();
+    }
   });
 
   test("initializes Codex app-server without making Paseo the request originator", async () => {

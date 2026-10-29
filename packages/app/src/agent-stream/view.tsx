@@ -1587,7 +1587,16 @@ function PermissionRequestCard({
       return [];
     }
     if (Array.isArray(request.actions) && request.actions.length > 0) {
-      return request.actions;
+      // FORK(mcp-session-consent): Translate Codex consent actions through app resources.
+      return request.actions.map((action) => {
+        if (request.name !== "CodexMcpElicitation") return action;
+        const labels: Record<string, string> = {
+          reject: t("agentStream.permission.deny"),
+          accept: t("agentStream.permission.accept"),
+          accept_for_session: t("agentStream.permission.acceptForSession"),
+        };
+        return { ...action, label: labels[action.id] ?? action.label };
+      });
     }
     return [
       {
