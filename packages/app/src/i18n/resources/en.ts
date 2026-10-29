@@ -1,4 +1,10 @@
 export const en = {
+  // FORK(locator-compose): source links target the remembered worktree composer.
+  composeLink: {
+    loading: "Opening the worktree composer…",
+    failed: "Could not open this source location",
+    help: "Check that the host is connected and the exact worktree is registered in Paseo, then retry.",
+  },
   workspaceSnooze: {
     title: "Snooze workspace",
     action: "Snooze…",

@@ -161,6 +161,21 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     [draftKey],
   );
 
+  // FORK(locator-compose): retained editors need an explicit replacement for external edits.
+  useEffect(
+    () =>
+      useDraftStore.subscribe((state, previous) => {
+        if (
+          state.externalTextRevisionByDraftKey[draftKey] ===
+          previous.externalTextRevisionByDraftKey[draftKey]
+        )
+          return;
+        textPublication.cancel();
+        publishTextReplacement("replace", state.getDraftInput(draftKey)?.text ?? "");
+      }),
+    [draftKey, publishTextReplacement, textPublication],
+  );
+
   const editText = useCallback(
     (nextText: string) => {
       if (isWeb) {

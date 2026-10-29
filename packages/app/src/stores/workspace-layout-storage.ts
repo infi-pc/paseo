@@ -105,6 +105,8 @@ const WorkspaceLayoutStorageSchema: z.ZodType<WorkspaceLayout> = z.strictObject(
   parentTabIdByTabId: z.record(z.string(), z.string()).optional(),
 });
 export const WorkspaceLayoutPersistedStateSchema = z.strictObject({
+  // FORK(locator-compose): source links target the remembered worktree composer.
+  lastFocusedAgentByWorkspace: z.record(z.string(), z.string()).optional(),
   pinnedAgentIdsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   layoutByWorkspace: z.record(z.string(), WorkspaceLayoutStorageSchema),
   splitSizesByWorkspace: z.record(z.string(), z.record(z.string(), z.array(z.number()))).optional(),

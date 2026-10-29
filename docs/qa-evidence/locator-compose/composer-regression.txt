@@ -1,0 +1,15 @@
+
+ RUN  v4.1.7 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/just-porcupine/packages/app
+
+(node:14615) [DEP0151] DeprecationWarning: Package /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/just-porcupine/node_modules/react-native-worklets/ has a "main" field set to "./lib/module/index", excluding the full filename and extension to the resolved file at "lib/module/index.js", imported from /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/just-porcupine/node_modules/react-native-reanimated/lib/module/initializers.js.
+ Automatic extension resolution of the "main" field is deprecated for ES modules.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:14614) [DEP0151] DeprecationWarning: Package /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/just-porcupine/node_modules/react-native-worklets/ has a "main" field set to "./lib/module/index", excluding the full filename and extension to the resolved file at "lib/module/index.js", imported from /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/just-porcupine/node_modules/react-native-reanimated/lib/module/initializers.js.
+ Automatic extension resolution of the "main" field is deprecated for ES modules.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  2 passed (2)
+      Tests  14 passed (14)
+   Start at  11:22:38
+   Duration  6.63s (transform 9.50s, setup 39ms, import 6.31s, tests 6.22s, environment 483ms)
+

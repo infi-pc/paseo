@@ -832,6 +832,8 @@ function RootStack() {
         <Stack.Screen name="settings/index" />
         <Stack.Screen name="settings/[section]" />
         <Stack.Screen name="new" />
+        {/* FORK(locator-compose): external source references enter through a global route. */}
+        <Stack.Screen name="compose" />
         <Stack.Screen name="open-project" />
         <Stack.Screen name="sessions" />
         <Stack.Screen name="schedules" />

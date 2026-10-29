@@ -82,6 +82,19 @@ export function NavigationHistoryRecorder({
     } else {
       entry = location;
     }
+    // FORK(locator-compose): source links target the remembered worktree composer.
+    if (entry.kind === "workspace" && entry.target?.kind === "agent" && workspaceKey) {
+      const agentId = entry.target.agentId;
+      const state = useWorkspaceLayoutStore.getState();
+      if (state.lastFocusedAgentByWorkspace[workspaceKey] !== agentId) {
+        useWorkspaceLayoutStore.setState({
+          lastFocusedAgentByWorkspace: {
+            ...state.lastFocusedAgentByWorkspace,
+            [workspaceKey]: agentId,
+          },
+        });
+      }
+    }
     recordNavigationLocation(store, entry);
   }, [focusedTabId, focusedTabTargetSignature, hydrated, location, store, workspaceKey]);
 

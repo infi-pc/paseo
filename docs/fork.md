@@ -211,6 +211,12 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 - Wires into: `packages/app/src/components/plan-card.tsx`
 - Copy and "hand this plan to another agent" actions on a plan card.
 
+### LocatorJS compose links
+
+- Owns: `packages/protocol/src/compose-deep-link.ts`, `packages/app/src/compose/`, `packages/app/src/app/compose.tsx`.
+- Wires into: desktop agent navigation and preload bridge, root app routes, workspace layout persistence, navigation focus recording, draft store, and English resources.
+- Opens the last-focused agent in the exact worktree and appends an unsent source reference. See [desktop integration URLs](development.md#cli-reference).
+
 ### Navigation history and recently closed agents
 
 - Commits: `f777bc1b3`, `ff66c741b`
