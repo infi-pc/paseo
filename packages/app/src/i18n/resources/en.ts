@@ -342,6 +342,7 @@ export const en = {
       required: "Permission Required",
       deny: "Deny",
       accept: "Accept",
+      acceptForSession: "Accept for this session",
       implement: "Implement",
       question: "How would you like to proceed?",
       proposedPlan: "Proposed plan",

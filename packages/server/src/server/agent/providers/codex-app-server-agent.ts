@@ -3427,6 +3427,7 @@ function resolveCodexParentSubagentId(
 interface CodexPendingPermissionHandler {
   resolve: (value: unknown) => void;
   kind: "command" | "file" | "question" | "mcp_elicitation" | "plan";
+  mcpConsentKey?: string;
   questions?: CodexQuestionPrompt[];
   plan?: { text: string; turnId: string | undefined };
 }
@@ -3480,6 +3481,8 @@ export class CodexAppServerAgentSession implements AgentSession {
   private pendingPermissions = new Map<string, AgentPermissionRequest>();
   private mcpElicitationPermissionIds = new Map<number, string>();
   private pendingPermissionHandlers = new Map<string, CodexPendingPermissionHandler>();
+  // FORK(mcp-session-consent): Remember exact consent prompts only for this live session.
+  private readonly acceptedMcpConsents = new Set<string>();
   private resolvedPermissionRequests = new Set<string>();
   private pendingAgentMessages = new Map<string, string>();
   private pendingReasoning = new Map<string, string[]>();
@@ -4729,11 +4732,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
 
     if (pending.kind === "mcp_elicitation") {
-      pending.resolve({
-        action: resolvePermissionDecision(response),
-        content: response.behavior === "allow" ? {} : null,
-        _meta: null,
-      });
+      this.resolveMcpConsent(pending, response);
       return;
     }
 
@@ -4784,6 +4783,24 @@ export class CodexAppServerAgentSession implements AgentSession {
       }),
     });
     pending.resolve({ answers: {} });
+  }
+
+  private resolveMcpConsent(
+    pending: CodexPendingPermissionHandler,
+    response: AgentPermissionResponse,
+  ): void {
+    if (
+      response.behavior === "allow" &&
+      response.selectedActionId === "accept_for_session" &&
+      pending.mcpConsentKey
+    ) {
+      this.acceptedMcpConsents.add(pending.mcpConsentKey);
+    }
+    pending.resolve({
+      action: resolvePermissionDecision(response),
+      content: response.behavior === "allow" ? {} : null,
+      _meta: null,
+    });
   }
 
   private async respondToAsyncQuestion(
@@ -5071,6 +5088,7 @@ export class CodexAppServerAgentSession implements AgentSession {
 
   async close(): Promise<void> {
     this.closed = true;
+    this.acceptedMcpConsents.clear();
     this.clearPendingPermissions();
     this.pendingSubAgentNotificationsByThreadId.clear();
     this.subscribers.clear();
@@ -7173,6 +7191,31 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (Array.isArray(requiredFields) && requiredFields.length > 0) {
       return Promise.resolve({ action: "decline", content: null, _meta: null });
     }
+    // Forms collecting data must remain interactive, even after a consent was remembered.
+    const schema = toObjectRecord(parsed.requestedSchema);
+    const properties = toObjectRecord(schema?.properties);
+    const isConsent =
+      schema?.type === "object" &&
+      (schema.properties === undefined ||
+        (properties !== undefined && Object.keys(properties).length === 0));
+    const mcpConsentKey = isConsent
+      ? JSON.stringify([parsed.serverName, parsed.mode, parsed.message, parsed.requestedSchema])
+      : undefined;
+    if (mcpConsentKey && this.acceptedMcpConsents.has(mcpConsentKey)) {
+      return Promise.resolve({ action: "accept", content: {}, _meta: null });
+    }
+    const actions: AgentPermissionAction[] = [
+      { id: "reject", label: "Deny", behavior: "deny", variant: "danger" },
+      { id: "accept", label: "Accept", behavior: "allow", variant: "primary" },
+    ];
+    if (mcpConsentKey) {
+      actions.push({
+        id: "accept_for_session",
+        label: "Accept for this session",
+        behavior: "allow",
+        variant: "secondary",
+      });
+    }
     const requestId = `permission-${randomUUID()}`;
     const request: AgentPermissionRequest = {
       id: requestId,
@@ -7180,6 +7223,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       name: "CodexMcpElicitation",
       kind: "tool",
       title: `MCP approval: ${parsed.serverName}`,
+      actions,
       description: parsed.message,
       input: {
         mode: parsed.mode,
@@ -7197,7 +7241,11 @@ export class CodexAppServerAgentSession implements AgentSession {
     this.mcpElicitationPermissionIds.set(serverRequestId, requestId);
     this.emitEvent({ type: "permission_requested", provider: CODEX_PROVIDER, request });
     return new Promise((resolve) => {
-      this.pendingPermissionHandlers.set(requestId, { resolve, kind: "mcp_elicitation" });
+      this.pendingPermissionHandlers.set(requestId, {
+        resolve,
+        kind: "mcp_elicitation",
+        mcpConsentKey,
+      });
     });
   }
 }
