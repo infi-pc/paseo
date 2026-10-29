@@ -581,11 +581,14 @@ test.describe("Half-screen desktop layout", () => {
       await waitForSidebarWorkspace(page, lastWorkspaceId);
 
       const sidebarScroll = page.getByTestId("sidebar-project-workspace-list-scroll");
-      const scrollTop = await sidebarScroll.evaluate((element) => {
-        element.scrollTop = 160;
-        return element.scrollTop;
+      const { scrollTop, targetScrollTop } = await sidebarScroll.evaluate((element) => {
+        // Rail actions leave more height for the list, so its available overflow varies.
+        const offset = Math.min(160, element.scrollHeight - element.clientHeight);
+        element.scrollTop = offset;
+        return { scrollTop: element.scrollTop, targetScrollTop: offset };
       });
-      expect(scrollTop).toBe(160);
+      expect(targetScrollTop).toBeGreaterThan(0);
+      expect(scrollTop).toBe(targetScrollTop);
 
       await page.getByTestId("menu-button").click();
       await expect(page.getByTestId("sidebar-global-new-workspace")).not.toBeVisible();

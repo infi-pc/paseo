@@ -1,5 +1,5 @@
 import { projectPlacementViewKey } from "../support/helpers/project-view-key";
-import { selectSidebarProjectByName } from "../support/helpers/sidebar";
+import { selectSidebarProjectByName, selectSidebarProject } from "../support/helpers/sidebar";
 import { test as base } from "../support/fixtures";
 import { openProjectDirectoryWithHosts } from "../support/helpers/project-grouping";
 import {
@@ -207,6 +207,7 @@ test.describe("New workspace host project preservation", () => {
       hosts: [crossHostProject.secondaryHost],
       primaryLabel: PRIMARY_HOST_LABEL,
     });
+    await selectSidebarProject(page, crossHostProject.selectedProjectViewKey);
     await switchWorkspaceViaSidebar({
       page,
       serverId: getServerId(),

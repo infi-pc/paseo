@@ -293,19 +293,14 @@ export async function expectFooterIconRow(page: Page): Promise<void> {
 }
 
 export async function expectFooterSeparator(page: Page, shown: boolean): Promise<void> {
-  if (isCompactSidebar(page)) {
-    await expect(page.locator('[data-testid="sidebar-footer"]:visible')).toHaveCSS(
-      "border-top-width",
-      "1px",
-    );
-    await expect(page.locator('[data-testid="sidebar-footer-bottom-line"]:visible')).toHaveCSS(
-      "border-top-width",
-      "0px",
-    );
-  } else {
-    await expect(page.locator('[data-testid="sidebar-footer"]:visible')).toHaveCount(0);
-    await expect(page.locator('[data-testid="sidebar-footer-bottom-line"]:visible')).toHaveCount(0);
-  }
+  await expect(page.locator('[data-testid="sidebar-footer"]:visible')).toHaveCSS(
+    "border-top-width",
+    "1px",
+  );
+  await expect(page.locator('[data-testid="sidebar-footer-bottom-line"]:visible')).toHaveCSS(
+    "border-top-width",
+    "0px",
+  );
   const separator = page.locator('[data-testid="sidebar-footer-separator"]:visible');
   await expect(separator).toHaveCount(shown ? 1 : 0);
   expect(

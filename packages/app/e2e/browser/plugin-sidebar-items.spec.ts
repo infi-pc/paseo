@@ -88,15 +88,17 @@ async function expectBotScreen(page: Page, botId: string) {
   await expectRowActive(botRow(page, "status"), false);
 }
 
-/** The popover opens to the right of `row`, level with it, and away from `elsewhere`. */
+/** Header popovers align their outer surface to the row that opened them. */
 async function expectPopoverBeside(page: Page, text: string, row: Locator, elsewhere: Locator) {
-  // The popover animates into place after it first enters the viewport.
+  const surface = visibleTestId(page, `plugin-sidebar-${BOTS_PLUGIN_ID}-bots-popover`);
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  // Measure the surface rather than its text, whose inset depends on plugin padding.
   await expect(async () => {
-    const popover = await popoverBox(page, text);
+    const popover = await boxOf(surface);
     const rowBox = await boxOf(row);
     const otherBox = await boxOf(elsewhere);
     expect(popover.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width);
-    expect(Math.abs(popover.y - rowBox.y)).toBeLessThan(40);
+    expect(Math.abs(popover.y - rowBox.y)).toBeLessThanOrEqual(4);
     expect(Math.abs(popover.y - otherBox.y)).toBeGreaterThan(20);
   }).toPass({ timeout: 5_000 });
 }
