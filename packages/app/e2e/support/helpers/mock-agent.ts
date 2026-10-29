@@ -4,6 +4,7 @@ import { getServerId } from "./server-id";
 import { buildHostAgentDetailRoute } from "../../../src/utils/host-routes";
 
 export interface MockAgentWorkspace {
+  projectKey: string;
   agentId: string;
   workspaceId: string;
   cwd: string;
@@ -49,6 +50,7 @@ export async function seedMockAgentWorkspace(
       featureValues: options.featureValues,
     });
     return {
+      projectKey: workspace.projectKey,
       agentId: agent.id,
       workspaceId: workspace.workspaceId,
       cwd: workspace.repoPath,

@@ -3,10 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { test, expect, type Page } from "../support/fixtures";
+import { selectSidebarProject, openWorkspaceContextMenu } from "../support/helpers/sidebar";
 import { gotoAppShell } from "../support/helpers/app";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
-import { openWorkspaceContextMenu } from "../support/helpers/sidebar";
+
 import { resolveTempRoot } from "../support/helpers/workspace";
 
 const run = promisify(execFile);
@@ -46,9 +47,13 @@ async function createPullRequestWorkspace() {
     });
     if (!result.workspace) throw new Error(result.error ?? "Failed to create PR workspace");
     const workspace = result.workspace;
+    const { projects } = await client.listProjects();
+    const project = projects.find((entry) => entry.projectId === workspace.projectId);
+    if (!project?.projectKey) throw new Error("Missing snooze project key");
     return {
       client,
       workspaceId: workspace.id,
+      projectKey: project.projectKey,
       cleanup: async () => {
         try {
           await client.removeProject(workspace.projectId);
@@ -110,7 +115,7 @@ test("populated GitHub statuses save a subset and reopen the persisted watch at 
 }, testInfo) => {
   const workspace = await createPullRequestWorkspace();
   try {
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await openSnooze(page, workspace.workspaceId);
     await chooseReviewOnlyHourly(page);
     await page.screenshot({ path: testInfo.outputPath("snooze-github-selection-desktop.png") });
@@ -118,6 +123,7 @@ test("populated GitHub statuses save a subset and reopen the persisted watch at 
     await expect(page.getByTestId("workspace-snooze-dialog")).toBeHidden({ timeout: 90_000 });
     await expect(row(page, workspace.workspaceId)).toHaveCount(0);
     await page.reload();
+    await selectSidebarProject(page, workspace.projectKey);
     await page.getByText("Show all", { exact: true }).click();
     await expect(row(page, workspace.workspaceId)).toContainText("Snoozed");
     await openSnooze(page, workspace.workspaceId);
@@ -138,7 +144,7 @@ test("a rejected populated status save retains inputs and succeeds on retry", as
 }, testInfo) => {
   const workspace = await createPullRequestWorkspace();
   try {
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await openSnooze(page, workspace.workspaceId);
     await chooseReviewOnlyHourly(page);
     await workspace.client.archiveWorkspace(workspace.workspaceId);

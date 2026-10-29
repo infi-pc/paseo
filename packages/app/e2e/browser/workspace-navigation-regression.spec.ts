@@ -152,7 +152,7 @@ test.describe("Workspace navigation regression", () => {
         title: "Cold notification agent",
       });
       await page.setViewportSize({ width: 390, height: 844 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await page.goto(buildHostAgentDetailRoute(getServerId(), agent.id));
       await expectAppRoute(page, buildHostWorkspaceRoute(getServerId(), workspace.workspaceId), {
         timeout: 30_000,
@@ -202,7 +202,7 @@ test.describe("Workspace navigation regression", () => {
         title: `workspace-reconnect-${Date.now()}`,
       });
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await page.goto(buildHostAgentDetailRoute(serverId, agent.id, agent.workspaceId));
       await page.waitForURL(

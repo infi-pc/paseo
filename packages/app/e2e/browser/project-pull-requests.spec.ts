@@ -47,7 +47,7 @@ test("project PR shortcut opens a fullscreen list and hands the selected PR to w
   const client = await connectNewWorkspaceDaemonClient();
   const project = await openProjectViaDaemon(client, fixture.mainCheckout.path);
   try {
-    await gotoAppShell(page);
+    await gotoAppShell(page, project);
     await waitForSidebarHydration(page);
     const shortcut = page.getByTestId(`sidebar-project-pull-requests-${project.projectId}`);
     await page

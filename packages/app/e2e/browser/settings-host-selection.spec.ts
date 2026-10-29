@@ -11,6 +11,7 @@ import {
 } from "../support/helpers/settings";
 import { getServerId } from "../support/helpers/server-id";
 import { seedWorkspace } from "../support/helpers/seed-client";
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
 
 test.describe("Settings host selection", () => {
@@ -38,6 +39,7 @@ test.describe("Settings host selection", () => {
       });
 
       await clickSettingsBackToWorkspace(page);
+      await selectSidebarProject(page, remoteWorkspace.projectKey);
       await switchWorkspaceViaSidebar({
         page,
         serverId: remoteDaemon.serverId,

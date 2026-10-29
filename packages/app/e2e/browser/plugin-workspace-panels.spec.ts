@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { pluginRequirements } from "../support/helpers/plugin-fixture";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -303,16 +304,19 @@ test.describe("plugin workspace panels and Command Center", () => {
         port: secondaryDaemon.port,
         primaryLabel: "Primary plugin host",
       });
+      await selectSidebarProject(page, primary.projectKey);
       await waitForWorkspaceInSidebar(page, {
         serverId: getServerId(),
         workspaceId: primary.workspaceId,
       });
+      await selectSidebarProject(page, secondary.projectKey);
       await waitForWorkspaceInSidebar(page, {
         serverId: secondaryDaemon.serverId,
         workspaceId: secondary.workspaceId,
       });
 
       await test.step("workspace context opens the real wide panel bridge", async () => {
+        await selectSidebarProject(page, primary.projectKey);
         await switchWorkspaceViaSidebar({
           page,
           serverId: getServerId(),
@@ -403,6 +407,7 @@ test.describe("plugin workspace panels and Command Center", () => {
         };
         await runCommand(page, "Open direct collision surface");
         await openRemoteWorkspaceFromPlugin(page, remoteTarget);
+        await selectSidebarProject(page, primary.projectKey);
         await switchWorkspaceViaSidebar({
           page,
           serverId: getServerId(),
@@ -413,6 +418,7 @@ test.describe("plugin workspace panels and Command Center", () => {
       });
 
       await test.step("switching hosts removes commands from an uninstalled host", async () => {
+        await selectSidebarProject(page, secondary.projectKey);
         await switchWorkspaceViaSidebar({
           page,
           serverId: secondaryDaemon.serverId,

@@ -13,7 +13,7 @@ test.describe("Workspace archive shortcut", () => {
     const workspace = await seedWorkspace({ repoPrefix: "archive-shortcut-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await selectWorkspaceInSidebar(page, workspace.workspaceId);
 

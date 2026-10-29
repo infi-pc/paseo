@@ -66,7 +66,7 @@ test.describe("New workspace live pin", () => {
     const seeded = await seedWorkspace({ repoPrefix: "new-workspace-live-pin-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, seeded);
       await submitNewWorkspacePrompt(page, "Pin me while I start");

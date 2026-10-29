@@ -1,15 +1,16 @@
+import {
+  selectSidebarProject,
+  closeSidebarDisplayPreferences,
+  openMobileAgentSidebar,
+  openSidebarDisplayPage,
+  selectSidebarInbox,
+} from "../support/helpers/sidebar";
 import { rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
-import {
-  closeSidebarDisplayPreferences,
-  openMobileAgentSidebar,
-  openSidebarDisplayPage,
-  selectSidebarStatusGrouping,
-} from "../support/helpers/sidebar";
 
 const TITLE = "Linux desktop sandbox launch support";
 
@@ -86,6 +87,7 @@ async function openTouchWorkspaceList(page: Page, testInfo: TestInfo) {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ colorScheme: "dark" });
   await gotoAppShell(page);
+  await selectSidebarProject(page, workspace.projectKey);
   await openMobileAgentSidebar(page);
   await expect(workspaceRow(page)).toBeVisible();
   await toggleTrailing(page, "Diff stats", true);
@@ -98,13 +100,21 @@ async function pinWorkspaceForLayout(page: Page) {
   await expect(page.getByTestId("sidebar-pinned-section")).toBeVisible();
 }
 
-async function moveWorkspaceToStatusGrouping(page: Page) {
+async function moveWorkspaceToInbox(page: Page) {
   await workspace.client.setWorkspacePinned(workspace.workspaceId, false);
-  await selectSidebarStatusGrouping(page);
+  await workspace.client.createAgent({
+    provider: "mock",
+    cwd: workspace.repoPath,
+    workspaceId: workspace.workspaceId,
+    modeId: "load-test",
+    model: "e2e-fast-stream",
+  });
+  await selectSidebarInbox(page);
 }
 
 async function openDesktopWorkspaceList(page: Page) {
   await gotoAppShell(page);
+  await selectSidebarProject(page, workspace.projectKey);
   const row = workspaceRow(page);
   await expect(row).toBeVisible();
   await toggleTrailing(page, "Diff stats");
@@ -136,14 +146,14 @@ async function expectDisablingStatsExpandsTitle(page: Page, width: number) {
   expect(await titleWidth(workspaceRow(page))).toBeGreaterThan(width);
 }
 
-test("touch titles use the space occupied by hidden stats in every grouping", async ({
+test("touch titles use the space occupied by hidden stats in project and Inbox views", async ({
   page,
 }, testInfo) => {
   await openTouchWorkspaceList(page, testInfo);
   await expectTouchTitleWidth(page);
   await pinWorkspaceForLayout(page);
   await expectTouchTitleWidth(page);
-  await moveWorkspaceToStatusGrouping(page);
+  await moveWorkspaceToInbox(page);
   await expectTouchTitleWidth(page);
 });
 

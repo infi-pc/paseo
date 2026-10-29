@@ -206,34 +206,70 @@ export async function openSidebarDisplayPage(page: Page, branchTestID: string): 
   await page.getByTestId(branchTestID).click();
 }
 
-// Project filters live a page below the display-preferences root, like the host filters.
-export async function openSidebarProjectFilter(page: Page): Promise<void> {
-  await openSidebarDisplayPage(page, "sidebar-display-project-filter");
-}
-
-// The filter rows are keyed by the project's sidebar view key. A project seeded from its own temp
-// repo has a `projectKey` unique on the host, so the view key IS that key — see
-// `buildWorkspaceStructureProjects`.
-export async function toggleProjectFilter(page: Page, projectViewKey: string): Promise<void> {
-  await page.getByTestId(`sidebar-project-filter-${projectViewKey}`).click();
-}
-
-export async function selectAllProjectsFilter(page: Page): Promise<void> {
-  await page.getByTestId("sidebar-project-filter-all").click();
-}
-
 export async function closeSidebarDisplayPreferences(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("sidebar-display-preferences-content")).toHaveCount(0);
 }
 
-export async function selectSidebarStatusGrouping(page: Page): Promise<void> {
-  await openSidebarDisplayPage(page, "sidebar-display-grouping");
-  await page.getByTestId("sidebar-grouping-status").click();
+export function isCompactSidebar(page: Page): boolean {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Sidebar navigation requires a viewport");
+  // xs and sm end at the medium breakpoint in src/styles/unistyles.ts.
+  return viewport.width < 600;
+}
+
+async function revealSidebarNavigation(page: Page): Promise<void> {
+  const open = page.getByRole("button", { name: "Open menu", exact: true });
+  if (await open.isVisible()) await open.click();
+}
+
+export async function selectSidebarProject(page: Page, projectKey: string): Promise<void> {
+  await revealSidebarNavigation(page);
+  const key = projectEquivalenceViewKey(projectKey);
+  if (isCompactSidebar(page)) {
+    await page.getByTestId("sidebar-project-selector").click();
+    await page.getByTestId(`sidebar-project-option-${key}`).click();
+    await expect(
+      page.getByRole("button", { name: "Bottom sheet backdrop" }).first(),
+    ).not.toBeVisible();
+  } else {
+    await page.getByTestId(`sidebar-project-tab-${key}`).click();
+  }
+}
+
+export async function selectSidebarProjectByName(page: Page, name: string): Promise<void> {
+  await revealSidebarNavigation(page);
+  if (isCompactSidebar(page)) {
+    await page.getByTestId("sidebar-project-selector").click();
+    await page.getByRole("menuitem").filter({ hasText: name }).click();
+    await expect(
+      page.getByRole("button", { name: "Bottom sheet backdrop" }).first(),
+    ).not.toBeVisible();
+  } else {
+    await page
+      .getByTestId("sidebar-project-rail")
+      .getByRole("button", { name, exact: true })
+      .click();
+  }
+}
+
+export async function selectSidebarInbox(page: Page): Promise<void> {
+  await revealSidebarNavigation(page);
+  if (isCompactSidebar(page)) {
+    await page.getByTestId("sidebar-project-selector").click();
+    await page.getByRole("menuitem", { name: /^Inbox(?: \(\d+\))?$/ }).click();
+    await expect(
+      page.getByRole("button", { name: "Bottom sheet backdrop" }).first(),
+    ).not.toBeVisible();
+  } else {
+    await page.getByTestId("sidebar-inbox").click();
+  }
+  await expect(page.getByTestId("sidebar-flat-workspaces")).toBeVisible();
 }
 
 export async function openMobileAgentSidebar(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Open menu" }).click();
+  await revealSidebarNavigation(page);
+  await expect(page.getByTestId("sidebar-close")).toBeInViewport({ ratio: 1 });
 }
 
 export async function closeMobileAgentSidebar(page: Page): Promise<void> {

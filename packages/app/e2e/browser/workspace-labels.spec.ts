@@ -1,3 +1,5 @@
+import { openMobileAgentSidebar } from "../support/helpers/sidebar";
+import { createMockIdleAgent } from "../support/helpers/archive-tab";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { getServerId } from "../support/helpers/server-id";
@@ -157,7 +159,7 @@ test.describe("Workspace labels", () => {
         label: { name: "Unused", color: "red" },
         assigned: false,
       });
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
 
       await page.getByTestId("sidebar-display-preferences-menu").click();
       await page.getByTestId("sidebar-display-label-filter").click();
@@ -181,12 +183,17 @@ test.describe("Workspace labels", () => {
     }
   });
 
-  test("creates, multi-assigns, filters, groups, and edits against the daemon", async ({
-    page,
-  }) => {
+  test("creates, multi-assigns, filters, and edits against the daemon", async ({ page }) => {
     const seeded = await seedWorkspace({ repoPrefix: "workspace-labels-" });
     const unlabelled = await seedWorkspace({ repoPrefix: "workspace-labels-unlabelled-" });
     try {
+      for (const workspace of [seeded, unlabelled]) {
+        await createMockIdleAgent(workspace.client, {
+          cwd: workspace.repoPath,
+          workspaceId: workspace.workspaceId,
+          title: "Label filter session",
+        });
+      }
       const mutationFailure = await installWorkspaceLabelMutationFailure(page);
       await gotoAppShell(page);
       await createLabel(page, { workspaceId: seeded.workspaceId, name: "Urgent", color: "red" });
@@ -350,8 +357,8 @@ test.describe("Workspace labels", () => {
           label: { name: "Touch", color: "red" },
           assigned: true,
         });
-        await gotoAppShell(page);
-        await page.getByRole("button", { name: "Open menu", exact: true }).click();
+        await gotoAppShell(page, seeded);
+        await openMobileAgentSidebar(page);
         await waitForSidebarHydration(page);
 
         const serverId = getServerId();

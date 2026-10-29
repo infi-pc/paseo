@@ -120,7 +120,7 @@ test.describe("New workspace Codex mode preferences", () => {
     const createAgentRecorder = await captureWorkspaceAgentRequest(page, { block: false });
     try {
       await seedCodexDefaultPermissionPreferences(page, seeded.repoPath);
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
       await selectNewWorkspaceProject(page, {

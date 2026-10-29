@@ -59,7 +59,7 @@ test.describe("Branch switcher", () => {
     try {
       expect(workspace.workspaceName).toBe("main");
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await switchWorkspaceViaSidebar({ page, serverId, workspaceId: workspace.workspaceId });
 

@@ -46,7 +46,7 @@ test("previous and next traverse every visible workspace while digit shortcuts s
       expect(created.error).toBeNull();
     }
     await page.setViewportSize({ width: 1440, height: 1100 });
-    await gotoAppShell(page);
+    await gotoAppShell(page, project);
     await revealSidebarProjectWorkspaces(page, project.projectKey);
     const order = await readVisibleWorkspaceOrder(page);
 

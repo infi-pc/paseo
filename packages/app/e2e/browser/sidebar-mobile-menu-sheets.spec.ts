@@ -1,9 +1,9 @@
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { expect, test, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
-import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
 test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
@@ -20,17 +20,10 @@ test("project and workspace kebabs open action sheets on compact layouts", async
   try {
     await gotoAppShell(page);
     await page.getByRole("button", { name: "Open menu", exact: true }).click();
-    await waitForSidebarHydration(page);
+    await selectSidebarProject(page, seeded.projectKey);
 
     await page.getByTestId("sidebar-display-preferences-menu").click();
-    await expect(page.getByRole("menuitem")).toHaveText([
-      /^Grouping/,
-      /^Sort/,
-      /^Title/,
-      "Show",
-      "Project",
-      "Show background",
-    ]);
+    await expect(page.getByRole("menuitem")).toHaveText([/^Title/, "Show", "Show background"]);
     await closeMenuSheet(page);
 
     await page

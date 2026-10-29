@@ -55,7 +55,7 @@ test("terminal profiles show bundled artwork while unknown icons keep the Bot fa
 }) => {
   const workspace = await seedWorkspace({ repoPrefix: "terminal-icons-" });
   try {
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await waitForSidebarHydration(page);
     await openNewWorkspaceComposer(page, {
       projectKey: workspace.projectKey,

@@ -62,7 +62,7 @@ test.describe("Workspace archive with worktree backing", () => {
     expect(sibling.workspaceKind).toBe("worktree");
     expect(sibling.workspaceDirectory).toBe(first.workspaceDirectory);
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, first);
     await waitForSidebarHydration(page);
     await waitForWorkspaceInSidebar(page, { serverId, workspaceId: first.workspaceId });
     await waitForWorkspaceInSidebar(page, { serverId, workspaceId: sibling.id });

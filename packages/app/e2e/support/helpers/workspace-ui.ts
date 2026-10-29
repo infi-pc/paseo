@@ -1,3 +1,4 @@
+import { isCompactSidebar, openMobileAgentSidebar } from "./sidebar";
 import { expect, type Page } from "@playwright/test";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { gotoHome } from "./app";
@@ -7,19 +8,31 @@ export async function openNewAgentComposer(page: Page): Promise<void> {
   await gotoHome(page);
 }
 
-/**
- * Wait for the sidebar to show at least one project row. Use this after a spec
- * seeds a workspace/project; zero-project flows need their own assertion.
- */
+/** Wait for the project directory, without changing the selected Inbox/project scope. */
 export async function waitForSidebarHydration(page: Page, timeout = 60_000): Promise<void> {
-  await page
-    .locator('[data-testid^="sidebar-project-row-"]')
-    .first()
-    .waitFor({ state: "visible", timeout });
+  if (isCompactSidebar(page)) {
+    await openMobileAgentSidebar(page);
+    await page.getByTestId("sidebar-project-selector").click();
+    await page
+      .locator('[data-testid^="sidebar-project-option-"]')
+      .first()
+      .waitFor({ state: "visible", timeout });
+    await page
+      .getByRole("button", { name: "Bottom sheet backdrop" })
+      .first()
+      .click({ position: { x: 12, y: 12 } });
+    await expect(page.getByTestId("sidebar-project-picker")).not.toBeVisible();
+  } else {
+    await page
+      .locator('[data-testid^="sidebar-project-tab-"]')
+      .first()
+      .waitFor({ state: "visible", timeout });
+  }
 }
 
 export async function waitForNoProjectsInSidebar(page: Page, timeout = 60_000): Promise<void> {
-  await page.getByTestId("sidebar-project-empty-state").waitFor({ state: "visible", timeout });
+  await expect(page.getByTestId("sidebar-inbox")).toBeVisible({ timeout });
+  await expect(page.locator('[data-testid^="sidebar-project-tab-"]')).toHaveCount(0);
 }
 
 function workspaceRowLocator(page: Page, serverId: string, workspaceId: string) {

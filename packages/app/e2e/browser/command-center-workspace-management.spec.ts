@@ -112,7 +112,7 @@ test.describe("Command center workspace management", () => {
     const workspace = await seedWorkspace({ repoPrefix: "cc-rename-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
       await collapseProjectSection(page, workspace);
 
@@ -146,7 +146,7 @@ test.describe("Command center workspace management", () => {
     const workspace = await seedWorkspace({ repoPrefix: "cc-copy-path-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       await runCommand(page, "copy path", "Copy workspace path");
@@ -164,7 +164,7 @@ test.describe("Command center workspace management", () => {
     const workspace = await seedWorkspace({ repoPrefix: "cc-pin-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       await runCommand(page, "pin", "Pin to top");
@@ -187,7 +187,7 @@ test.describe("Command center workspace management", () => {
     const workspace = await seedWorkspace({ repoPrefix: "cc-toggle-scope-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       // All three are listed while a workspace route owns the handlers.
@@ -223,7 +223,7 @@ test.describe("Command center workspace management", () => {
         assigned: true,
       });
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       const panel = await openCommandCenter(page);
@@ -252,7 +252,7 @@ test.describe("Command center workspace management", () => {
         assigned: true,
       });
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       const panel = await openCommandCenter(page);

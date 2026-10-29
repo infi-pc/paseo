@@ -1,3 +1,4 @@
+import { selectSidebarProjectByName } from "./sidebar";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { gotoAppShell } from "./app";
 import { addConnectedHostsAndReload, waitForConnectedHost } from "./hosts";
@@ -47,6 +48,7 @@ export async function expectProjectContainsWorkspaces(
   page: Page,
   input: { projectName: string; workspaceNames: string[] },
 ): Promise<void> {
+  await selectSidebarProjectByName(page, input.projectName);
   const group = projectGroup(page, input.projectName);
   await expect(group).toHaveCount(1, { timeout: PROJECT_VISIBILITY_TIMEOUT });
   for (const workspaceName of input.workspaceNames) {
@@ -61,6 +63,7 @@ export async function expectSeparateProjects(
   projects: Array<{ projectName: string; workspaceName: string }>,
 ): Promise<void> {
   for (const project of projects) {
+    await selectSidebarProjectByName(page, project.projectName);
     await expect(
       projectGroupWithWorkspace(page, project.projectName, project.workspaceName),
     ).toHaveCount(1, { timeout: PROJECT_VISIBILITY_TIMEOUT });
@@ -68,6 +71,7 @@ export async function expectSeparateProjects(
 }
 
 export async function beginWorkspaceFromProject(page: Page, projectName: string): Promise<void> {
+  await selectSidebarProjectByName(page, projectName);
   const group = projectGroup(page, projectName);
   await expect(group).toBeVisible({ timeout: PROJECT_VISIBILITY_TIMEOUT });
   await group.hover();
@@ -92,6 +96,7 @@ export async function expectProjectWorkspaceCountForHost(
   page: Page,
   input: { projectName: string; hostName: string; count: number },
 ): Promise<void> {
+  await selectSidebarProjectByName(page, input.projectName);
   const group = projectGroup(page, input.projectName);
   await expect(group.getByRole("button").filter({ hasText: input.hostName })).toHaveCount(
     input.count,
@@ -140,6 +145,7 @@ export async function openGroupedProjectWorkspace(
   projectName: string,
   workspaceName: string,
 ): Promise<void> {
+  await selectSidebarProjectByName(page, projectName);
   await projectGroup(page, projectName)
     .getByRole("button")
     .filter({ hasText: workspaceName })

@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { test, expect, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { seedWorkspace } from "../support/helpers/seed-client";
@@ -41,7 +42,7 @@ test.describe("Sidebar workspace rename", () => {
     try {
       expect(workspace.workspaceName).toBe("main");
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await expect(page.getByTestId(workspaceRowTestId(workspace.workspaceId))).toBeVisible({
         timeout: 30_000,
       });
@@ -65,6 +66,7 @@ test.describe("Sidebar workspace rename", () => {
       // exercises the same descriptor resolution reconciliation re-runs against,
       // so a reconcile pass cannot overwrite the user's title either.
       await page.reload();
+      await selectSidebarProject(page, workspace.projectKey);
       await expect(page.getByTestId(workspaceRowTestId(workspace.workspaceId))).toContainText(
         customTitle,
         { timeout: 30_000 },
@@ -90,8 +92,9 @@ async function expectWorkspaceHidden(page: Page, workspaceId: string): Promise<v
   await expect(page.getByTestId(workspaceRowTestId(workspaceId))).toHaveCount(0);
 }
 
-async function reconnectApp(page: Page): Promise<void> {
+async function reconnectApp(page: Page, projectKey: string): Promise<void> {
   await page.reload();
+  await selectSidebarProject(page, projectKey);
   await expect(page.getByLabel("Display preferences", { exact: true })).toBeVisible();
 }
 
@@ -122,13 +125,13 @@ test("background workspace stays directly accessible across sidebar toggles and 
       modeId: "load-test",
     });
     await test.step("Default sidebar hides background work", async () => {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await expectWorkspaceHidden(page, workspace.workspaceId);
     });
     await test.step("Show background exposes the fully replicated workspace", async () => {
       await toggleBackgroundWorkspaces(page);
       await expectWorkspaceInSidebar(page, workspace.workspaceId);
-      await reconnectApp(page);
+      await reconnectApp(page, workspace.projectKey);
       await expectWorkspaceInSidebar(page, workspace.workspaceId);
     });
     await test.step("Direct agent navigation survives hiding and reconnect", async () => {
@@ -137,7 +140,7 @@ test("background workspace stays directly accessible across sidebar toggles and 
       await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: worker.id });
       await expectWorkerOpen(page);
       await expectWorkspaceHidden(page, workspace.workspaceId);
-      await reconnectApp(page);
+      await reconnectApp(page, workspace.projectKey);
       await expectWorkerOpen(page);
       await expectWorkspaceHidden(page, workspace.workspaceId);
       await page.screenshot({ path: testInfo.outputPath("background-direct-open.png") });

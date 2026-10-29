@@ -21,7 +21,7 @@ import {
   selectNewWorkspaceProject,
   submitNewWorkspaceEmpty,
 } from "../support/helpers/new-workspace";
-import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
+import { selectSidebarProjectByName } from "../support/helpers/sidebar";
 import { killProcessTree, spawnTsx } from "../support/helpers/spawn-node";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 import { getVisibleWorkspaceAgentTabIds } from "../support/helpers/workspace-tabs";
@@ -367,16 +367,13 @@ async function expectWorkspaceRowDoesNotShowIndicator(
   ).toHaveCount(0, { timeout: 5_000 });
 }
 
-async function expectWorkspaceRowInStatusBucket(
+async function expectWorkspaceRowStatus(
   page: Page,
   input: { serverId: string; workspaceId: string; bucket: string },
 ) {
-  await selectSidebarStatusGrouping(page);
-  await expect(
-    page
-      .getByTestId(`sidebar-status-group-rows-${input.bucket}`)
-      .getByTestId(`sidebar-workspace-row-${input.serverId}:${input.workspaceId}`),
-  ).toBeVisible({ timeout: 30_000 });
+  const row = page.getByTestId(`sidebar-workspace-row-${input.serverId}:${input.workspaceId}`);
+  await expect(row).toBeVisible();
+  await expect(row.getByTestId(`workspace-status-indicator-${input.bucket}`)).toBeVisible();
 }
 
 async function fetchLegacyAgent(client: RestartDaemonClient) {
@@ -432,6 +429,7 @@ test.describe("Workspace model restart regressions", () => {
 
       await page.goto(buildHostWorkspaceRoute(serverId, seeded.workspaceA));
       await waitForSidebarHydration(page);
+      await selectSidebarProjectByName(page, seeded.projectDisplayName);
       await expectWorkspaceRowDoesNotShowIndicator(page, {
         serverId,
         workspaceId: seeded.workspaceB,
@@ -491,12 +489,12 @@ test.describe("Workspace model restart regressions", () => {
         workspaceId: createdWorkspaceId,
         indicator: "running",
       });
-      await expectWorkspaceRowInStatusBucket(page, {
+      await expectWorkspaceRowStatus(page, {
         serverId,
         workspaceId: seeded.workspaceB,
         bucket: "done",
       });
-      await expectWorkspaceRowInStatusBucket(page, {
+      await expectWorkspaceRowStatus(page, {
         serverId,
         workspaceId: createdWorkspaceId,
         bucket: "done",

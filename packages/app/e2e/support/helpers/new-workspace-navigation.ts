@@ -67,7 +67,7 @@ export async function verifyDelayedWorkspaceCreation(
     const project = await openProjectViaDaemon(client, repo.path);
     localWorkspaceId = project.workspaceId;
     const knownIds = new Set((await client.fetchWorkspaces()).entries.map((entry) => entry.id));
-    await gotoAppShell(page);
+    await gotoAppShell(page, project);
     await waitForSidebarHydration(page);
     await switchWorkspaceViaSidebar({ page, serverId, workspaceId: project.workspaceId });
 

@@ -86,7 +86,7 @@ test.describe("plugin icons", () => {
       await client.patchDaemonConfig({ pluginsEnabled: true });
       await client.installDirectoryPlugin(directory);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const target = { serverId: getServerId(), workspaceId: workspace.workspaceId };
       await waitForWorkspaceInSidebar(page, target);
       await switchWorkspaceViaSidebar({ page, ...target });

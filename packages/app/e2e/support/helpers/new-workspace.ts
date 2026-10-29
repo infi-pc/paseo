@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "./sidebar";
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import type { CreateAgentRequestMessage, SessionInboundMessage } from "@getpaseo/protocol/messages";
 import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -184,6 +185,7 @@ export async function openNewWorkspaceComposer(
   input: { projectKey: string; projectDisplayName: string },
 ): Promise<void> {
   const projectViewKey = projectEquivalenceViewKey(input.projectKey);
+  await selectSidebarProject(page, projectViewKey);
   const projectRow = page.getByTestId(`sidebar-project-row-${projectViewKey}`).first();
   await expect(projectRow).toBeVisible({ timeout: 30_000 });
   await projectRow.hover();

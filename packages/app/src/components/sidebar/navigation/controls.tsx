@@ -177,7 +177,12 @@ function ProjectNavigationItem({
   const mark = useMemo(() => <ProjectMark project={project} icon={icon} />, [project, icon]);
   if (presentation === "menu") {
     return (
-      <MenuItem onSelect={select} selected={selected} leading={mark}>
+      <MenuItem
+        onSelect={select}
+        selected={selected}
+        leading={mark}
+        testID={`sidebar-project-option-${project.viewKey}`}
+      >
         {project.projectName}
         {unread ? ` (${unread})` : ""}
       </MenuItem>

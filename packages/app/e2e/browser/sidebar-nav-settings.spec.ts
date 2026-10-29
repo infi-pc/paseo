@@ -4,7 +4,6 @@ import { openAddProjectFlow, addProjectFlow } from "../support/helpers/add-proje
 import { installUsageReportsFixture } from "../support/helpers/usage-reports";
 import {
   claudeAndCodexReports,
-  expectPinnedUsage,
   openCompactSidebar,
   expectCompactSidebarOpen,
 } from "../support/helpers/usage-sidebar-item";
@@ -55,7 +54,7 @@ test("developer toasts leave concurrent sidebar layout checks uninterrupted", as
   await expect(page.locator("#error-toast")).toBeHidden();
 });
 
-test("fixed footer line keeps its five icons, Help and Settings at the end", async ({ page }) => {
+test("desktop rail and mobile footer keep global utilities accessible", async ({ page }) => {
   test.setTimeout(120_000);
   await installUsageReportsFixture(page, { lists: [() => claudeAndCodexReports()] });
   await seedSidebarFooterPreferences(page, [
@@ -64,7 +63,9 @@ test("fixed footer line keeps its five icons, Help and Settings at the end", asy
   ]);
   await page.setViewportSize({ width: 1440, height: 900 });
   await gotoAppShell(page);
-  await expectPinnedUsage(page, ["31% 5h", "54% wk", "7% 5h", "12% wk"]);
+  await expect(page.getByTestId("sidebar-usage")).toHaveAccessibleName(
+    "Usage: Claude (dev@example.com) Session 31% used, Claude (dev@example.com) Weekly 54% used, Codex (dev@example.com) Session 7% used, Codex (dev@example.com) Weekly 12% used",
+  );
   await expectFooterIconRow(page);
   await expectFooterSeparator(page, true);
   await footerScreenshot(page, "footer-desktop-with-rows");
@@ -128,10 +129,9 @@ test.describe("Sidebar items in Appearance settings", () => {
         label: "History",
         visible: true,
       });
-      // Items with a keyboard shortcut badge it next to their name. Chords render
-      // with Ctrl off macOS, which is what the browser project runs on.
+      // The shortcut badge follows the browser platform.
       await expect(
-        page.getByTestId("sidebar-nav-item-new-workspace").getByText("Ctrl+N", { exact: true }),
+        page.getByTestId("sidebar-nav-item-new-workspace").getByText(/^(?:Ctrl\+N|⌘N)$/),
       ).toBeVisible();
     });
 

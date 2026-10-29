@@ -99,7 +99,7 @@ test.describe("Agent profiles repair modeless provider preferences", () => {
     const createAgentRecorder = await captureWorkspaceAgentRequest(page, { block: true });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
       await selectNewWorkspaceProject(page, {
@@ -162,7 +162,7 @@ test.describe("Agent profiles repair modeless provider preferences", () => {
     const createAgentRecorder = await captureWorkspaceAgentRequest(page, { block: true });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
       await selectNewWorkspaceProject(page, {

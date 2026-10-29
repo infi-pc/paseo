@@ -18,7 +18,7 @@ test.describe("Workspace archive cache coherence", () => {
     const workspace = await seedWorkspace({ repoPrefix: "archive-cache-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await selectWorkspaceInSidebar(page, workspace.workspaceId);
       await waitForWorkspaceInReplicaCache(page, workspace.workspaceId);

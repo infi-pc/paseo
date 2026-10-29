@@ -1,3 +1,4 @@
+import { isCompactSidebar } from "./sidebar";
 import path from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 import { openSettings } from "./app";
@@ -37,11 +38,6 @@ function itemLabel(key: SidebarNavKey): string {
     search: "Search",
     schedules: "Schedules",
   }[key];
-}
-
-async function rowTop(locator: Locator): Promise<number | null> {
-  const box = await locator.boundingBox();
-  return box?.y ?? null;
 }
 
 export async function seedSidebarNavPreferences(
@@ -119,7 +115,12 @@ export async function expectSidebarNavSettingsOrder(
 }
 
 export async function expectSidebarOrder(page: Page, keys: SidebarNavKey[]): Promise<void> {
-  await expectVerticalOrder(keys, (key) => shellRow(page, key), "app shell sidebar rows");
+  await expectOrderAlongAxis(
+    keys,
+    (key) => shellRow(page, key),
+    "app shell sidebar actions",
+    isCompactSidebar(page) ? "x" : "y",
+  );
 }
 
 export async function expectSidebarItemHidden(page: Page, key: SidebarNavKey): Promise<void> {
@@ -147,11 +148,23 @@ async function expectVerticalOrder<Key extends string>(
   locate: (key: Key) => Locator,
   subject: string,
 ): Promise<void> {
+  await expectOrderAlongAxis(keys, locate, subject, "y");
+}
+
+async function expectOrderAlongAxis<Key extends string>(
+  keys: Key[],
+  locate: (key: Key) => Locator,
+  subject: string,
+  axis: "x" | "y",
+): Promise<void> {
   await expect
     .poll(
       async () => {
         const measured = await Promise.all(
-          keys.map(async (key) => ({ key, top: await rowTop(locate(key)) })),
+          keys.map(async (key) => ({
+            key,
+            top: (await locate(key).boundingBox())?.[axis] ?? null,
+          })),
         );
         if (!measured.every((entry): entry is { key: Key; top: number } => entry.top !== null))
           return null;
@@ -229,7 +242,7 @@ export async function expectFooterItemHidden(page: Page, key: string): Promise<v
   await expect(page.locator(`[data-testid="${shellFooterTestID(key)}"]:visible`)).toHaveCount(0);
 }
 
-const FOOTER_ICON_TEST_IDS = [
+const COMPACT_FOOTER_ICON_TEST_IDS = [
   "sidebar-add-project",
   "sidebar-usage-icon",
   "sidebar-hosts-trigger",
@@ -245,37 +258,54 @@ const FOOTER_GEOMETRY_TOLERANCE = 0.01;
  * Settings together at the end.
  */
 export async function expectFooterIconRow(page: Page): Promise<void> {
+  const compact = isCompactSidebar(page);
+  const iconIds = compact ? COMPACT_FOOTER_ICON_TEST_IDS : COMPACT_FOOTER_ICON_TEST_IDS.slice(1);
   // Read one browser-frame snapshot: the compact drawer can translate between separate RPCs.
   const boxes = await page
-    .locator(FOOTER_ICON_TEST_IDS.map((testID) => `[data-testid="${testID}"]:visible`).join(","))
+    .locator(iconIds.map((testID) => `[data-testid="${testID}"]:visible`).join(","))
     .evaluateAll((elements) =>
       elements.map((element) => {
         const { x, y, width, height } = element.getBoundingClientRect();
         return { testID: element.getAttribute("data-testid"), x, y, width, height };
       }),
     );
-  expect(boxes.map((box) => box.testID)).toEqual(FOOTER_ICON_TEST_IDS);
+  expect(boxes.map((box) => box.testID)).toEqual(iconIds);
   const [first] = boxes;
   for (const box of boxes) {
-    expect(Math.abs(box.y + box.height / 2 - first!.y - first!.height / 2)).toBeLessThan(2);
+    const centerDelta = compact
+      ? box.y + box.height / 2 - first!.y - first!.height / 2
+      : box.x + box.width / 2 - first!.x - first!.width / 2;
+    expect(Math.abs(centerDelta)).toBeLessThan(2);
     expect(Math.abs(box.width - first!.width)).toBeLessThan(FOOTER_GEOMETRY_TOLERANCE);
   }
-  const gaps = boxes.slice(1).map((box, index) => box.x - (boxes[index]!.x + boxes[index]!.width));
-  for (const index of [0, 1, 3]) {
-    expect(Math.abs(gaps[index]!)).toBeLessThan(FOOTER_GEOMETRY_TOLERANCE);
+  if (compact) {
+    const gaps = boxes
+      .slice(1)
+      .map((box, index) => box.x - (boxes[index]!.x + boxes[index]!.width));
+    for (const index of [0, 1, 3])
+      expect(Math.abs(gaps[index]!)).toBeLessThan(FOOTER_GEOMETRY_TOLERANCE);
+    expect(gaps[2]).toBeGreaterThan(first!.width);
+  } else {
+    for (const [index, box] of boxes.slice(1).entries())
+      expect(box.y).toBeGreaterThanOrEqual(boxes[index]!.y + boxes[index]!.height);
+    await expect(page.getByTestId("sidebar-rail-add-project")).toBeVisible();
   }
-  expect(gaps[2]).toBeGreaterThan(first!.width);
 }
 
 export async function expectFooterSeparator(page: Page, shown: boolean): Promise<void> {
-  await expect(page.locator('[data-testid="sidebar-footer"]:visible')).toHaveCSS(
-    "border-top-width",
-    "1px",
-  );
-  await expect(page.locator('[data-testid="sidebar-footer-bottom-line"]:visible')).toHaveCSS(
-    "border-top-width",
-    "0px",
-  );
+  if (isCompactSidebar(page)) {
+    await expect(page.locator('[data-testid="sidebar-footer"]:visible')).toHaveCSS(
+      "border-top-width",
+      "1px",
+    );
+    await expect(page.locator('[data-testid="sidebar-footer-bottom-line"]:visible')).toHaveCSS(
+      "border-top-width",
+      "0px",
+    );
+  } else {
+    await expect(page.locator('[data-testid="sidebar-footer"]:visible')).toHaveCount(0);
+    await expect(page.locator('[data-testid="sidebar-footer-bottom-line"]:visible')).toHaveCount(0);
+  }
   const separator = page.locator('[data-testid="sidebar-footer-separator"]:visible');
   await expect(separator).toHaveCount(shown ? 1 : 0);
   expect(
@@ -286,10 +316,8 @@ export async function expectFooterSeparator(page: Page, shown: boolean): Promise
 }
 
 export async function hoverFooterAddProject(page: Page): Promise<void> {
-  await page.locator('[data-testid="sidebar-add-project"]:visible').hover();
-  const tooltip = page.getByTestId("sidebar-add-project-tooltip");
-  await expect(tooltip.getByText("Add project", { exact: true })).toBeVisible();
-  await expect(tooltip.getByText("Ctrl+O", { exact: true })).toBeVisible();
+  await page.getByTestId("sidebar-rail-add-project").hover();
+  await expect(page.getByRole("tooltip").getByText("Add project", { exact: true })).toBeVisible();
 }
 
 export async function footerScreenshot(page: Page, name: string): Promise<void> {
