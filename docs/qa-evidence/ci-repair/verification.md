@@ -4,6 +4,8 @@ Verified on macOS with isolated test daemons, Chromium desktop and compact viewp
 
 ## What CI exposed
 
+- The file-observation job requested `macos-14` during GitHub's October 29 deprecation brownout. It now uses `macos-15`; the CI contract test names the same image. [GitHub runner announcement](https://github.com/actions/runner-images/issues/13518).
+
 - The browser suite contained an Electron-bridge startup case. It now belongs to the existing desktop renderer suite.
 - Older assertions omitted existing Chapters and remembered-agent state, diff breakdowns, or the renamed sidebar file. Translation-parity enforcement also contradicted this fork's English-only policy.
 - Background-activity updates lacked a source-owned delivery lifetime. Matching subscription IDs on separate sockets now stay independent.
