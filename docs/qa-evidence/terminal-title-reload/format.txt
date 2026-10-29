@@ -1,0 +1,5 @@
+
+> paseo@0.13.1 format
+> oxfmt .
+
+Finished in 970ms on 5625 files using 18 threads.
