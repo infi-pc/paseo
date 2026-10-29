@@ -448,6 +448,9 @@ jobs:
       - name: Install dependencies with retry
         run: node scripts/npm-retry.mjs ci
 
+      - name: Install shell integration test dependency
+        run: sudo apt-get update && sudo apt-get install -y zsh
+
       - name: Install Playwright browsers
         timeout-minutes: 10
         run: npx playwright install chromium

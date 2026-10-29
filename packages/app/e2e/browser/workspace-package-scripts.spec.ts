@@ -10,6 +10,9 @@ import {
 import { getServerId } from "../support/helpers/server-id";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
 
+// Exit status is reported by the zsh command-completion integration.
+test.use({ e2eDaemonEnvironment: { SHELL: "/bin/zsh" } });
+
 test("nested package scripts run, appear in the sidebar, and expose their result", async ({
   page,
 }, testInfo) => {

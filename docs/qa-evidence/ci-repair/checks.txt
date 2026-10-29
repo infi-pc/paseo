@@ -148,3 +148,24 @@ pr9-ci-worktree-final.log
 > @getpaseo/app@0.13.1 test:e2e
 > playwright test --project=browser e2e/browser/worktree-archive.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-worktree-final-artifacts
   1 passed (14.9s)
+
+pr9-ci-opencode-runtime.log
+npx vitest run src/server/agent/providers/opencode-bridge.local.e2e.test.ts --bail=1 --maxWorkers=1 -t 'versioned runtime'
+ Test Files  1 passed (1)
+      Tests  2 passed | 5 skipped (7)
+
+pr9-ci-desktop-browser.log
+npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
+Completed the four-project workspace-eviction sequence on macOS.
+FAILED afterward: before-capture: hidden browser produced 122 animation frames.
+The Linux CI job owns the full hidden-window browser regression.
+
+pr9-ci-package-scripts-followup.log
+npm run test:e2e --workspace=@getpaseo/app -- --project=browser e2e/browser/workspace-package-scripts.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-package-scripts-followup-artifacts
+  2 passed (14.7s), with an explicit zsh daemon fixture.
+
+Final follow-up checks:
+npm run typecheck: passed
+npm run lint: 0 warnings, 0 errors
+node --test scripts/ci-workflow.test.mjs: 14 passed
+node --check packages/desktop/e2e/packaged-app-smoke.js: passed

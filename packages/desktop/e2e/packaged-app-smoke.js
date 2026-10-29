@@ -785,7 +785,7 @@ async function stopCliDaemon({ appPath, env }) {
   });
 }
 
-async function openSmokeWorkspace({ appPath, env, page, daemonHome }) {
+async function openSmokeWorkspace({ appPath, env, page, daemonHome, serverId }) {
   const projectPath = path.join(daemonHome, "sandbox-smoke-project");
   fs.mkdirSync(projectPath);
   fs.writeFileSync(path.join(projectPath, "README.md"), "Packaged Linux sandbox smoke\n");
@@ -804,7 +804,11 @@ async function openSmokeWorkspace({ appPath, env, page, daemonHome }) {
     ],
     label: "Create packaged smoke workspace",
   });
-  await page.getByRole("button", { name: "Sandbox smoke workspace", exact: true }).click();
+  await page
+    .getByTestId("sidebar-project-rail")
+    .getByRole("button", { name: path.basename(projectPath), exact: true })
+    .click();
+  await page.getByTestId(`sidebar-workspace-row-${serverId}:${workspace.workspaceId}`).click();
   await page.waitForURL((url) => url.pathname.endsWith(`/workspace/${workspace.workspaceId}`));
   await page.getByRole("button", { name: "Agent", exact: true }).click();
   await page.getByRole("textbox", { name: "Message agent..." }).click();
@@ -951,7 +955,7 @@ async function smokePackagedDesktopApp({
     await smokeCliTerminal({ appPath, env });
     if (expectedSandbox !== undefined) {
       await assertSandboxState({ browser, page, expectedSandbox, stdout, stderr });
-      await openSmokeWorkspace({ appPath, env, page, daemonHome });
+      await openSmokeWorkspace({ appPath, env, page, daemonHome, serverId: status.serverId });
     }
     await writeSmokeArtifacts({ page, stdout, stderr, userData, daemonHome });
     await stopDaemonForCleanup();

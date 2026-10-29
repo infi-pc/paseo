@@ -6,7 +6,7 @@ Paseo surfaces terminal activity as a tab indicator (the same "running" dot used
 
 Terminal activity is source-agnostic plumbing. `TerminalActivityTracker` holds the current per-terminal state and emits transitions to the manager, worker protocol, websocket subscription, app buckets, dots, and notifications.
 
-The tracker defaults to unknown (`null`). Agent hook commands report coarse activity to the daemon's local `/api/terminal-activity` endpoint. Managed regular scripts also produce activity: the launcher marks the terminal working and shell command completion marks it idle. This applies to both `paseo.json` commands and package.json scripts; services retain their separate health checks.
+The tracker defaults to unknown (`null`). Agent hook commands report coarse activity to the daemon's local `/api/terminal-activity` endpoint. Managed regular scripts also produce activity: the launcher marks the terminal working and shell command completion marks it idle. This applies to both `paseo.json` commands and package.json scripts; services retain their separate health checks. Command completion currently requires the bundled zsh integration. Tests that assert an exit status must select zsh explicitly rather than inherit the runner's default shell.
 
 ## Architecture
 

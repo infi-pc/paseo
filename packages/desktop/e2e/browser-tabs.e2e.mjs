@@ -634,6 +634,16 @@ async function verifyBackgroundTypingStaysInGuest({ page, client, serverId, brow
   await composer.fill("");
 }
 
+async function openSeededWorkspace(page, serverId, workspaceId) {
+  const index = workspaceIds.indexOf(workspaceId);
+  assert(index >= 0, `Unknown seeded workspace ${workspaceId}`);
+  await page
+    .getByTestId("sidebar-project-rail")
+    .getByRole("button", { name: `Desktop browser project ${index + 1}`, exact: true })
+    .click();
+  await page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).click();
+}
+
 async function runRegression({
   page,
   client,
@@ -646,11 +656,7 @@ async function runRegression({
 }) {
   const failures = [];
   const originalWorkspaceId = workspaceIds[0];
-  const originalWorkspaceRow = page.getByTestId(
-    `sidebar-workspace-row-${serverId}:${originalWorkspaceId}`,
-  );
-  await originalWorkspaceRow.waitFor({ state: "visible", timeout: timeoutMs });
-  await originalWorkspaceRow.click();
+  await openSeededWorkspace(page, serverId, originalWorkspaceId);
 
   await page.evaluate(() => {
     if (document.getElementById("overlay-root")) return;
@@ -904,7 +910,7 @@ async function runRegression({
   }
 
   for (const workspaceId of workspaceIds.slice(1)) {
-    await page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).click();
+    await openSeededWorkspace(page, serverId, workspaceId);
     await page
       .getByTestId(`workspace-deck-entry-${serverId}:${workspaceId}`)
       .waitFor({ state: "visible" });
