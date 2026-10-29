@@ -962,7 +962,7 @@ async function runRegression({
     agent: typingAgent,
   });
 
-  await originalWorkspaceRow.click();
+  await openSeededWorkspace(page, serverId, originalWorkspaceId);
   await originalDeck.getByTestId(`workspace-tab-browser_${browserId}`).click();
   await page.waitForFunction(
     ({ id, webContentsId }) => {

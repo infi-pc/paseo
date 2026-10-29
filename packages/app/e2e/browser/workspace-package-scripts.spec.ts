@@ -10,8 +10,8 @@ import {
 import { getServerId } from "../support/helpers/server-id";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
 
-// Exit status is reported by the zsh command-completion integration.
-test.use({ e2eDaemonEnvironment: { SHELL: "/bin/zsh" } });
+// Exit status uses zsh integration; Ubuntu's global completion prompt must not consume input.
+test.use({ e2eDaemonEnvironment: { SHELL: "/bin/zsh", skip_global_compinit: "1" } });
 
 test("nested package scripts run, appear in the sidebar, and expose their result", async ({
   page,

@@ -15,7 +15,7 @@ Verified on macOS with isolated test daemons, Chromium desktop and compact viewp
 - Browser flows still assumed all workspaces appeared in Inbox, duplicated visible prompt text, or reused a mutated timeline across pinned-prompt cases. Helpers now select the relevant project and assertions identify their owning surface.
 - The Electron browser-eviction harness and packaged Linux smoke also assumed every project's workspaces appeared together. They now select the owning project's rail button before opening a workspace. The packaged smoke retains its real installer, sandbox, renderer, daemon, and terminal assertions.
 - The Windows OpenCode integration reused the legacy manager after the previous case deleted its install. Each versioned fixture now owns its manager and checks the freshly installed CLI's version before exercising the runtime's short probe deadline.
-- The nested package-script UI test inherited the Linux runner's shell, which has no Paseo command-completion integration. Its daemon fixture now selects zsh, and browser CI installs it. The exit-code and sidebar-status assertions remain.
+- The nested package-script UI test inherited the Linux runner's shell, which has no Paseo command-completion integration. Its daemon fixture now selects zsh, and browser CI installs it. The fixture disables Ubuntu's global completion initialization: its insecure-directory prompt consumed the first character of the script command and produced exit 127. The exit-code and sidebar-status assertions remain.
 
 ## Verification
 

@@ -169,3 +169,12 @@ npm run typecheck: passed
 npm run lint: 0 warnings, 0 errors
 node --test scripts/ci-workflow.test.mjs: 14 passed
 node --check packages/desktop/e2e/packaged-app-smoke.js: passed
+
+pr9-ci-package-scripts-clean-shell.log
+npm run test:e2e --workspace=@getpaseo/app -- --project=browser e2e/browser/workspace-package-scripts.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-package-scripts-clean-shell-artifacts
+  2 passed (20.6s), with Ubuntu's global completion initialization disabled.
+
+pr9-ci-desktop-harness-bindings.log
+npm run lint -- --config /tmp/pr9-ci-e2e-bindings.json packages/desktop/e2e/browser-tabs.e2e.mjs
+Temporary check config: browser and Node globals; no-undef=error.
+Found 0 warnings and 0 errors.
