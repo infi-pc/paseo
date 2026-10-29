@@ -128,6 +128,8 @@ export type WorkspaceTabDestination =
   | { kind: "sheet"; tabId: string };
 
 interface WorkspaceLayoutStore {
+  // FORK(locator-compose): source links target the remembered worktree composer.
+  lastFocusedAgentByWorkspace: Record<string, string>;
   panelRevisionByWorkspace: Record<string, Record<string, number>>;
   /** Published once by the app shell; callers never pass a form factor to open a tab. */
   layoutMode: WorkspaceLayoutMode;
@@ -959,6 +961,7 @@ const PERSISTED_SLICES = [
   "explorerSidebarPaneIdByWorkspace",
   "sidePaneIdByWorkspace",
   "pullRequestTabAutoOpenedByWorkspace",
+  "lastFocusedAgentByWorkspace",
 ] as const;
 
 // Zustand persist re-runs partialize after every set, including ones that return the state
@@ -982,6 +985,7 @@ function createPersistedStateProjection() {
     }
     const state: WorkspaceLayoutPersistedState = {
       layoutByWorkspace,
+      lastFocusedAgentByWorkspace: source.lastFocusedAgentByWorkspace,
       pinnedAgentIdsByWorkspace: Object.fromEntries(
         Object.entries(source.pinnedAgentIdsByWorkspace).map(([key, agentIds]) => [
           key,
@@ -1041,6 +1045,7 @@ export function createWorkspaceLayoutStore(
           }
           return tabId;
         },
+        lastFocusedAgentByWorkspace: {},
         panelRevisionByWorkspace: {},
         pendingOpenByWorkspace: {},
         deferOpenTab: (input) => {
@@ -2220,6 +2225,7 @@ export function createWorkspaceLayoutStore(
 
           set((state) => {
             const hasAny =
+              normalizedWorkspaceKey in state.lastFocusedAgentByWorkspace ||
               normalizedWorkspaceKey in state.pendingOpenByWorkspace ||
               normalizedWorkspaceKey in state.layoutByWorkspace ||
               normalizedWorkspaceKey in state.splitSizesByWorkspace ||
@@ -2234,6 +2240,8 @@ export function createWorkspaceLayoutStore(
             if (!hasAny) {
               return state;
             }
+            const { [normalizedWorkspaceKey]: _lastFocusedAgent, ...lastFocusedAgentByWorkspace } =
+              state.lastFocusedAgentByWorkspace;
             const { [normalizedWorkspaceKey]: _pendingOpen, ...pendingOpenByWorkspace } =
               state.pendingOpenByWorkspace;
             const {
@@ -2262,6 +2270,7 @@ export function createWorkspaceLayoutStore(
               state.sidePaneIdByWorkspace;
             return {
               ...withSheets(state, normalizedWorkspaceKey, NO_SHEETS),
+              lastFocusedAgentByWorkspace,
               pendingOpenByWorkspace,
               pullRequestTabAutoOpenedByWorkspace,
               layoutByWorkspace,
@@ -2318,6 +2327,7 @@ export function createWorkspaceLayoutStore(
           }
           return {
             ...currentState,
+            lastFocusedAgentByWorkspace: result.data.lastFocusedAgentByWorkspace ?? {},
             layoutByWorkspace,
             pinnedAgentIdsByWorkspace: Object.fromEntries(
               Object.entries(result.data.pinnedAgentIdsByWorkspace ?? {}).map(([key, agentIds]) => [

@@ -113,6 +113,28 @@ describe("NavigationHistoryRecorder", () => {
     container = null;
   });
 
+  it("remembers the last focused agent per worktree when a file takes focus", async () => {
+    act(() => {
+      layout().openTab({ workspaceKey: WS1, target: AGENT, intent: "reveal" });
+    });
+    navigate("/h/srv/workspace/ws-1");
+    expect(layout().lastFocusedAgentByWorkspace[WS1]).toBe("a1");
+    act(() => {
+      layout().openTab({
+        workspaceKey: WS1,
+        target: { kind: "file", path: "Button.tsx" },
+        intent: "reveal",
+      });
+    });
+    navigate("/settings/general");
+    expect(layout().lastFocusedAgentByWorkspace[WS1]).toBe("a1");
+    await act(async () => {
+      await useWorkspaceLayoutStore.persist.rehydrate();
+    });
+    expect(layout().lastFocusedAgentByWorkspace[WS1]).toBe("a1");
+    expect(layout().lastFocusedAgentByWorkspace[WS2]).toBeUndefined();
+  });
+
   it("records nothing for transient routes", () => {
     navigate("/welcome");
     navigate("/h/srv");

@@ -1,3 +1,4 @@
+import { registerDraftTextPublication } from "@/stores/draft-store/text-publication";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { TextReplacement } from "@/composer/types";
@@ -161,6 +162,21 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     [draftKey],
   );
 
+  // FORK(locator-compose): retained editors need an explicit replacement for external edits.
+  useEffect(
+    () =>
+      useDraftStore.subscribe((state, previous) => {
+        if (
+          state.externalTextRevisionByDraftKey[draftKey] ===
+          previous.externalTextRevisionByDraftKey[draftKey]
+        )
+          return;
+        textPublication.cancel();
+        publishTextReplacement("replace", state.getDraftInput(draftKey)?.text ?? "");
+      }),
+    [draftKey, publishTextReplacement, textPublication],
+  );
+
   const editText = useCallback(
     (nextText: string) => {
       if (isWeb) {
@@ -204,6 +220,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       if (document.visibilityState === "hidden") textPublication.flush();
     };
     const flush = () => textPublication.flush();
+    const unregister = registerDraftTextPublication({ draftKey, flush });
     const canListenForPageHide =
       isWeb && typeof window !== "undefined" && typeof window.addEventListener === "function";
     if (isWeb && typeof document !== "undefined") {
@@ -213,6 +230,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       window.addEventListener("pagehide", flush);
     }
     return () => {
+      unregister();
       if (isWeb && typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", flushWhenHidden);
       }
@@ -221,7 +239,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       }
       textPublication.flush();
     };
-  }, [textPublication]);
+  }, [draftKey, textPublication]);
 
   useEffect(() => {
     let cancelled = false;

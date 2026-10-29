@@ -1,21 +1,24 @@
+import { router, type Href } from "expo-router";
+// FORK(locator-compose): source links enter the global compose route.
+import {
+  buildComposeRoute,
+  type DesktopNavigationTarget,
+} from "@getpaseo/protocol/compose-deep-link";
+import { generateMessageId } from "@/types/stream";
 import { useEffect } from "react";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { getDesktopHost } from "@/desktop/host";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 
-interface OpenAgentEventPayload {
-  serverId?: unknown;
-  agentId?: unknown;
-}
-
 export function AgentNavigationListener() {
-  const openAgent = useStableEvent((payload: OpenAgentEventPayload | null) => {
-    const serverId = typeof payload?.serverId === "string" ? payload.serverId.trim() : "";
-    const agentId = typeof payload?.agentId === "string" ? payload.agentId.trim() : "";
-    if (!serverId || !agentId) {
+  const openAgent = useStableEvent((payload: DesktopNavigationTarget | null) => {
+    if (!payload) return;
+    if ("kind" in payload) {
+      router.navigate(buildComposeRoute(payload, generateMessageId()) as Href);
       return;
     }
+    const { serverId, agentId } = payload;
     navigateToAgent({ serverId, agentId });
   });
 
@@ -33,7 +36,7 @@ export function AgentNavigationListener() {
     const connect = async () => {
       let dispose: (() => void) | null = null;
       try {
-        dispose = await listenToDesktopEvent<OpenAgentEventPayload>("open-agent", openAgent);
+        dispose = await listenToDesktopEvent<DesktopNavigationTarget>("open-agent", openAgent);
         if (disposed) {
           dispose();
           return;

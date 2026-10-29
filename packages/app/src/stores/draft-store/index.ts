@@ -34,12 +34,14 @@ import {
   type MigrateLegacyImages,
   PersistedDraftStoreSchema,
 } from "./migration";
+import { flushDraftTextPublication } from "./text-publication";
 import { createDraftPersistStorage } from "./persistence";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
 export type { DraftInput, DraftLifecycleState } from "./state";
 
 interface DraftStoreActions {
+  appendDraftText: (input: { draftKey: string; text: string }) => Promise<void>;
   getDraftInput: (draftKey: string) => DraftInput | undefined;
   hydrateDraftInput: (input: { draftKey: string }) => Promise<DraftInput | undefined>;
   saveDraftInput: (input: { draftKey: string; draft: DraftInput }) => void;
@@ -59,6 +61,7 @@ interface DraftStoreActions {
 }
 
 interface DraftStoreRuntimeState {
+  externalTextRevisionByDraftKey: Record<string, number>;
   attachmentFocusRequestByDraftKey: Record<string, number>;
 }
 
@@ -256,6 +259,7 @@ export const useDraftStore = create<DraftStore>()(
       drafts: {},
       createModalDraft: null,
       attachmentFocusRequestByDraftKey: {},
+      externalTextRevisionByDraftKey: {},
 
       getDraftInput: (draftKey) => {
         const record = get().drafts[draftKey];
@@ -374,6 +378,42 @@ export const useDraftStore = create<DraftStore>()(
         scheduleAttachmentGc();
       },
 
+      // FORK(locator-compose): source links target the remembered worktree composer.
+      appendDraftText: async ({ draftKey, text }) => {
+        if (!useDraftStore.persist.hasHydrated()) {
+          await new Promise<void>((resolve) => {
+            const unsubscribe = useDraftStore.persist.onFinishHydration(() => {
+              unsubscribe();
+              resolve();
+            });
+          });
+        }
+        await get().hydrateDraftInput({ draftKey });
+        flushDraftTextPublication(draftKey);
+        set((state) => {
+          const existing = state.drafts[draftKey];
+          const draft = toDraftInputIfReady(existing) ?? { text: "", attachments: [] };
+          const nextText = draft.text ? `${draft.text}\n${text}` : text;
+          return {
+            drafts: {
+              ...state.drafts,
+              [draftKey]: createDraftRecord({
+                draft: { ...draft, text: nextText },
+                lifecycle: "active",
+                previousVersion: existing?.version,
+              }),
+            },
+            externalTextRevisionByDraftKey: {
+              ...state.externalTextRevisionByDraftKey,
+              [draftKey]: (state.externalTextRevisionByDraftKey[draftKey] ?? 0) + 1,
+            },
+            attachmentFocusRequestByDraftKey: {
+              ...state.attachmentFocusRequestByDraftKey,
+              [draftKey]: (state.attachmentFocusRequestByDraftKey[draftKey] ?? 0) + 1,
+            },
+          };
+        });
+      },
       attachWorkspaceFile: async ({ draftKey, attachment }) => {
         await get().hydrateDraftInput({ draftKey });
         set((state) => {

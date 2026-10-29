@@ -86,7 +86,7 @@ export function stepIndex(
 // Routes that only exist to redirect somewhere else. Recording them would leave a dead entry in
 // front of every real destination. A deny-list rather than an allow-list so new resting routes
 // are recorded without anyone remembering this file.
-const TRANSIENT_EXACT_PATHS = new Set(["", "/", "/welcome", "/pair-scan", "/settings"]);
+const TRANSIENT_EXACT_PATHS = new Set(["", "/", "/welcome", "/compose", "/pair-scan", "/settings"]);
 const TRANSIENT_PATH_PATTERNS: readonly RegExp[] = [
   /^\/settings\/hosts\/[^/]+$/,
   /^\/h\/[^/]+$/,

@@ -837,6 +837,8 @@ function RootStack() {
         <Stack.Screen name="schedules" />
         <Stack.Screen name="pair-scan" />
       </Stack.Protected>
+      {/* FORK(locator-compose): keep external intent mounted while the daemon starts. */}
+      <Stack.Screen name="compose" />
       <Stack.Screen name="h/[serverId]" />
       <Stack.Screen name="settings/hosts/[serverId]/index" />
       <Stack.Screen name="settings/hosts/[serverId]/[hostSection]" />

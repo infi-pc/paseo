@@ -151,6 +151,26 @@ describe("useAgentInputDraft live contract", () => {
     });
   });
 
+  it("appends source references without losing existing text or attachments and requests focus", async () => {
+    await useDraftStore.persist.rehydrate();
+    const draftKey = "agent:host-1:agent-1";
+    useDraftStore.getState().saveDraftInput({
+      draftKey,
+      draft: {
+        text: "Please adjust this",
+        attachments: [createWorkspaceFileAttachment({ path: "notes.md" })],
+      },
+    });
+    await useDraftStore.getState().appendDraftText({ draftKey, text: "src/Button.tsx:42:7" });
+    await useDraftStore.getState().appendDraftText({ draftKey, text: "src/Menu.tsx:10" });
+    expect(useDraftStore.getState().getDraftInput(draftKey)).toEqual({
+      text: "Please adjust this\nsrc/Button.tsx:42:7\nsrc/Menu.tsx:10",
+      attachments: [createWorkspaceFileAttachment({ path: "notes.md" })],
+    });
+    expect(useDraftStore.getState().attachmentFocusRequestByDraftKey[draftKey]).toBe(2);
+    expect(useDraftStore.getState().getDraftInput("agent:host-1:another-agent")).toBeUndefined();
+  });
+
   it("hydrates persisted text and attachments and returns draft-mode composer state for a caller-provided key", async () => {
     let latest: ReturnType<typeof useAgentInputDraft> | null = null;
     const image: AttachmentMetadata = {
@@ -227,6 +247,20 @@ describe("useAgentInputDraft live contract", () => {
     expect(getLatest().textReplacement).not.toBe(hydratedTextReplacement);
     expect(getLatest().textReplacement.kind).toBe("replace");
     expect(getLatest().textReplacement.text).toBe("replacement text");
+
+    await act(async () => {
+      getLatest().editText("replacement text plus newest typing");
+      await useDraftStore
+        .getState()
+        .appendDraftText({ draftKey: "draft:setup", text: "src/Button.tsx:42:7" });
+    });
+    expect(getLatest().textReplacement.kind).toBe("replace");
+    expect(getLatest().textReplacement.text).toBe(
+      "replacement text plus newest typing\nsrc/Button.tsx:42:7",
+    );
+    expect(getLatest().textSource.getSnapshot()).toBe(
+      "replacement text plus newest typing\nsrc/Button.tsx:42:7",
+    );
 
     await act(async () => {
       getLatest().editText("hello world");
