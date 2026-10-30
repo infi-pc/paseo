@@ -102,6 +102,10 @@ observes the pathname plus the focused tab of that pathname's workspace and
 replays entries through `navigateToWorkspace` and `focusTab`, so it inherits
 the collapsing rather than fighting it. Do not add pushes to make history work.
 
+Browser entries carry their sidebar context in a namespaced `history.state` field. Preserve the
+existing state when canonicalizing a URL with `replaceState`; clearing it discards both router
+identity and the Inbox/project context needed on browser Back/Forward.
+
 Settings detail routes are separate siblings on purpose. Keep
 `settings/[section]`, the host routes, the projects index, and project detail as
 distinct route names. `router.dismissTo()` ultimately matches stack entries by

@@ -103,7 +103,7 @@ import {
   type ProviderSubagentStoreEvent,
 } from "./provider-subagents/store.js";
 import { withTimeout } from "../../utils/promise-timeout.js";
-import { extractAttention } from "../persistence-hooks.js";
+import { extractAttention, extractTimestamps } from "../persistence-hooks.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
@@ -433,6 +433,8 @@ interface ManagedAgentBase {
   runtimeInfo?: AgentRuntimeInfo;
   createdAt: Date;
   updatedAt: Date;
+  // FORK(project-navigation): content activity is independent of snapshot revisions and runtime access.
+  lastActivityAt: Date;
   availableModes: AgentMode[];
   features?: AgentFeature[];
   currentModeId: string | null;
@@ -646,6 +648,22 @@ function applyLabelPatch(
     }
   }
   return nextLabels;
+}
+
+const SESSION_ACTIVITY_EVENTS = new Set<AgentStreamEvent["type"]>([
+  "timeline",
+  "turn_started",
+  "turn_completed",
+  "turn_failed",
+  "turn_canceled",
+  "permission_requested",
+]);
+
+function resolveInitialActivityAt(
+  options: { lastActivityAt?: Date; updatedAt?: Date } | undefined,
+  now: Date,
+): Date {
+  return options?.lastActivityAt ?? options?.updatedAt ?? now;
 }
 
 function buildExplicitTimelineSeedForRegister(
@@ -1444,6 +1462,7 @@ export class AgentManager {
     options?: {
       createdAt?: Date;
       updatedAt?: Date;
+      lastActivityAt?: Date;
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       workspaceId?: string;
@@ -1476,6 +1495,7 @@ export class AgentManager {
     options?: {
       createdAt?: Date;
       updatedAt?: Date;
+      lastActivityAt?: Date;
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       workspaceId?: string;
@@ -1726,6 +1746,7 @@ export class AgentManager {
         owner: existing.owner,
         createdAt: existing.createdAt,
         updatedAt: existing.updatedAt,
+        lastActivityAt: existing.lastActivityAt,
         lastUserMessageAt: existing.lastUserMessageAt,
         historyPrimed: rehydrateFromDisk ? false : preservedHistoryPrimed,
         lastUsage: preservedLastUsage,
@@ -2154,6 +2175,7 @@ export class AgentManager {
         lifecycle: "closed",
         createdAt: new Date(record.createdAt),
         updatedAt,
+        lastActivityAt: extractTimestamps(record).lastActivityAt,
         availableModes: [],
         features: record.features,
         currentModeId: record.lastModeId ?? null,
@@ -2673,7 +2695,7 @@ export class AgentManager {
     if (!handler) {
       return false;
     }
-    this.touchUpdatedAt(agent);
+    agent.lastActivityAt = this.touchUpdatedAt(agent);
     if (options?.clientMessageId) {
       this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, "accepted");
       this.emitState(agent);
@@ -2682,7 +2704,7 @@ export class AgentManager {
       // Persist timeline items so they show up in fetchAgentTimeline; broadcast
       // for live subscribers. Other event types are broadcast only.
       if (event.type === "timeline") {
-        this.touchUpdatedAt(agent);
+        agent.lastActivityAt = this.touchUpdatedAt(agent);
         const row = this.recordTimeline(agent.id, event.item);
         this.dispatchStream(
           agent.id,
@@ -2718,7 +2740,7 @@ export class AgentManager {
   ): Promise<{ seq: number; epoch: string }> {
     const agent = this.requireAgent(agentId);
     item = limitAgentTimelineItemContent(item);
-    this.touchUpdatedAt(agent);
+    agent.lastActivityAt = this.touchUpdatedAt(agent);
     const row = this.recordTimeline(agentId, item);
     this.dispatchStream(
       agentId,
@@ -2739,7 +2761,7 @@ export class AgentManager {
 
   async emitLiveTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
     const agent = this.requireAgent(agentId);
-    this.touchUpdatedAt(agent);
+    agent.lastActivityAt = this.touchUpdatedAt(agent);
     this.dispatchStream(agentId, {
       type: "timeline",
       item,
@@ -2868,7 +2890,7 @@ export class AgentManager {
       agent.activeForegroundTurnId = turnId;
       this.openActiveTurn(agent, turnId, turnStartedAt);
       agent.lifecycle = "running";
-      this.touchUpdatedAt(agent);
+      agent.lastActivityAt = this.touchUpdatedAt(agent);
       // AgentManager owns the accepted-turn boundary. Publish liveness before the canonical
       // prompt so clients can retire optimistic activity without painting an idle frame.
       // The provider's duplicate start for this turn is suppressed at the ingestion boundary.
@@ -2982,7 +3004,7 @@ export class AgentManager {
       "agent.manager.finalize",
     );
     if (!shouldHoldBusyForReplacement) {
-      this.touchUpdatedAt(mutableAgent);
+      mutableAgent.lastActivityAt = this.touchUpdatedAt(mutableAgent);
       this.emitState(mutableAgent);
     }
   }
@@ -3794,6 +3816,7 @@ export class AgentManager {
     options?: {
       createdAt?: Date;
       updatedAt?: Date;
+      lastActivityAt?: Date;
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       timeline?: AgentTimelineItem[];
@@ -3964,6 +3987,7 @@ export class AgentManager {
           persistence?: AgentPersistenceHandle;
           createdAt?: Date;
           updatedAt?: Date;
+          lastActivityAt?: Date;
         }
       | undefined;
   }): Promise<{ durableTimelineHasRows: boolean }> {
@@ -3998,6 +4022,7 @@ export class AgentManager {
       | {
           createdAt?: Date;
           updatedAt?: Date;
+          lastActivityAt?: Date;
           lastUserMessageAt?: Date | null;
           labels?: Record<string, string>;
           historyPrimed?: boolean;
@@ -4024,6 +4049,7 @@ export class AgentManager {
       lifecycle: "initializing",
       createdAt: options?.createdAt ?? now,
       updatedAt: options?.updatedAt ?? now,
+      lastActivityAt: resolveInitialActivityAt(options, now),
       availableModes: [],
       currentModeId: null,
       pendingPermissions: new Map<string, AgentPermissionRequest>(),
@@ -4591,6 +4617,8 @@ export class AgentManager {
       this.responseControlSessions.observe(agent.id, event, eventTurnId);
 
       this.touchUpdatedAt(agent);
+      // Providers can emit mode/usage/thread snapshots on access. Only work advances Inbox order.
+      if (SESSION_ACTIVITY_EVENTS.has(event.type)) agent.lastActivityAt = agent.updatedAt;
       if (this.agentStreamCoalescer.handle(agent.id, event)) {
         this.traceCoalescerBuffered(agent, event, eventTurnId);
         return false;
@@ -5167,7 +5195,7 @@ export class AgentManager {
       this.timelineStore.getSubmittedUserMessage(agent.id, item.clientMessageId)
     )
       return;
-    this.touchUpdatedAt(agent);
+    agent.lastActivityAt = this.touchUpdatedAt(agent);
     if (item.type === "user_message") agent.lastUserMessageAt = new Date();
     this.recordAndDispatchTimelineItem(agent.id, item, agent.provider, options?.turnId, options);
   }

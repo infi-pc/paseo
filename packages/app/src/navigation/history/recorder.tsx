@@ -4,11 +4,23 @@ import {
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
 } from "@/stores/workspace-layout-store";
+import { useSidebarNavigationStore } from "@/components/sidebar/navigation/store";
+import { useHosts } from "@/runtime/host-runtime";
+import { useWorkspaceStructure } from "@/stores/session-store-hooks";
+import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { classifyLocation, entriesEqual, type HistoryEntry } from "./model";
+import {
+  rememberBrowserSidebarContext,
+  initializeBrowserSidebarContext,
+  restoreBrowserSidebarContext,
+} from "./browser-sidebar-context";
 import { selectActiveWorkspaceTabId } from "./select-active-tab";
 import { navigationHistoryStore, type NavigationHistoryStore } from "./store";
+
+// Register before React Navigation mounts its popstate listener and can commit a route.
+initializeBrowserSidebarContext(useSidebarNavigationStore.getState().selectProject);
 
 /**
  * Records where the user is looking as navigation history. Mounted once, renders nothing.
@@ -35,6 +47,9 @@ export function NavigationHistoryRecorder({
   const paramServerId = params.serverId;
   const paramWorkspaceId = params.workspaceId;
   const hydrated = useWorkspaceLayoutStoreHydrated();
+  const hosts = useHosts();
+  const serverIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
+  const { projects } = useWorkspaceStructure(serverIds);
 
   const location = useMemo(
     () =>
@@ -46,6 +61,9 @@ export function NavigationHistoryRecorder({
   );
   const workspaceKey =
     location?.kind === "workspace" ? buildWorkspaceTabPersistenceKey(location) : null;
+  const destinationProjectKey = projects.find((project) =>
+    workspaceKey ? project.workspaceKeys.includes(workspaceKey) : false,
+  )?.viewKey;
   const focusedTabId = useWorkspaceLayoutStore((state) =>
     workspaceKey && hydrated ? selectActiveWorkspaceTabId(state, workspaceKey) : null,
   );
@@ -67,6 +85,7 @@ export function NavigationHistoryRecorder({
     if (!location) {
       return;
     }
+    if (!restoreBrowserSidebarContext(pathname)) return;
     let entry: HistoryEntry;
     if (location.kind === "workspace") {
       if (!hydrated || !workspaceKey) {
@@ -95,13 +114,44 @@ export function NavigationHistoryRecorder({
         });
       }
     }
-    recordNavigationLocation(store, entry);
-  }, [focusedTabId, focusedTabTargetSignature, hydrated, location, store, workspaceKey]);
+    recordNavigationLocation(store, entry, {
+      ...useSidebarNavigationStore.getState(),
+      destinationProjectKey,
+    });
+    const { entries, index } = store.getState();
+    const recorded = entries[index];
+    if (recorded?.sidebarProjectKey !== undefined && entriesEqual(recorded, entry)) {
+      const browserPath =
+        recorded.kind === "workspace"
+          ? buildHostWorkspaceRoute(recorded.serverId, recorded.workspaceId)
+          : recorded.path;
+      rememberBrowserSidebarContext(browserPath, recorded.sidebarProjectKey);
+    }
+  }, [
+    destinationProjectKey,
+    focusedTabId,
+    focusedTabTargetSignature,
+    hydrated,
+    location,
+    pathname,
+    store,
+    workspaceKey,
+  ]);
 
   return null;
 }
 
-export function recordNavigationLocation(store: NavigationHistoryStore, entry: HistoryEntry) {
+interface SidebarNavigationContext {
+  projectKey: string | null;
+  destinationProjectKey: string | undefined;
+  selectProject: (projectKey: string | null) => void;
+}
+
+export function recordNavigationLocation(
+  store: NavigationHistoryStore,
+  entry: HistoryEntry,
+  sidebar?: SidebarNavigationContext,
+) {
   // Missing layouts and Explorer-only focus are transitional. Settled empty workspaces have
   // a New tab; recording a tabless location cannot restore its focus when replayed.
   if (entry.kind === "workspace" && (!entry.tabId || !entry.target)) {
@@ -109,20 +159,40 @@ export function recordNavigationLocation(store: NavigationHistoryStore, entry: H
   }
   const { entries, index } = store.getState();
   const current = entries[index];
-  if (current && entriesEqual(current, entry)) {
-    // A same-kind tab replacement can keep the tab id while changing its target. Keep the
-    // current entry's replay payload fresh without turning that retarget into a new place.
-    if (
-      current.kind === "workspace" &&
-      entry.kind === "workspace" &&
-      ((current.target === null) !== (entry.target === null) ||
-        (current.target !== null &&
-          entry.target !== null &&
-          !workspaceTabTargetsEqual(current.target, entry.target)))
-    ) {
-      store.replaceCurrent(entry);
-    }
+  const sameLocation = current && entriesEqual(current, entry);
+  const targetChanged = current && focusedTargetChanged(current, entry);
+  const previousVisit = sameLocation && !targetChanged ? current : undefined;
+  entry = followSidebarNavigation(entry, previousVisit, sidebar);
+  if (sameLocation) {
+    const contextResolved =
+      current.sidebarProjectKey === undefined && entry.sidebarProjectKey !== undefined;
+    if (targetChanged || contextResolved) store.replaceCurrent(entry);
     return;
   }
   store.record(entry);
+}
+
+function followSidebarNavigation(
+  entry: HistoryEntry,
+  current: HistoryEntry | undefined,
+  sidebar: SidebarNavigationContext | undefined,
+): HistoryEntry {
+  // FORK(project-navigation): browsing the rail does not rewrite the current visit.
+  if (current?.sidebarProjectKey !== undefined) {
+    return { ...entry, sidebarProjectKey: current.sidebarProjectKey };
+  }
+  if (!sidebar) return entry;
+  if (entry.kind === "workspace" && sidebar.destinationProjectKey === undefined) return entry;
+  let projectKey = sidebar.projectKey;
+  if (entry.kind === "workspace" && projectKey !== null && sidebar.destinationProjectKey) {
+    projectKey = sidebar.destinationProjectKey;
+  }
+  sidebar.selectProject(projectKey);
+  return { ...entry, sidebarProjectKey: projectKey };
+}
+
+function focusedTargetChanged(current: HistoryEntry, entry: HistoryEntry): boolean {
+  if (current.kind !== "workspace" || entry.kind !== "workspace") return false;
+  if (current.target === null || entry.target === null) return current.target !== entry.target;
+  return !workspaceTabTargetsEqual(current.target, entry.target);
 }

@@ -80,6 +80,7 @@ class InMemoryAgentManager {
       effectiveThinkingOptionId: null,
       createdAt: new Date("2026-05-02T00:00:00.000Z"),
       updatedAt: new Date("2026-05-02T00:00:00.000Z"),
+      lastActivityAt: new Date("2026-05-02T00:00:00.000Z"),
       lastUserMessageAt: null,
       lifecycle: "idle",
       capabilities: {
@@ -318,6 +319,7 @@ async function emitTimelineResponse(options?: {
   if (!response || response.type !== "fetch_agent_timeline_response") {
     throw new Error("Expected fetch_agent_timeline_response");
   }
+  expect(response.payload.error).toBeNull();
   return response;
 }
 

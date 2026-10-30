@@ -1,45 +1,31 @@
 import { SIDEBAR_NAVIGATION_RAIL_WIDTH } from "@/constants/layout";
-import { useMemo, useCallback, type ReactNode } from "react";
+import { useMemo, useCallback, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { View, Text, ScrollView } from "react-native";
-import { ChevronDown, FolderPlus, Inbox } from "lucide-react-native";
+import { View, Text, type LayoutChangeEvent } from "react-native";
+import { ChevronDown, FolderPlus, Inbox, MoreHorizontal } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuRoot, MenuTrigger, MenuSurface, MenuItem } from "@/components/ui/menu";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { DensityIcon } from "@/components/ui/density-icon";
-import { ProjectIconView } from "@/components/project-icon-view";
+import { DraggableList, type DraggableRenderItemInfo } from "@/components/draggable-list";
+import type { DraggableListDragHandleProps } from "@/components/draggable-list.types";
+import { SidebarProjectsDialog } from "./projects-dialog";
+import { ProjectMark, UnreadBadge } from "./project-mark";
+import {
+  PROJECT_RAIL_ITEM_SIZE,
+  PROJECT_RAIL_ITEM_GAP,
+  visibleRailProjectCount,
+  projectNavigationKey,
+  useReorderSidebarProjects,
+} from "./project-order";
 import { useProjectIcons } from "@/projects/icons";
 import { resolveSidebarProjectIconTargets } from "@/utils/sidebar-project-row-model";
-import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import type { SidebarProjectEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { useSidebarModel } from "../sidebar-model";
 import { SidebarNavRows } from "../sidebar-nav-rows";
 import { useSidebarNavigationStore } from "./store";
 
 const inboxMark = <DensityIcon icon={Inbox} size="md" color="foregroundMuted" />;
-
-function ProjectMark({ project, icon }: { project: SidebarProjectEntry; icon: string | null }) {
-  return (
-    <ProjectIconView
-      iconDataUri={icon}
-      projectViewKey={project.viewKey}
-      initial={projectIconPlaceholderLabelFromDisplayName(project.projectName)
-        .charAt(0)
-        .toUpperCase()}
-      size={24}
-      textStyle={styles.initial}
-    />
-  );
-}
-
-function UnreadBadge({ count }: { count: number }) {
-  if (!count) return null;
-  return (
-    <View style={styles.badge}>
-      <Text style={styles.badgeText}>{count}</Text>
-    </View>
-  );
-}
 
 export function SidebarProjectRail({
   onAddProject,
@@ -54,6 +40,36 @@ export function SidebarProjectRail({
   const selectInbox = useCallback(() => selectProject(null), [selectProject]);
   const targets = useMemo(() => resolveSidebarProjectIconTargets(allProjects), [allProjects]);
   const icons = useProjectIcons({ projects: targets });
+  const [projectsHeight, setProjectsHeight] = useState(0);
+  const [showProjects, setShowProjects] = useState(false);
+  const openProjects = useCallback(() => setShowProjects(true), []);
+  const measureProjects = useCallback(
+    (event: LayoutChangeEvent) => setProjectsHeight(event.nativeEvent.layout.height),
+    [],
+  );
+  const closeProjects = useCallback(() => setShowProjects(false), []);
+  const reorder = useReorderSidebarProjects();
+  const visibleCount = visibleRailProjectCount(projectsHeight, allProjects.length);
+  const visibleProjects = useMemo(
+    () => allProjects.slice(0, visibleCount),
+    [allProjects, visibleCount],
+  );
+  const renderProject = useCallback(
+    ({ item, drag, dragHandleProps }: DraggableRenderItemInfo<SidebarProjectEntry>) => (
+      <View style={styles.railItem}>
+        <ProjectNavigationItem
+          project={item}
+          icon={icons.get(item.viewKey) ?? null}
+          selected={navigation.selectedProject?.viewKey === item.viewKey}
+          unread={navigation.unreadByProject.get(item.viewKey) ?? 0}
+          presentation="rail"
+          onLongPress={drag}
+          dragHandleProps={dragHandleProps}
+        />
+      </View>
+    ),
+    [icons, navigation.selectedProject, navigation.unreadByProject],
+  );
   const unreadCount = [...navigation.unreadByProject.values()].reduce(
     (total, count) => total + count,
     0,
@@ -73,30 +89,39 @@ export function SidebarProjectRail({
         <DensityIcon icon={Inbox} size="md" color="foregroundMuted" />
         <UnreadBadge count={unreadCount} />
       </ToolbarButton>
-      <ScrollView
-        style={styles.projects}
-        contentContainerStyle={styles.projectItems}
-        showsVerticalScrollIndicator={false}
-      >
-        {allProjects.map((project) => (
-          <ProjectNavigationItem
-            key={project.viewKey}
-            project={project}
-            icon={icons.get(project.viewKey) ?? null}
-            selected={navigation.selectedProject?.viewKey === project.viewKey}
-            unread={navigation.unreadByProject.get(project.viewKey) ?? 0}
-            presentation="rail"
-          />
-        ))}
+      <View style={styles.projects} onLayout={measureProjects}>
+        <DraggableList
+          data={visibleProjects}
+          keyExtractor={projectNavigationKey}
+          renderItem={renderProject}
+          onDragEnd={reorder}
+          scrollEnabled={false}
+          useDragHandle
+          containerStyle={styles.railItems}
+          testID="sidebar-rail-projects"
+        />
+        {projectsHeight > 0 && visibleCount < allProjects.length ? (
+          <ToolbarButton
+            label={t("sidebar.navigation.allProjects")}
+            onPress={openProjects}
+            tooltipSide="right"
+            testID="sidebar-project-overflow"
+            style={styles.railItemButton}
+          >
+            <DensityIcon icon={MoreHorizontal} size="md" color="foregroundMuted" />
+          </ToolbarButton>
+        ) : null}
         <ToolbarButton
           label={t("sidebar.actions.addProject")}
           onPress={onAddProject}
           tooltipSide="right"
           testID="sidebar-rail-add-project"
+          style={styles.railButton}
         >
           <DensityIcon icon={FolderPlus} size="md" color="foregroundMuted" />
         </ToolbarButton>
-      </ScrollView>
+      </View>
+      <SidebarProjectsDialog visible={showProjects} onClose={closeProjects} icons={icons} />
       {footer}
     </View>
   );
@@ -162,12 +187,16 @@ function ProjectNavigationItem({
   selected,
   unread,
   presentation,
+  onLongPress,
+  dragHandleProps,
 }: {
   project: SidebarProjectEntry;
   icon: string | null;
   selected: boolean;
   unread: number;
   presentation: "rail" | "menu";
+  onLongPress?: () => void;
+  dragHandleProps?: DraggableListDragHandleProps;
 }) {
   const selectProject = useSidebarNavigationStore((state) => state.selectProject);
   const select = useCallback(
@@ -190,9 +219,12 @@ function ProjectNavigationItem({
   }
   return (
     <ToolbarButton
+      {...dragHandleProps?.attributes}
+      {...dragHandleProps?.listeners}
       label={project.projectName}
       selected={selected}
       onPress={select}
+      onLongPress={onLongPress}
       testID={`sidebar-project-tab-${project.viewKey}`}
       tooltipSide="right"
       style={styles.railButton}
@@ -214,23 +246,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   actions: { alignItems: "center", gap: theme.spacing[2] },
   separator: { height: theme.borderWidth[1], width: 24, backgroundColor: theme.colors.border },
-  projects: { flex: 1, width: "100%" },
-  projectItems: { alignItems: "center", gap: theme.spacing[2], paddingBottom: theme.spacing[2] },
-  railButton: { width: 36, height: 36 },
-  initial: { fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium },
-  badge: {
-    position: "absolute",
-    right: -2,
-    bottom: -2,
-    minWidth: 14,
-    paddingHorizontal: 3,
-    borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.accent,
-  },
-  badgeText: {
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.accentForeground,
-    textAlign: "center",
+  projects: { flex: 1, minHeight: 0, width: "100%", alignItems: "center" },
+  railItems: { flexShrink: 0, alignItems: "center" },
+  railItem: { marginBottom: PROJECT_RAIL_ITEM_GAP },
+  railButton: { width: PROJECT_RAIL_ITEM_SIZE, height: PROJECT_RAIL_ITEM_SIZE },
+  railItemButton: {
+    width: PROJECT_RAIL_ITEM_SIZE,
+    height: PROJECT_RAIL_ITEM_SIZE,
+    marginBottom: PROJECT_RAIL_ITEM_GAP,
   },
   selector: {
     flexDirection: "row",

@@ -65,6 +65,8 @@ async function dragFirstAfterSecond(rows: Locator, reorders = true) {
   await page.mouse.down();
   await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 6 });
   await page.mouse.up();
+  // dnd-kit suppresses document clicks for 50 ms after releasing a pointer drag.
+  await page.waitForTimeout(60);
   await expect
     .poll(() => rows.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid"))))
     .toEqual(reorders ? [before[1], before[0]] : before);
@@ -91,6 +93,25 @@ test("project and Inbox follow session activity and retain that order after relo
     await page.getByTestId("sidebar-display-preferences-menu").click();
     await expect(page.getByRole("menuitem", { name: /^Sort/ })).toHaveCount(0);
     await expect(page.getByTestId("sidebar-display-grouping")).toHaveCount(0);
+  } finally {
+    await seed.cleanup();
+  }
+});
+
+test("opening older workspaces leaves Inbox ordered by session changes", async ({ page }) => {
+  const { seed, ids, agents } = await seedActiveProject(2);
+  try {
+    await gotoAppShell(page, seed);
+    await selectSidebarInbox(page);
+    const rows = workspaceRows(page);
+    await expectOrder(rows, [ids[1], ids[0]]);
+    await page.getByTestId(`sidebar-workspace-row-${getServerId()}:${ids[0]}`).click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${ids[0]}`));
+    await expectOrder(rows, [ids[1], ids[0]]);
+    await page.reload();
+    await expectOrder(rows, [ids[1], ids[0]]);
+    await prompt(seed, agents[0]);
+    await expectOrder(rows, ids);
   } finally {
     await seed.cleanup();
   }
@@ -144,5 +165,193 @@ test("project Show more survives collapse and follows new session activity", asy
     await expectOrder(rows, updated.slice(0, 7));
   } finally {
     await seed.cleanup();
+  }
+});
+
+test("project icons and the overflow dialog share a persistent drag order", async ({ page }) => {
+  const seeds: SeededWorkspace[] = [];
+  try {
+    for (let index = 0; index < 3; index += 1) {
+      seeds.push(
+        await seedWorkspace({ repoPrefix: `rail-order-${index}-`, title: `Project ${index}` }),
+      );
+    }
+    await page.setViewportSize({ width: 1100, height: 1000 });
+    await gotoAppShell(page, seeds[0]);
+    const tabs = page.locator('[data-testid^="sidebar-project-tab-"]');
+    await expect(tabs).toHaveCount(3);
+    const initial = await tabs.evaluateAll((nodes) =>
+      nodes.map((node) => node.getAttribute("data-testid")!.replace("sidebar-project-tab-", "")),
+    );
+    await dragProject(page, tabs.nth(0), tabs.nth(1));
+    const reordered = [initial[1], initial[0], initial[2]];
+    await expectProjectKeys(tabs, "sidebar-project-tab-", reordered);
+    await page.reload();
+    await expectProjectKeys(tabs, "sidebar-project-tab-", reordered);
+    await page.setViewportSize({ width: 1100, height: 480 });
+    const overflow = page.getByTestId("sidebar-project-overflow");
+    await expect(overflow).toBeVisible();
+    await expect.poll(() => tabs.count()).toBeLessThan(3);
+    const rail = page.getByTestId("sidebar-project-rail");
+    expect(await rail.evaluate((node) => node.scrollHeight <= node.clientHeight)).toBe(true);
+    await overflow.click();
+    const dialogRows = page.locator('[data-testid^="sidebar-all-project-row-"]');
+    await expectProjectKeys(dialogRows, "sidebar-all-project-row-", reordered);
+    await dragProject(
+      page,
+      page.getByTestId(`sidebar-project-drag-${initial[2]}`),
+      page.getByTestId(`sidebar-project-drag-${initial[1]}`),
+    );
+    const finalOrder = [initial[2], initial[1], initial[0]];
+    await expectProjectKeys(dialogRows, "sidebar-all-project-row-", finalOrder);
+    await page.screenshot({ path: "test-results/project-overflow-dialog.png" });
+    await page.getByTestId(`sidebar-all-project-option-${initial[0]}`).click();
+    await expect(page.getByTestId("sidebar-all-projects-dialog")).toHaveCount(0);
+    await expect(page.getByTestId(`sidebar-project-row-${initial[0]}`)).toBeVisible();
+    await page.setViewportSize({ width: 1100, height: 1000 });
+    await expect(overflow).toHaveCount(0);
+    await expectProjectKeys(tabs, "sidebar-project-tab-", finalOrder);
+    await page.reload();
+    await expectProjectKeys(tabs, "sidebar-project-tab-", finalOrder);
+    await page.screenshot({ path: "test-results/project-rail-reordered.png" });
+  } finally {
+    for (const seed of seeds.toReversed()) await seed.cleanup();
+  }
+});
+
+async function expectProjectKeys(rows: Locator, prefix: string, keys: string[]) {
+  await expect
+    .poll(() => rows.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-testid"))))
+    .toEqual(keys.map((key) => `${prefix}${key}`));
+}
+
+async function dragProject(
+  page: import("@playwright/test").Page,
+  source: Locator,
+  target: Locator,
+) {
+  const from = await source.boundingBox();
+  const to = await target.boundingBox();
+  if (!from || !to) throw new Error("Project drag targets must be visible");
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+  await page.mouse.up();
+  // dnd-kit suppresses document clicks for 50 ms after releasing a pointer drag.
+  await page.waitForTimeout(60);
+}
+
+test("browser navigation keeps the project rail and compact selector in sync", async ({ page }) => {
+  const first = await seedActiveProject(1);
+  const second = await seedActiveProject(1);
+  try {
+    await gotoAppShell(page, first.seed);
+    const firstRow = page.getByTestId(
+      `sidebar-workspace-row-${getServerId()}:${first.seed.workspaceId}`,
+    );
+    const secondRow = page.getByTestId(
+      `sidebar-workspace-row-${getServerId()}:${second.seed.workspaceId}`,
+    );
+    const firstHeader = page.getByTestId(`sidebar-project-row-${first.seed.projectKey}`);
+    const secondHeader = page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`);
+    await firstRow.click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await selectSidebarInbox(page);
+    await secondRow.click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${second.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+    // A route change outside the sidebar must also select its destination project.
+    await selectSidebarProject(page, first.seed.projectKey);
+    await page.evaluate(
+      (workspaceId) => {
+        window.history.pushState(
+          null,
+          "",
+          `/h/${encodeURIComponent(workspaceId.serverId)}/workspace/${workspaceId.id}`,
+        );
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: first.seed.workspaceId },
+    );
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await selectSidebarProject(page, first.seed.projectKey);
+    await page.evaluate(
+      (workspaceId) => {
+        window.history.pushState(
+          null,
+          "",
+          `/h/${encodeURIComponent(workspaceId.serverId)}/workspace/${workspaceId.id}`,
+        );
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: second.seed.workspaceId },
+    );
+    await expect(secondHeader).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(firstHeader).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${second.seed.workspaceId}`));
+    await expect(secondHeader).toBeVisible();
+    await expect(secondRow).toBeVisible();
+    await page.screenshot({ path: "test-results/project-navigation-history.png" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await page.getByRole("button", { name: "Open menu", exact: true }).click();
+    await expect(page.getByTestId("sidebar-project-selector")).toContainText(
+      first.seed.projectDisplayName,
+    );
+    await expect(firstRow).toBeVisible();
+    await expect(secondRow).toHaveCount(0);
+  } finally {
+    await second.seed.cleanup();
+    await first.seed.cleanup();
+  }
+});
+
+test("browser Back restores Inbox for the original visit to a workspace", async ({ page }) => {
+  const first = await seedActiveProject(1);
+  const second = await seedActiveProject(1);
+  try {
+    await gotoAppShell(page);
+    await selectSidebarInbox(page);
+    await page
+      .getByTestId(`sidebar-workspace-row-${getServerId()}:${first.seed.workspaceId}`)
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+    await selectSidebarProject(page, second.seed.projectKey);
+    await page.evaluate(
+      ({ serverId, id }) => {
+        window.history.pushState(null, "", `/h/${serverId}/workspace/${id}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: second.seed.workspaceId },
+    );
+    await expect(page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`)).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${second.seed.workspaceId}`));
+    await expect(page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`)).toBeVisible();
+    // Another entry for the same workspace has its own project context.
+    await page.evaluate(
+      ({ serverId, id }) => {
+        window.history.pushState(null, "", `/h/${serverId}/workspace/${id}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: first.seed.workspaceId },
+    );
+    await expect(page.getByTestId(`sidebar-project-row-${first.seed.projectKey}`)).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`)).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+  } finally {
+    await second.seed.cleanup();
+    await first.seed.cleanup();
   }
 });

@@ -353,6 +353,7 @@ function makeManagedAgent(input: {
     },
     createdAt: now,
     updatedAt: now,
+    lastActivityAt: now,
     pendingPermissions: new Map(),
     bufferedPermissionResolutions: new Map(),
     inFlightPermissionResponses: new Set(),

@@ -131,7 +131,8 @@ test("resuming a stored agent keeps its unread flag and its last-activity time",
     expect(resumed?.requiresAttention).toBe(true);
     expect(resumed?.attentionReason).toBe("finished");
     expect(resumed?.updatedAt).toBe(markedUnread);
-    expect(resumed?.lastActivityAt).toBe(markedUnread);
+    expect(resumed?.lastActivityAt).toBe(lastActive);
+    expect(manager.getAgent(agentId)?.lastActivityAt.toISOString()).toBe(lastActive);
     expect(manager.getAgent(agentId)?.attention.requiresAttention).toBe(true);
     expect(manager.getAgent(agentId)?.updatedAt.toISOString()).toBe(markedUnread);
   } finally {

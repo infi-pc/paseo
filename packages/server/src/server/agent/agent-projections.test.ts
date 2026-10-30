@@ -78,6 +78,7 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     lifecycle,
     createdAt: now,
     updatedAt: now,
+    lastActivityAt: now,
     availableModes: [
       { id: "plan", label: "Planning" },
       { id: "build", label: "Building", description: "Detailed" },

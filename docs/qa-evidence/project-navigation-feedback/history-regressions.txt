@@ -1,0 +1,16 @@
+
+ RUN  v4.1.7 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/packages/app
+
+(node:15656) ExperimentalWarning: localStorage is not available because --localstorage-file was not provided.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:15655) [DEP0151] DeprecationWarning: Package /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/node_modules/react-native-worklets/ has a "main" field set to "./lib/module/index", excluding the full filename and extension to the resolved file at "lib/module/index.js", imported from /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/node_modules/react-native-reanimated/lib/module/initializers.js.
+ Automatic extension resolution of the "main" field is deprecated for ES modules.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:15656) [DEP0151] DeprecationWarning: Package /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/node_modules/react-native-worklets/ has a "main" field set to "./lib/module/index", excluding the full filename and extension to the resolved file at "lib/module/index.js", imported from /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/node_modules/react-native-reanimated/lib/module/initializers.js.
+ Automatic extension resolution of the "main" field is deprecated for ES modules.
+
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+   Start at  11:00:49
+   Duration  9.21s (transform 13.13s, setup 34ms, import 17.19s, tests 30ms, environment 279ms)
+

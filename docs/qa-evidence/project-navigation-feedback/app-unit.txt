@@ -1,0 +1,9 @@
+
+ RUN  v4.1.7 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/packages/app
+
+
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+   Start at  09:39:04
+   Duration  252ms (transform 175ms, setup 40ms, import 192ms, tests 6ms, environment 0ms)
+

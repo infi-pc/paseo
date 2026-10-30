@@ -544,6 +544,7 @@ function createManagedAgent(overrides: Partial<ManagedAgent> = {}): ManagedAgent
     runtimeInfo: undefined,
     createdAt: now,
     updatedAt: now,
+    lastActivityAt: now,
     lastUserMessageAt: null,
     lifecycle: "idle",
     capabilities: {

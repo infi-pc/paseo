@@ -109,6 +109,7 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     lifecycle: core.lifecycle,
     createdAt: overrides.createdAt ?? core.now,
     updatedAt: overrides.updatedAt ?? core.now,
+    lastActivityAt: overrides.lastActivityAt ?? core.now,
     availableModes: overrides.availableModes ?? [],
     currentModeId: overrides.currentModeId ?? core.config.modeId ?? null,
     pendingPermissions: overrides.pendingPermissions ?? new Map<string, AgentPermissionRequest>(),
