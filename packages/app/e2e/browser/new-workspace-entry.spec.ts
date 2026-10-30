@@ -1,3 +1,9 @@
+import {
+  selectSidebarProject,
+  revealSidebarProjectWorkspaces,
+  clickArchiveWorkspaceMenuItem,
+  expectWorkspaceAbsentFromSidebar,
+} from "../support/helpers/sidebar";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
@@ -15,10 +21,7 @@ import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-cli
 import { seedSavedSettingsHosts } from "../support/helpers/settings";
 import { getServerId } from "../support/helpers/server-id";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
-import {
-  clickArchiveWorkspaceMenuItem,
-  expectWorkspaceAbsentFromSidebar,
-} from "../support/helpers/sidebar";
+
 import {
   switchWorkspaceViaSidebar,
   waitForSidebarHydration,
@@ -65,7 +68,7 @@ test.describe("New workspace entry points", () => {
         },
       ]);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await expect(
         page.getByTestId(`sidebar-workspace-row-${getServerId()}:${seeded.workspaceId}`),
@@ -109,7 +112,7 @@ test.describe("New workspace entry points", () => {
         },
       ]);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await expect(
         page.getByTestId(`sidebar-workspace-row-${getServerId()}:${seeded.workspaceId}`),
@@ -146,7 +149,7 @@ test.describe("New workspace entry points", () => {
     const seeded: SeededWorkspace = await seedWorkspace({ repoPrefix: "entry-shortcut-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
 
@@ -177,7 +180,7 @@ test.describe("New workspace entry points", () => {
         },
       ]);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, rememberedProject);
       await waitForSidebarHydration(page);
       await page
         .getByTestId(`sidebar-workspace-row-${serverId}:${rememberedProject.workspaceId}`)
@@ -192,6 +195,7 @@ test.describe("New workspace entry points", () => {
       await composer.fill(draftText);
       await expect(composer).toHaveValue(draftText);
 
+      await revealSidebarProjectWorkspaces(page, rememberedProject.projectKey);
       await clickArchiveWorkspaceMenuItem(page, rememberedProject.workspaceId);
       await expectWorkspaceAbsentFromSidebar(page, rememberedProject.workspaceId);
 
@@ -214,9 +218,9 @@ test.describe("New workspace entry points", () => {
     try {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await expect(projectRow(page, projectA.projectKey)).toBeVisible({ timeout: 30_000 });
-      await expect(projectRow(page, projectB.projectKey)).toBeVisible({ timeout: 30_000 });
-      await expect(projectRow(page, projectC.projectKey)).toBeVisible({ timeout: 30_000 });
+      for (const project of [projectA, projectB, projectC]) {
+        await expect(page.getByTestId(`sidebar-project-tab-${project.projectKey}`)).toBeVisible();
+      }
 
       // Project A's row icon opens New Workspace with A preselected.
       await openNewWorkspaceComposer(page, {
@@ -263,8 +267,11 @@ test.describe("New workspace entry points", () => {
     try {
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
-      await expect(projectRow(page, gitProject.projectKey)).toBeVisible({ timeout: 30_000 });
-      await expect(projectRow(page, nonGitProject.projectKey)).toBeVisible({ timeout: 30_000 });
+      await selectSidebarProject(page, gitProject.projectKey);
+      await expect(projectRow(page, gitProject.projectKey)).toBeVisible();
+      await expect(
+        page.getByTestId(`sidebar-project-tab-${nonGitProject.projectKey}`),
+      ).toBeVisible();
 
       // Open New Workspace for the non-git project via the global button, then
       // select it in the picker (the per-row icon would preselect it too).

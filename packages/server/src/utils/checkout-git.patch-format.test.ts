@@ -1,3 +1,4 @@
+import { emptyChangeBreakdown } from "@getpaseo/protocol/diff-stat";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -124,6 +125,10 @@ describe.skipIf(process.platform === "win32")("quoted paths from real Git", () =
     expect(await getCheckoutShortstat(cwd)).toEqual({
       additions: names.length + untrackedNames.length,
       deletions: names.length,
+      breakdown: {
+        ...emptyChangeBreakdown(),
+        other: { additions: names.length + untrackedNames.length, deletions: names.length },
+      },
     });
   });
 
@@ -201,6 +206,7 @@ describe.skipIf(process.platform === "win32")("quoted paths from real Git", () =
       isDeleted: false,
       additions: 0,
       deletions: 0,
+      breakdown: emptyChangeBreakdown(),
       hunks: [],
       status: "binary",
     });

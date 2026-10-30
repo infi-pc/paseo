@@ -107,7 +107,7 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
     page,
   }) => {
     const serverId = getServerId();
-    await openProjectViaDaemon(client, tempRepo.path);
+    const project = await openProjectViaDaemon(client, tempRepo.path);
     const worktree = await createWorktreeViaDaemon(client, {
       cwd: tempRepo.path,
       slug: `archive-risk-${Date.now()}`,
@@ -117,7 +117,7 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
 
     await seedRiskyWorktree(client, worktree.workspaceDirectory);
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, project);
     await waitForSidebarHydration(page);
     await waitForWorkspaceInSidebar(page, { serverId, workspaceId: worktree.workspaceId });
 

@@ -17,7 +17,7 @@ import {
   workspaceDeckEntryLocator,
 } from "./workspace-ui";
 import { getServerId } from "./server-id";
-import { revealSidebarProjectWorkspaces } from "./sidebar";
+import { revealSidebarProjectWorkspaces, selectSidebarProject } from "./sidebar";
 import { WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES } from "@/screens/workspace/workspace-deck-retention";
 import type { installDaemonWebSocketGate } from "./daemon-websocket-gate";
 
@@ -145,13 +145,14 @@ export async function createCreationScenario(page: Page) {
   return {
     cleanup: project.cleanup,
     async openWorkspaceForm(isolation: "local" | "worktree") {
-      await gotoAppShell(page);
+      await gotoAppShell(page, project);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, project);
       await selectWorkspaceIsolation(page, isolation);
     },
     async openAgentDraft() {
       await gotoWorkspace(page, project.workspaceId);
+      await selectSidebarProject(page, project.projectKey);
       await createAgentTabFromMenu(page);
     },
     async startAnotherDraft() {
@@ -276,6 +277,7 @@ export async function createCreationScenario(page: Page) {
           source: { kind: "directory", path: project.repoPath },
         });
         if (!result.workspace) throw new Error(result.error ?? "Failed to seed eviction workspace");
+        await revealSidebarProjectWorkspaces(page, project.projectKey);
         await switchWorkspaceViaSidebar({
           page,
           serverId: getServerId(),

@@ -7,11 +7,14 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { density, densityIconBox } from "@/styles/density";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
+
 type SidebarHeaderRowVariant = "header" | "compact" | "inline";
 
 export type SidebarRowIcon = ComponentType<{ size: number; color: string }>;
 
 interface SidebarHeaderRowProps {
+  iconOnly?: boolean;
   icon: SidebarRowIcon | null;
   label: string;
   onPress: () => void;
@@ -38,7 +41,25 @@ interface SidebarHeaderRowProps {
   rowRef?: Ref<View>;
 }
 
-export function SidebarHeaderRow({
+export function SidebarHeaderRow(props: SidebarHeaderRowProps) {
+  if (props.iconOnly && props.icon) {
+    return (
+      <ToolbarButton
+        label={props.label}
+        onPress={props.onPress}
+        selected={props.isActive}
+        testID={props.testID}
+        shortcut={props.shortcutKeys}
+        tooltipSide="right"
+      >
+        <DensityIcon icon={props.icon} size="md" color="foregroundMuted" />
+      </ToolbarButton>
+    );
+  }
+  return <SidebarLabeledRow {...props} />;
+}
+
+function SidebarLabeledRow({
   icon,
   label,
   onPress,

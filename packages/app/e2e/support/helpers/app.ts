@@ -1,8 +1,11 @@
+import { selectSidebarProject } from "./sidebar";
 import { expect, type Page } from "@playwright/test";
 import { escapeRegex } from "./regex";
 
-export const gotoAppShell = async (page: Page) => {
+/** Starts in Inbox unless a project is selected through the rail or compact drawer. */
+export const gotoAppShell = async (page: Page, project?: { projectKey: string }) => {
   await page.goto("/");
+  if (project) await selectSidebarProject(page, project.projectKey);
 };
 
 export const gotoHome = async (page: Page) => {

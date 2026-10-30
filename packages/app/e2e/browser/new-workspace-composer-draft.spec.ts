@@ -80,7 +80,7 @@ test.describe("New workspace composer draft", () => {
         },
       ]);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, project);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
 
@@ -97,7 +97,7 @@ test.describe("New workspace composer draft", () => {
     const project = await seedWorkspace({ repoPrefix: "new-workspace-submitted-draft-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, project);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: project.projectKey,
@@ -148,7 +148,7 @@ test("fullscreen creation returns inline and keeps submission locked when reopen
   const project = await seedWorkspace({ repoPrefix: "fullscreen-submit-pending-" });
   const delay = await delayBrowserWorkspaceCreatedResponse(page);
   try {
-    await gotoAppShell(page);
+    await gotoAppShell(page, project);
     await waitForSidebarHydration(page);
     await openNewWorkspaceComposer(page, project);
     await resizeComposerViewport(page, "portrait");

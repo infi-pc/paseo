@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
@@ -130,7 +131,7 @@ test.describe("Schedules", () => {
     );
     cleanupTasks.push(() => deleteSeededSchedule(secondary, scheduleId));
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
     await addScheduleHostAndReload({
@@ -140,6 +141,7 @@ test.describe("Schedules", () => {
       port: secondary.port,
     });
     await page.reload();
+    await selectSidebarProject(page, workspace.projectKey);
 
     const row = page.getByTestId(`schedule-row-${scheduleId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });

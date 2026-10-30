@@ -1,3 +1,5 @@
+import { selectSidebarProjectByName, selectSidebarProject } from "../support/helpers/sidebar";
+
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { test, expect, type Page } from "../support/fixtures";
@@ -59,6 +61,7 @@ async function addProjectFromPicker(page: Page, projectPath: string): Promise<st
   await input.fill(projectPath);
   await page.keyboard.press("Enter");
 
+  await selectSidebarProjectByName(page, path.basename(projectPath));
   const projectRow = page
     .locator('[data-testid^="sidebar-project-row-"]')
     .filter({ hasText: path.basename(projectPath) })
@@ -71,10 +74,7 @@ async function addProjectFromPicker(page: Page, projectPath: string): Promise<st
 }
 
 async function waitForSidebarProjectListReady(page: Page): Promise<void> {
-  await page
-    .locator('[data-testid="sidebar-project-empty-state"], [data-testid^="sidebar-project-row-"]')
-    .first()
-    .waitFor({ state: "visible", timeout: 60_000 });
+  await expect(page.getByTestId("sidebar-inbox")).toBeVisible({ timeout: 60_000 });
 }
 
 test.describe("Project picker search", () => {
@@ -160,7 +160,7 @@ test.describe("Project with no workspaces persists", () => {
       );
       const globalNewWorkspace = page.getByTestId("sidebar-global-new-workspace");
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
       const workspaceRow = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
@@ -185,6 +185,7 @@ test.describe("Project with no workspaces persists", () => {
 
       // The project survives a reload after its last workspace is archived.
       await page.reload();
+      await selectSidebarProject(page, workspace.projectKey);
       await waitForSidebarHydration(page);
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
       await expect(newWorkspaceRow).toBeVisible({ timeout: 30_000 });
@@ -203,7 +204,7 @@ test.describe("Project remove", () => {
       const projectViewKey = projectEquivalenceViewKey(workspace.projectKey);
       const projectRow = page.getByTestId(`sidebar-project-row-${projectViewKey}`);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
       await expect(page.getByTestId(workspaceRowTestId(workspace.workspaceId))).toBeVisible({
@@ -219,6 +220,7 @@ test.describe("Project remove", () => {
 
       await page.reload();
       await waitForSidebarProjectListReady(page);
+      await expect(page.getByTestId(`sidebar-project-tab-${projectViewKey}`)).toHaveCount(0);
       await expect(projectRow).toHaveCount(0, { timeout: 30_000 });
 
       const readded = await workspace.client.addProject(workspace.repoPath);
@@ -231,6 +233,7 @@ test.describe("Project remove", () => {
       expect(readded.project?.projectDisplayName).toBe(workspace.projectDisplayName);
 
       await page.reload();
+      await selectSidebarProject(page, workspace.projectKey);
       await waitForSidebarHydration(page);
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
       await expect(projectRow).toContainText(workspace.projectDisplayName);

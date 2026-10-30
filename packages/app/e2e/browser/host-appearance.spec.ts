@@ -1,3 +1,4 @@
+import { createMockIdleAgent } from "../support/helpers/archive-tab";
 import { expect, test as base } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
@@ -55,6 +56,13 @@ const test = base.extend<{ twoHostSidebar: TwoHostSidebar }>({
         port: secondaryHost.port,
       });
 
+      for (const workspace of [primary, secondary]) {
+        await createMockIdleAgent(workspace.client, {
+          cwd: workspace.repoPath,
+          workspaceId: workspace.workspaceId,
+          title: "Host badge session",
+        });
+      }
       await gotoAppShell(page);
       await addConnectedHostAndReload(page, {
         serverId: secondaryHost.serverId,

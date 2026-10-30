@@ -1,3 +1,4 @@
+import { selectSidebarProjectByName } from "./sidebar";
 import { realpathSync } from "node:fs";
 import { expect, type Page } from "@playwright/test";
 import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -20,6 +21,7 @@ type WorkspaceSetupDaemonClient = Pick<
   | "fetchAgents"
   | "fetchWorkspaces"
   | "listTerminals"
+  | "listProjects"
   | "listWorkspaceScripts"
   | "observeEvents"
   | "removeProject"
@@ -82,6 +84,7 @@ export function projectNameFromPath(repoPath: string): string {
 
 export async function openHomeWithProject(page: Page, repoPath: string): Promise<void> {
   await gotoAppShell(page);
+  await selectSidebarProjectByName(page, projectNameFromPath(repoPath));
   await expect(
     page
       .locator('[data-testid^="sidebar-project-row-"]')

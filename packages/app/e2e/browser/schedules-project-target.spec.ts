@@ -155,7 +155,7 @@ test.describe("Schedules project target", () => {
     const workspace = await seedWorkspace({ repoPrefix: "schedule-sheet-dismiss-", git: false });
     cleanupTasks.push(() => workspace.cleanup());
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
     await page.setViewportSize(MOBILE_SHEET_VIEWPORT);
@@ -179,7 +179,7 @@ test.describe("Schedules project target", () => {
     const scheduleName = `Project schedule ${Date.now()}`;
     cleanupTasks.push(() => deleteScheduleByName(workspace, scheduleName));
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await waitForSidebarHydration(page);
 
     await page.getByRole("button", { name: "Schedules" }).click();
@@ -266,7 +266,7 @@ test.describe("Schedules project target", () => {
     const secondary = await createScheduleHost();
     cleanupTasks.push(() => secondary.cleanup());
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
     await addScheduleHostAndReload({
@@ -346,7 +346,7 @@ test.describe("Schedules project target", () => {
     const scheduleName = `Knob schedule ${Date.now()}`;
     cleanupTasks.push(() => deleteScheduleByName(workspace, scheduleName));
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
     await expect(page.getByTestId("schedules-empty-new")).toBeVisible({ timeout: 30_000 });

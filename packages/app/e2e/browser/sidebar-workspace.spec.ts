@@ -3,6 +3,8 @@ import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
+  selectSidebarProjectByName,
+  selectSidebarProject,
   closeMobileAgentSidebar,
   expectMobileAgentSidebarHidden,
   expectMobileAgentSidebarVisible,
@@ -19,7 +21,6 @@ import { expectWorkspaceHeader } from "../support/helpers/workspace-ui";
 import { getServerId } from "../support/helpers/server-id";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
-import { escapeRegex } from "../support/helpers/regex";
 import { openFilesPanel } from "../support/helpers/workspace-tabs";
 import { seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 
@@ -41,10 +42,10 @@ async function openWorkspaceFromSidebar(
 }
 
 async function waitForSidebarProject(page: import("@playwright/test").Page, projectName: string) {
+  await selectSidebarProjectByName(page, projectName);
   const row = page
-    .getByRole("button", {
-      name: new RegExp(escapeRegex(projectName), "i"),
-    })
+    .locator('[data-testid^="sidebar-project-row-"]')
+    .filter({ hasText: projectName })
     .first();
   await expect(row).toBeVisible({ timeout: 30_000 });
   return row;
@@ -251,8 +252,12 @@ async function expectSidebarWorkspaces(page: Page, workspaceIds: string[]): Prom
   }
 }
 
-async function cacheWorkspaces(page: Page, workspaceIds: string[]): Promise<void> {
-  await gotoAppShell(page);
+async function cacheWorkspaces(
+  page: Page,
+  workspaceIds: string[],
+  projectKey: string,
+): Promise<void> {
+  await gotoAppShell(page, { projectKey });
   await expectSidebarWorkspaces(page, workspaceIds);
   await expect.poll(() => readCachedRowIds(page, "workspace")).toEqual(workspaceIds);
 }
@@ -260,10 +265,11 @@ async function cacheWorkspaces(page: Page, workspaceIds: string[]): Promise<void
 async function reopenDamagedCacheBeforeHostResponds(
   page: Page,
   missingWorkspaceId: string,
+  projectKey: string,
 ): Promise<() => void> {
   await simulateDamagedLegacyDirectoryCache(page, missingWorkspaceId);
   const releaseHost = await holdHostResponsesUntilCacheIsVisible(page);
-  await gotoAppShell(page);
+  await gotoAppShell(page, { projectKey });
   return releaseHost;
 }
 
@@ -281,10 +287,12 @@ async function expectRecoveredWorkspacesAfterReload(
   page: Page,
   workspaceIds: string[],
   testInfo: TestInfo,
+  projectKey: string,
 ): Promise<void> {
   await expectSidebarWorkspaces(page, workspaceIds);
   await expect.poll(() => readCachedRowIds(page, "workspace")).toEqual(workspaceIds);
   await page.reload();
+  await selectSidebarProject(page, projectKey);
   await expectSidebarWorkspaces(page, workspaceIds);
   await page.screenshot({ path: testInfo.outputPath("recovered-workspaces.png") });
   await testInfo.attach("recovered-workspaces", {
@@ -301,16 +309,17 @@ test.describe("Sidebar workspace list", () => {
     try {
       const siblingId = await createPinnedSiblingWorkspace(project);
       const ids = [project.workspaceId, siblingId].sort();
-      await test.step("cache both workspaces", () => cacheWorkspaces(page, ids));
+      await test.step("cache both workspaces", () =>
+        cacheWorkspaces(page, ids, project.projectKey));
 
       const releaseHost = await test.step("reopen damaged cache before host responds", () =>
-        reopenDamagedCacheBeforeHostResponds(page, project.workspaceId));
+        reopenDamagedCacheBeforeHostResponds(page, project.workspaceId, project.projectKey));
       await test.step("keep cached workspace and discard stale checkpoint", () =>
         expectDamagedCacheHydrated(page, siblingId, project.workspaceId));
 
       releaseHost();
       await test.step("recover missing workspace and retain both after reload", () =>
-        expectRecoveredWorkspacesAfterReload(page, ids, testInfo));
+        expectRecoveredWorkspacesAfterReload(page, ids, testInfo, project.projectKey));
     } finally {
       await project.cleanup();
     }
@@ -324,7 +333,7 @@ test.describe("Sidebar workspace list", () => {
 
     try {
       const projectName = path.basename(workspace.repoPath);
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarProject(page, projectName);
       await waitForSidebarWorkspace(page, workspace.workspaceId);
 
@@ -344,7 +353,7 @@ test.describe("Sidebar workspace list", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-directory-", git: false });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
 
       const directoryName = path.basename(workspace.repoPath);
       const projectRow = await waitForSidebarProject(page, directoryName);
@@ -364,7 +373,7 @@ test.describe("Sidebar workspace list", () => {
 
     try {
       const projectName = path.basename(workspace.repoPath);
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarProject(page, projectName);
       await waitForSidebarWorkspace(page, workspace.workspaceId);
       await openWorkspaceFromSidebar(page, workspace.workspaceId);
@@ -382,7 +391,7 @@ test.describe("Sidebar workspace list", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-branch-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarProject(page, path.basename(workspace.repoPath));
 
       expect(workspace.workspaceName).toBe("main");
@@ -398,7 +407,7 @@ test.describe("Sidebar workspace list", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-hover-host-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarProject(page, path.basename(workspace.repoPath));
 
       const hoverCard = await openWorkspaceHoverCard(page, workspace.workspaceId);
@@ -413,7 +422,7 @@ test.describe("Sidebar workspace list", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-hover-click-leave-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarProject(page, path.basename(workspace.repoPath));
       const row = await openWorkspaceFromSidebar(page, workspace.workspaceId);
       await movePointerAwayFromWorkspaceHoverCard(page);
@@ -433,7 +442,7 @@ test.describe("Sidebar workspace list", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-hover-keyboard-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarProject(page, path.basename(workspace.repoPath));
       await openWorkspaceFromSidebar(page, workspace.workspaceId);
       await movePointerAwayFromWorkspaceHoverCard(page);
@@ -466,7 +475,7 @@ test.describe("Sidebar workspace list", () => {
       await workspace.client.waitForFinish(workspace.agentId, 20_000);
       await workspace.client.clearWorkspaceAttention(workspace.workspaceId);
       expect(workspace.client.getLastServerInfoMessage()?.features?.workspaceMarkUnread).toBe(true);
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
 
       const row = await waitForSidebarWorkspace(page, workspace.workspaceId);
       await expect(row.getByTestId("workspace-status-indicator-done")).toBeVisible();
@@ -504,12 +513,14 @@ test.describe("Mobile sidebar panelState transition", () => {
     await expectMobileAgentSidebarHidden(page);
   });
 
-  test("places the close button beside the first nav row instead of over it", async ({ page }) => {
+  test("places the close button beside the project selector above the actions", async ({
+    page,
+  }) => {
     await gotoAppShell(page);
     await openMobileAgentSidebar(page);
     await expectMobileAgentSidebarVisible(page);
 
-    const firstRow = await page.getByTestId("sidebar-global-new-workspace").boundingBox();
+    const firstRow = await page.getByTestId("sidebar-project-selector").boundingBox();
     const closeButton = await page.getByTestId("sidebar-close").boundingBox();
     if (!firstRow || !closeButton) throw new Error("first nav row and close button must render");
     expect(closeButton.x).toBeGreaterThanOrEqual(firstRow.x + firstRow.width);
@@ -521,7 +532,7 @@ test.describe("Mobile sidebar panelState transition", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-retained-pin-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openMobileAgentSidebar(page);
       await expectMobileAgentSidebarVisible(page);
 
@@ -563,18 +574,21 @@ test.describe("Half-screen desktop layout", () => {
         lastWorkspaceId = created.workspace.id;
       }
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await page
         .getByTestId(`sidebar-project-show-more-${projectEquivalenceViewKey(workspace.projectKey)}`)
         .click();
       await waitForSidebarWorkspace(page, lastWorkspaceId);
 
       const sidebarScroll = page.getByTestId("sidebar-project-workspace-list-scroll");
-      const scrollTop = await sidebarScroll.evaluate((element) => {
-        element.scrollTop = 160;
-        return element.scrollTop;
+      const { scrollTop, targetScrollTop } = await sidebarScroll.evaluate((element) => {
+        // Rail actions leave more height for the list, so its available overflow varies.
+        const offset = Math.min(160, element.scrollHeight - element.clientHeight);
+        element.scrollTop = offset;
+        return { scrollTop: element.scrollTop, targetScrollTop: offset };
       });
-      expect(scrollTop).toBe(160);
+      expect(targetScrollTop).toBeGreaterThan(0);
+      expect(scrollTop).toBe(targetScrollTop);
 
       await page.getByTestId("menu-button").click();
       await expect(page.getByTestId("sidebar-global-new-workspace")).not.toBeVisible();
@@ -630,7 +644,7 @@ test.describe("Half-screen desktop layout", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-half-screen-explorer-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarProject(page, path.basename(workspace.repoPath));
       await openWorkspaceFromSidebar(page, workspace.workspaceId);
 

@@ -20,7 +20,7 @@ test.describe("Sidebar context menus", () => {
     const workspace = await seedWorkspace({ repoPrefix: "sidebar-context-menu-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
 
       await showWorkspaceHoverCard(page, workspace.workspaceId);
       await openWorkspaceContextMenu(page, workspace.workspaceId);

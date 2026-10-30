@@ -185,7 +185,7 @@ test.describe("Composer attachments", () => {
     const workspace = await seedWorkspace({ repoPrefix: "attach-drop-new-workspace-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await switchWorkspaceViaSidebar({
         page,
@@ -276,7 +276,7 @@ test.describe("Composer attachments", () => {
     const workspace = await seedWorkspace({ repoPrefix: "attach-lock-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       await switchWorkspaceViaSidebar({
         page,

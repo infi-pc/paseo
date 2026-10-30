@@ -366,9 +366,14 @@ export function createWorkerTerminalManager(
           return;
         }
         record.info = { ...record.info, title: manualTitle };
-        for (const listener of Array.from(record.titleChangeListeners)) {
-          listener(manualTitle);
-        }
+        record.state = { ...record.state, title: manualTitle };
+        // The worker must also enter manual-title mode so shell OSC updates stay disabled.
+        // Its title-change event owns listener notification and the terminals-changed snapshot.
+        sendBestEffortRequest({
+          type: "setTitle",
+          terminalId: record.info.id,
+          title: manualTitle,
+        });
       },
       getExitInfo(): TerminalExitInfo | null {
         return record.exitInfo;

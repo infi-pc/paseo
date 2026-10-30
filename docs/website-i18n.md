@@ -25,11 +25,11 @@ paseo.sh is served in English and Simplified Chinese (`zh-CN`). This doc covers 
 
 `en.json` types the keys, so typecheck fails when `zh-CN.json` misses one. A translation file is grouped with its English original by name (`src/markdown-content.ts`). A translation without an English original fails the build.
 
-Every first-party page has a translation. The changelog and plugin listings are the exceptions: a release or listing without one renders whole in English under a notice. Pages never mix languages paragraph by paragraph. Navigation order, categories and slugs always come from the English file's frontmatter.
+Missing translations fall back to the whole English page. Pages never mix languages paragraph by paragraph. Navigation order, categories and slugs always come from the English file's frontmatter.
 
 ## Editing a translated doc
 
-Edit the English file and its `.zh-CN.md` in the same PR, and add the `.zh-CN.md` with any new page. Code blocks, commands, flags, config keys and links are copied verbatim, so code-only changes are a copy. Never delete a translation to get around an edit, and never leave one that describes behavior the English no longer has.
+Follow the [fork copy policy](../CLAUDE.md#prioritize-this-personal-fork) when deciding which languages to edit. When a translation is requested, keep code blocks, commands, flags, config keys and links verbatim.
 
 Translated headings pin the English anchor with a trailing `{#id}`, so `/zh-CN/docs/cli#running-agents` lands on the same section as the English link:
 
@@ -39,7 +39,7 @@ Translated headings pin the English anchor with a trailing `{#id}`, so `/zh-CN/d
 :::example[回复 Slack 提及 {#answer-a-slack-mention}]
 ```
 
-When you rename an English heading, change the `{#id}` in the translation to the new slug. `src/content-translations.test.ts` fails when a docs, blog, comparison or legal page has no translation, and when a translation's headings differ from the English in count, level, order or anchor. It cannot tell whether the prose under a heading is current. The `.md` source endpoints serve files verbatim, so `{#id}` shows there as written.
+When editing a translated heading, keep its `{#id}` aligned with the English link target. Translated pages may contain fewer sections than English pages in this fork. The `.md` source endpoints serve files verbatim, so `{#id}` shows there as written.
 
 ## Chinese style
 

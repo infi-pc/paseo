@@ -1,0 +1,180 @@
+pr9-ci-typecheck-commit.log
+> paseo@0.13.1 typecheck
+> npm run typecheck --workspaces --if-present
+> @getpaseo/builtin-plugins@0.13.1 typecheck
+> tsgo -p tsconfig.json --noEmit
+> @getpaseo/expo-two-way-audio@0.13.1 typecheck
+> tsgo --noEmit
+> @getpaseo/highlight@0.13.1 typecheck
+> tsgo --noEmit
+> @getpaseo/plugin@0.13.1 typecheck
+> tsgo --noEmit && npm run typecheck:examples
+> @getpaseo/plugin@0.13.1 typecheck:examples
+> npm --prefix ../../plugin-examples/markdown-panel install --ignore-scripts --no-audit --no-fund && tsgo -p tsconfig.examples.json --noEmit
+> @getpaseo/protocol@0.13.1 pretypecheck
+> npm run generate:validators
+> @getpaseo/protocol@0.13.1 generate:validators
+> node scripts/generate-validation-aot.mjs
+> @getpaseo/protocol@0.13.1 typecheck
+> tsgo --noEmit
+> @getpaseo/client@0.13.1 typecheck
+> tsgo --noEmit
+> @getpaseo/server@0.13.1 typecheck
+> tsgo -p tsconfig.server.typecheck.json --noEmit
+> @getpaseo/app@0.13.1 typecheck
+> tsgo --noEmit
+> @getpaseo/relay@0.13.1 typecheck
+> tsgo --noEmit
+> @getpaseo/website@0.13.1 typecheck
+> tsgo --noEmit
+> @getpaseo/desktop@0.13.1 typecheck
+> tsgo --noEmit -p tsconfig.json
+> @getpaseo/cli@0.13.1 typecheck
+> tsgo --noEmit
+
+pr9-ci-lint-commit.log
+> paseo@0.13.1 lint
+> oxlint
+Found 0 warnings and 0 errors.
+
+pr9-ci-workflow-check.log
+
+
+pr9-ci-i18n.log
+ Test Files  1 passed (1)
+      Tests  46 passed (46)
+
+pr9-ci-workspace-layout.log
+ Test Files  1 passed (1)
+      Tests  164 passed (164)
+
+pr9-ci-supporting-view.log
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+
+pr9-ci-website-content.log
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+pr9-ci-desktop-startup.log
+> @getpaseo/desktop@0.13.1 test:e2e:renderer
+> cross-env E2E_DESKTOP_RUNTIME=1 playwright test --config=playwright.config.ts --project=desktop e2e/startup.spec.ts --workers=1 --output=/tmp/pr9-ci-desktop-startup-artifacts
+  3 passed (14.4s)
+
+pr9-ci-desktop-lifecycle.log
+> @getpaseo/desktop@0.13.1 test:e2e:lifecycle
+> npm run build:main && node ./e2e/daemon-lifecycle.e2e.mjs
+> @getpaseo/desktop@0.13.1 build:main
+> tsc -p tsconfig.json
+PASS: Desktop readiness deadline returns starting and preserves its owned slow launch.
+PASS: attached legacy daemon survives automatic actions; captured stop, owned launch, managed settings, worker restart, and confirmed quit after next-session attachment.
+
+pr9-ci-checkout-git.commit-file-diff.test.ts.log
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+
+pr9-ci-checkout-git.patch-format.test.ts.log
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+
+pr9-ci-index.test.ts.log
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+pr9-ci-activity-curator.test.ts.log
+ Test Files  1 passed (1)
+      Tests  24 passed (24)
+
+pr9-ci-websocket-server.relay-reconnect.test.ts.log
+ Test Files  1 passed (1)
+      Tests  30 passed (30)
+
+pr9-ci-websocket-server.browser-tools.test.ts.log
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+
+pr9-ci-session.test.ts.log
+ Test Files  1 passed (1)
+      Tests  7 passed (7)
+
+pr9-ci-worktree-bootstrap.test.ts.log
+ Test Files  1 passed (1)
+      Tests  19 passed (19)
+
+pr9-ci-read.test.ts.log
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+
+pr9-ci-git-filename-diffs.e2e.test.ts.log
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+pr9-ci-filesystem.e2e.test.ts.log
+ Test Files  1 passed (1)
+      Tests  21 passed (21)
+
+pr9-ci-final-agent-projections.test.ts.log
+ Test Files  1 passed (1)
+      Tests  23 passed (23)
+
+pr9-ci-final-mcp-server.test.ts.log
+ Test Files  1 passed (1)
+      Tests  194 passed (194)
+
+pr9-ci-background-ownership.log
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+
+pr9-ci-connected-batch.log
+ Test Files  1 passed (1)
+      Tests  1 passed | 27 skipped (28)
+
+pr9-ci-resize-stable.log
+> @getpaseo/app@0.13.1 test:e2e
+> playwright test --project=browser e2e/browser/explorer-resize-performance.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-resize-stable-artifacts
+  1 passed (15.1s)
+
+pr9-ci-pinned-final.log
+> @getpaseo/app@0.13.1 test:e2e
+> playwright test --project=browser e2e/browser/pinned-prompt.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-pinned-final-artifacts
+  7 passed (59.0s)
+
+pr9-ci-usage-final.log
+> @getpaseo/app@0.13.1 test:e2e
+> playwright test --project=browser e2e/browser/usage-sidebar-item.spec.ts --grep pinned windows show|Usage Settings switch|released hosts supply --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-usage-final-artifacts
+  3 passed (30.7s)
+
+pr9-ci-worktree-final.log
+> @getpaseo/app@0.13.1 test:e2e
+> playwright test --project=browser e2e/browser/worktree-archive.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-worktree-final-artifacts
+  1 passed (14.9s)
+
+pr9-ci-opencode-runtime.log
+npx vitest run src/server/agent/providers/opencode-bridge.local.e2e.test.ts --bail=1 --maxWorkers=1 -t 'versioned runtime'
+ Test Files  1 passed (1)
+      Tests  2 passed | 5 skipped (7)
+
+pr9-ci-desktop-browser.log
+npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
+Completed the four-project workspace-eviction sequence on macOS.
+FAILED afterward: before-capture: hidden browser produced 122 animation frames.
+The Linux CI job owns the full hidden-window browser regression.
+
+pr9-ci-package-scripts-followup.log
+npm run test:e2e --workspace=@getpaseo/app -- --project=browser e2e/browser/workspace-package-scripts.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-package-scripts-followup-artifacts
+  2 passed (14.7s), with an explicit zsh daemon fixture.
+
+Final follow-up checks:
+npm run typecheck: passed
+npm run lint: 0 warnings, 0 errors
+node --test scripts/ci-workflow.test.mjs: 14 passed
+node --check packages/desktop/e2e/packaged-app-smoke.js: passed
+
+pr9-ci-package-scripts-clean-shell.log
+npm run test:e2e --workspace=@getpaseo/app -- --project=browser e2e/browser/workspace-package-scripts.spec.ts --workers=1 --retries=0 --reporter=line --output=/tmp/pr9-ci-package-scripts-clean-shell-artifacts
+  2 passed (20.6s), with Ubuntu's global completion initialization disabled.
+
+pr9-ci-desktop-harness-bindings.log
+npm run lint -- --config /tmp/pr9-ci-e2e-bindings.json packages/desktop/e2e/browser-tabs.e2e.mjs
+Temporary check config: browser and Node globals; no-undef=error.
+Found 0 warnings and 0 errors.

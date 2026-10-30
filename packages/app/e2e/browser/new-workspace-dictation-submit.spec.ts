@@ -180,7 +180,7 @@ test.describe("New Workspace dictation submit", () => {
     const harness = await installDictationFailureHarness(page);
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: seeded.projectKey,

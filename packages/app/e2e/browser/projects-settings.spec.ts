@@ -1,3 +1,5 @@
+import { selectSidebarProject, selectSidebarProjectByName } from "../support/helpers/sidebar";
+
 import { chmod, readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test as base, type Page } from "../support/fixtures";
@@ -260,6 +262,7 @@ async function addProjectFromSidebar(page: Page, projectPath: string): Promise<s
   await input.fill(projectPath);
   await page.keyboard.press("Enter");
 
+  await selectSidebarProjectByName(page, path.basename(projectPath));
   const projectRow = page
     .locator('[data-testid^="sidebar-project-row-"]')
     .filter({ hasText: path.basename(projectPath) })
@@ -272,6 +275,7 @@ async function addProjectFromSidebar(page: Page, projectPath: string): Promise<s
 }
 
 async function openProjectSettingsFromSidebar(page: Page, projectId: string): Promise<void> {
+  await selectSidebarProject(page, projectId);
   const projectRow = page.getByTestId(`sidebar-project-row-${projectId}`);
   await expect(projectRow).toBeVisible({ timeout: 30_000 });
   await projectRow.hover();

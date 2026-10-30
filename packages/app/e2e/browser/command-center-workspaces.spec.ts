@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { expect } from "@playwright/test";
 import { test } from "../support/fixtures";
+import { openGlobalNewWorkspaceComposer } from "../support/helpers/new-workspace";
 import { gotoAppShell } from "../support/helpers/app";
 import { createIdleAgent } from "../support/helpers/archive-tab";
 import { expectAgentTabActive } from "../support/helpers/launcher";
@@ -202,24 +203,31 @@ test.describe("Compact sidebar inspection", () => {
     await expect(page.getByTestId("sidebar-search")).toBeVisible();
   }
 
-  test("canceling Search retains the compact sidebar", async ({ page }) => {
+  test("canceling Search returns to the workspace after closing the compact drawer", async ({
+    page,
+  }) => {
     await gotoAppShell(page);
     await openSidebar(page);
     await openCommandCenter(page);
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("command-center-panel")).not.toBeVisible();
-    await expectSidebarPreserved(page);
+    await expect(page.getByRole("button", { name: "Open menu", exact: true })).toBeVisible();
+    await expect(page.getByTestId("sidebar-search")).not.toBeVisible();
   });
-  test("canceling Import session retains the compact sidebar", async ({ page }) => {
+  test("canceling Import session returns to workspace setup and the compact drawer", async ({
+    page,
+  }) => {
     await gotoAppShell(page);
     await openSidebar(page);
-    await page
-      .getByTestId("sidebar-project-empty-state")
-      .getByRole("button", { name: "Import session", exact: true })
-      .click();
+    await openGlobalNewWorkspaceComposer(page);
+    await page.getByTestId("new-workspace-import-session").filter({ visible: true }).click();
     await expect(page.getByTestId("import-session-sheet")).toBeVisible();
     await page.getByRole("button", { name: "Close", exact: true }).click();
     await expect(page.getByTestId("import-session-sheet")).not.toBeVisible();
+    await expect(
+      page.getByTestId("new-workspace-import-session").filter({ visible: true }),
+    ).toBeVisible();
+    await openSidebar(page);
     await expectSidebarPreserved(page);
   });
 

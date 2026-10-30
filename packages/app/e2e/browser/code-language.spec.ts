@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { openChangesPanel } from "../support/helpers/workspace-tabs";
+import { openChangesPanel, openChangesTreePanel } from "../support/helpers/workspace-tabs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Locator } from "@playwright/test";
@@ -79,7 +79,7 @@ test("TypeScript hover, definition and searchable usages use the real host", asy
   await page.keyboard.press("F12");
   await expect(page.getByTestId("file-source-editor").filter({ visible: true })).toHaveAttribute(
     "aria-label",
-    "Source editor for library.ts",
+    /^Source editor for .*[/\\]library\.ts$/,
   );
   await expect(
     page
@@ -156,11 +156,8 @@ test("compact Changes supports TypeScript inspection without a pane context", as
   );
   await workspace.navigateTo();
   await page.setViewportSize({ width: 480, height: 900 });
-  await page.getByTestId("workspace-explorer-toggle").first().click();
-  const changes = page.getByTestId("explorer-tab-changes").filter({ visible: true });
-  await expect(changes).toBeVisible();
-  await changes.click();
-  const explorer = page.getByTestId("explorer-content-area").filter({ visible: true });
+  await openChangesTreePanel(page);
+  const explorer = page.getByTestId("workspace-explorer-sidebar");
   await expect(explorer.getByTestId("git-diff-canvas")).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("compact-changes.png") });
   const added = await diffAnswerPoint(explorer, 2.5);
@@ -169,7 +166,7 @@ test("compact Changes supports TypeScript inspection without a pane context", as
   await page.mouse.click(added.x, added.y, { button: "right" });
   await page.getByRole("menuitem", { name: "Go to definition", exact: true }).click();
   const editor = page.getByTestId("file-source-editor").filter({ visible: true });
-  await expect(editor).toHaveAttribute("aria-label", "Source editor for source.ts");
-  await expect(explorer).toBeHidden();
+  await expect(editor).toHaveAttribute("aria-label", /^Source editor for .*[/\\]source\.ts$/);
+  await expect(page.getByTestId("sheet-tab-body")).toBeVisible();
   await expect(editor.locator(".cm-selectionBackground").first()).toBeVisible();
 });

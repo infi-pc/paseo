@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -68,6 +69,7 @@ test("a project whose folder name ends in a space renders in the sidebar", async
 
   try {
     await gotoAppShell(page);
+    await selectSidebarProject(page, project.projectKey);
 
     await expectProjectRow(page, project.projectKey);
     await expectAppShellRendered(page);

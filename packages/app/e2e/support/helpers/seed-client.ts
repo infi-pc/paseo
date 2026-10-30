@@ -6,6 +6,7 @@ import { withProjectOwnership } from "./project-ownership";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
 
 export interface SeedWorkspaceDescriptor {
+  pinnedAt?: string | null;
   id: string;
   name: string;
   projectId: string;

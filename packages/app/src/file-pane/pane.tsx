@@ -70,9 +70,11 @@ export function FilePane({
     () => ({
       lineStart: location.lineStart,
       lineEnd: location.lineEnd,
+      columnStart: location.columnStart,
+      columnEnd: location.columnEnd,
       path,
     }),
-    [location.lineEnd, location.lineStart, path],
+    [location.lineEnd, location.lineStart, location.columnStart, location.columnEnd, path],
   );
 
   let body;
@@ -134,7 +136,7 @@ function MountedFilePanel({
 }: {
   panel: FilePanel;
   file: PluginFile;
-  params: { path: string; lineStart?: number; lineEnd?: number };
+  params: WorkspaceFileLocation;
   revision: number;
   onModifiedChange: (modified: boolean) => void;
 }) {

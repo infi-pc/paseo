@@ -1,6 +1,7 @@
-import { expect, test as base } from "../support/fixtures";
-import { openProjectDirectoryWithHosts } from "../support/helpers/project-grouping";
 import { projectPlacementViewKey } from "../support/helpers/project-view-key";
+import { selectSidebarProjectByName, selectSidebarProject } from "../support/helpers/sidebar";
+import { test as base } from "../support/fixtures";
+import { openProjectDirectoryWithHosts } from "../support/helpers/project-grouping";
 import {
   type IsolatedHostDaemon,
   startIsolatedHostDaemon,
@@ -76,9 +77,7 @@ async function openNewWorkspaceFromContextProject(
     hosts: [scenario.secondaryHost],
     primaryLabel: PRIMARY_HOST_LABEL,
   });
-  await expect(
-    page.getByTestId(`sidebar-project-row-${scenario.selectedProjectViewKey}`),
-  ).toBeVisible();
+  await selectSidebarProjectByName(page, "Context project");
   await switchWorkspaceViaSidebar({
     page,
     serverId: getServerId(),
@@ -208,6 +207,7 @@ test.describe("New workspace host project preservation", () => {
       hosts: [crossHostProject.secondaryHost],
       primaryLabel: PRIMARY_HOST_LABEL,
     });
+    await selectSidebarProject(page, crossHostProject.selectedProjectViewKey);
     await switchWorkspaceViaSidebar({
       page,
       serverId: getServerId(),

@@ -75,7 +75,7 @@ export class DirectoryBootstrapScenario {
     const workspace = await this.seedWorkspace("directory-bootstrap-background-");
     const agent = await createRunningMockAgent(workspace, "Background directory agent");
 
-    const workspaceLink = this.page.getByText(workspace.projectDisplayName, { exact: true });
+    const workspaceLink = this.page.getByTestId(`sidebar-project-tab-${workspace.projectKey}`);
     await expect(workspaceLink).toHaveCount(1);
     await expect(workspaceLink).toBeVisible();
     await openCommandCenter(this.page);
@@ -96,7 +96,7 @@ export class DirectoryBootstrapScenario {
       "Reconnected directory agent",
     );
     await expect(
-      this.page.getByText(this.disconnectedWorkspace.projectDisplayName, { exact: true }),
+      this.page.getByTestId(`sidebar-project-tab-${this.disconnectedWorkspace.projectKey}`),
     ).toHaveCount(0);
     await expect(this.page.getByText(this.disconnectedAgent.title, { exact: true })).toHaveCount(0);
 
@@ -108,7 +108,7 @@ export class DirectoryBootstrapScenario {
   async expectVisibleReconciliationAndNavigateAgent(): Promise<void> {
     const workspace = this.requireDisconnectedWorkspace();
     const agent = this.requireDisconnectedAgent();
-    const workspaceLink = this.page.getByText(workspace.projectDisplayName, { exact: true });
+    const workspaceLink = this.page.getByTestId(`sidebar-project-tab-${workspace.projectKey}`);
     await expect(workspaceLink).toHaveCount(1);
     await expect(workspaceLink).toBeVisible();
     await openCommandCenter(this.page);

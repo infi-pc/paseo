@@ -28,7 +28,7 @@ test("keeps the selected workspace visible in Light", async ({ page }, testInfo)
     await page.addInitScript(() => {
       localStorage.setItem("@paseo:app-settings", JSON.stringify({ theme: "light" }));
     });
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
 
     const row = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
@@ -55,7 +55,7 @@ test("keeps the selected workspace visible in Pure black", async ({ page }, test
     await page.addInitScript(() => {
       localStorage.setItem("@paseo:app-settings", JSON.stringify({ theme: "pureBlack" }));
     });
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
 
     const row = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });

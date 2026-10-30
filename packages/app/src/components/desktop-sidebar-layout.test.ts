@@ -123,3 +123,7 @@ it("reserves room for Explorer and the workspace before showing app navigation",
     }),
   ).toBe(true);
 });
+
+it("reserves the workspace list minimum beside the project rail", () => {
+  expect(resolveDesktopSidebarWidth({ requestedWidth: 200, viewportWidth: 1280 })).toBe(252);
+});

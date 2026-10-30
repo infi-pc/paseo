@@ -48,23 +48,26 @@ it("partitions real tracked and untracked changes including deleted source", asy
   expect(productionStat(changed)).toEqual({ additions: 1, deletions: 2 });
   expect(changed.comments).toEqual({ additions: 0, deletions: 1 });
 });
-it("handles renamed paths containing tabs and spaces", async () => {
-  const cwd = await repository();
-  const oldPath = "old file\tname.ts";
-  const path = "new file\tname.ts";
-  await writeFile(join(cwd, oldPath), "const a = 1;\nconst b = 2;\nconst c = 3; // before\n");
-  await runGitCommand(["add", "."], { cwd });
-  await runGitCommand(["commit", "-m", "initial"], { cwd });
-  await rename(join(cwd, oldPath), join(cwd, path));
-  await writeFile(join(cwd, path), "const a = 1;\nconst b = 2;\nconst c = 3; // after\n");
-  await runGitCommand(["add", "."], { cwd });
-  const result = await readComparisonBreakdown({
-    cwd,
-    baseRef: "HEAD",
-    total: { additions: 1, deletions: 1 },
-  });
-  expect(result.comments).toEqual({ additions: 1, deletions: 1 });
-});
+it.each(process.platform === "win32" ? [" "] : [" ", "\t"])(
+  "handles renamed paths containing %j",
+  async (separator) => {
+    const cwd = await repository();
+    const oldPath = `old file${separator}name.ts`;
+    const path = `new file${separator}name.ts`;
+    await writeFile(join(cwd, oldPath), "const a = 1;\nconst b = 2;\nconst c = 3; // before\n");
+    await runGitCommand(["add", "."], { cwd });
+    await runGitCommand(["commit", "-m", "initial"], { cwd });
+    await rename(join(cwd, oldPath), join(cwd, path));
+    await writeFile(join(cwd, path), "const a = 1;\nconst b = 2;\nconst c = 3; // after\n");
+    await runGitCommand(["add", "."], { cwd });
+    const result = await readComparisonBreakdown({
+      cwd,
+      baseRef: "HEAD",
+      total: { additions: 1, deletions: 1 },
+    });
+    expect(result.comments).toEqual({ additions: 1, deletions: 1 });
+  },
+);
 it("parses NUL-delimited numstat without corrupting paths", () => {
   const files = parseNumstat("1\t2\t\0old\tfile.ts\0new\nfile.ts\0-\t-\timage.png\0");
   expect(files[0]).toMatchObject({

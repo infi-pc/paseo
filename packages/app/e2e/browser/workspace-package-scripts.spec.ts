@@ -1,3 +1,4 @@
+import { revealSidebarProjectWorkspaces } from "../support/helpers/sidebar";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { test, expect } from "../support/fixtures";
@@ -8,6 +9,9 @@ import {
 } from "../support/helpers/workspace-setup";
 import { getServerId } from "../support/helpers/server-id";
 import { buildHostWorkspaceRoute } from "../../src/utils/host-routes";
+
+// Exit status uses zsh integration; Ubuntu's global completion prompt must not consume input.
+test.use({ e2eDaemonEnvironment: { SHELL: "/bin/zsh", skip_global_compinit: "1" } });
 
 test("nested package scripts run, appear in the sidebar, and expose their result", async ({
   page,
@@ -31,7 +35,12 @@ test("nested package scripts run, appear in the sidebar, and expose their result
     });
     expect(created.error).toBeFalsy();
     const workspaceId = created.workspace!.id;
+    const project = (await client.listProjects()).projects.find(
+      (candidate) => candidate.projectId === created.workspace!.projectId,
+    );
+    if (!project?.projectKey) throw new Error("Workspace project is missing its project key");
     await page.goto(buildHostWorkspaceRoute(getServerId(), workspaceId));
+    await revealSidebarProjectWorkspaces(page, project.projectKey);
     await openWorkspaceScriptsMenu(page);
     const nestedGroup = page.getByTestId("workspace-scripts-group-packages/web/package.json");
     await expect(nestedGroup).toBeVisible();

@@ -1,3 +1,4 @@
+import { openFilesPanel } from "../support/helpers/workspace-tabs";
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
@@ -100,6 +101,10 @@ test("Explorer drag previews without rerendering panes or rewriting the shared s
   await runWorkspaceActionFromCommandCenter(page, "Split pane right");
   await page.getByTestId("workspace-explorer-toggle").first().click();
   await expect(page.getByTestId("workspace-explorer-sidebar")).toBeVisible();
+  await openFilesPanel(page);
+  await expect(
+    page.getByTestId("file-explorer-tree-scroll").getByText("README.md", { exact: true }),
+  ).toBeVisible();
   // Verify that direct pane renders are being counted before resetting them.
   expect(
     await page.evaluate(() =>

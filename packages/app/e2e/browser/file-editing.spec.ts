@@ -258,7 +258,7 @@ test.describe("CodeMirror workspace file editing", () => {
         initialPrompt: "Show the file link",
         featureValues: { mockAssistantResponse: `[Open target](${filePath}:42-45)` },
       });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await waitForSidebarHydration(page);
       const workspaceRow = page.getByTestId(
         `sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`,

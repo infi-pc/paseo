@@ -88,7 +88,7 @@ test.describe("Tab creation", () => {
       await waitForTabBar(page);
     };
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     await waitForSidebarHydration(page);
 
     const sequence = [workspace.workspaceId, secondWorkspaceId];

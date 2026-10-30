@@ -50,6 +50,7 @@ test("does not repeat an assistant block when the current app paginates a publis
     model: "ten-second-stream",
   });
   const agent: MockAgentWorkspace = {
+    projectKey: workspace.projectKey,
     agentId: createdAgent.id,
     workspaceId: workspace.workspaceId,
     cwd: workspace.repoPath,

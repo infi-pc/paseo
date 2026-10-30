@@ -11,6 +11,7 @@ import { getServerId } from "../support/helpers/server-id";
 import {
   archiveWorkspaceFromSidebar,
   expectWorkspaceAbsentFromSidebar,
+  revealSidebarProjectWorkspaces,
 } from "../support/helpers/sidebar";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
@@ -61,16 +62,25 @@ test.describe("Workspace archive with worktree backing", () => {
     const sibling = siblingPayload.workspace;
     expect(sibling.workspaceKind).toBe("worktree");
     expect(sibling.workspaceDirectory).toBe(first.workspaceDirectory);
+    const siblingProject = (await client.listProjects()).projects.find(
+      (project) => project.projectId === sibling.projectId,
+    );
+    if (!siblingProject?.projectKey)
+      throw new Error("Sibling workspace project is missing its project key");
 
-    await gotoAppShell(page);
+    await gotoAppShell(page, first);
     await waitForSidebarHydration(page);
+    await revealSidebarProjectWorkspaces(page, first.projectKey);
     await waitForWorkspaceInSidebar(page, { serverId, workspaceId: first.workspaceId });
+    await revealSidebarProjectWorkspaces(page, siblingProject.projectKey);
     await waitForWorkspaceInSidebar(page, { serverId, workspaceId: sibling.id });
 
+    await revealSidebarProjectWorkspaces(page, first.projectKey);
     await archiveWorkspaceFromSidebar(page, first.workspaceId);
 
     await expectWorkspaceAbsentFromSidebar(page, first.workspaceId);
     expect(existsSync(first.workspaceDirectory)).toBe(true);
+    await revealSidebarProjectWorkspaces(page, siblingProject.projectKey);
     await waitForWorkspaceInSidebar(page, { serverId, workspaceId: sibling.id });
 
     await archiveWorkspaceFromSidebar(page, sibling.id);

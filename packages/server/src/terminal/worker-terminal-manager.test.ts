@@ -345,6 +345,50 @@ it("refreshes cached terminal title after worker title changes", async () => {
   expect(session.getState().title).toBe("Build Output");
 });
 
+it("keeps user-set titles in worker snapshots and ignores later shell titles", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-rename-"));
+  temporaryDirs.push(cwd);
+  manager = createWorkerTerminalManager();
+  const session = trackTerminal(
+    await manager.createTerminal({
+      workspaceId: "ws-test",
+      cwd,
+      ...nodeTerminalCommand(`
+        process.stdout.write("\\u001b]0;Initial shell title\\u0007");
+        process.stdin.on("data", () => {
+          process.stdout.write("\\u001b]0;Later shell title\\u0007");
+          setTimeout(() => process.stdout.write("TITLE_OUTPUT_FINISHED\\n"), 250);
+        });
+      `),
+    }),
+  );
+  await waitForCondition(() => session.getTitle() === "Initial shell title", 10_000);
+  let output = "";
+  const unsubscribeOutput = session.subscribe((message) => {
+    if (message.type === "output") output += message.data;
+  });
+  const titles: Array<string | undefined> = [];
+  const unsubscribeTitles = manager.subscribeTerminalsChanged((event) => {
+    titles.push(event.terminals.find((terminal) => terminal.id === session.id)?.title);
+  });
+
+  expect(manager.setTerminalTitle(session.id, "  User terminal  ")).toBe(true);
+  expect(session.getTitle()).toBe("User terminal");
+  const renamedSnapshot = await manager.getTerminalState(session.id);
+  expect(renamedSnapshot?.state.title).toBe("User terminal");
+
+  session.send({ type: "input", data: "update\r" });
+  await waitForCondition(() => output.includes("TITLE_OUTPUT_FINISHED"), 10_000);
+  const laterSnapshot = await manager.getTerminalState(session.id);
+  expect(laterSnapshot?.state.title).toBe("User terminal");
+  expect(session.getTitle()).toBe("User terminal");
+  expect(session.getState().title).toBe("User terminal");
+  expect(titles).toEqual(["User terminal"]);
+
+  unsubscribeOutput();
+  unsubscribeTitles();
+});
+
 it("refreshes cached terminal size after worker resize", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-resize-"));
   temporaryDirs.push(cwd);

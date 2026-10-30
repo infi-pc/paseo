@@ -1,3 +1,4 @@
+import { isCompactSidebar } from "../support/helpers/sidebar";
 import path from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
@@ -43,21 +44,21 @@ async function qaScreenshot(page: Page, name: string, area?: Locator) {
   else await page.screenshot({ path: file });
 }
 
-/** Footer rows sit above the fixed bottom line, spanning it from Add project to Settings. */
+/** Plugins retain full-width rows beside the desktop rail and above mobile utilities. */
 async function expectFooterRow(page: Page, row: Locator) {
-  // Polled: on compact the drawer is still sliding in when the row first shows.
+  await expect(row).toBeVisible();
+  const compact = isCompactSidebar(page);
   await expect
     .poll(async () => {
-      const addProject = (await visibleTestId(page, "sidebar-add-project").boundingBox())!;
-      const settings = (await visibleTestId(page, "sidebar-settings").boundingBox())!;
-      const box = (await row.boundingBox())!;
-      return {
-        aboveBottomLine: box.y + box.height <= addProject.y,
-        alignedLeft: Math.abs(box.x - addProject.x) < 1,
-        alignedRight: Math.abs(box.x + box.width - (settings.x + settings.width)) < 1,
-      };
+      const utility = await visibleTestId(
+        page,
+        compact ? "sidebar-add-project" : "sidebar-settings",
+      ).boundingBox();
+      const box = await row.boundingBox();
+      if (!utility || !box) return false;
+      return compact ? box.y + box.height <= utility.y : box.x > utility.x + utility.width;
     })
-    .toEqual({ aboveBottomLine: true, alignedLeft: true, alignedRight: true });
+    .toBe(true);
 }
 
 function botRow(page: Page, rowId: string): Locator {
@@ -87,14 +88,19 @@ async function expectBotScreen(page: Page, botId: string) {
   await expectRowActive(botRow(page, "status"), false);
 }
 
-/** The popover opens to the right of `row`, level with it, and away from `elsewhere`. */
+/** Header popovers align their outer surface to the row that opened them. */
 async function expectPopoverBeside(page: Page, text: string, row: Locator, elsewhere: Locator) {
-  const popover = await popoverBox(page, text);
-  const rowBox = await boxOf(row);
-  const otherBox = await boxOf(elsewhere);
-  expect(popover.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width);
-  expect(Math.abs(popover.y - rowBox.y)).toBeLessThan(40);
-  expect(Math.abs(popover.y - otherBox.y)).toBeGreaterThan(20);
+  const surface = visibleTestId(page, `plugin-sidebar-${BOTS_PLUGIN_ID}-bots-popover`);
+  await expect(page.getByText(text, { exact: true })).toBeVisible();
+  // Measure the surface rather than its text, whose inset depends on plugin padding.
+  await expect(async () => {
+    const popover = await boxOf(surface);
+    const rowBox = await boxOf(row);
+    const otherBox = await boxOf(elsewhere);
+    expect(popover.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width);
+    expect(Math.abs(popover.y - rowBox.y)).toBeLessThanOrEqual(4);
+    expect(Math.abs(popover.y - otherBox.y)).toBeGreaterThan(20);
+  }).toPass({ timeout: 5_000 });
 }
 
 /** Subscription ids the daemon confirms released, collected from the page's websocket. */
@@ -130,7 +136,10 @@ async function nextAlertsObservation(page: Page, previous: string | null): Promi
 }
 
 function sidebarFooter(page: Page): Locator {
-  return visibleTestId(page, "sidebar-add-project").locator("xpath=..");
+  return visibleTestId(
+    page,
+    isCompactSidebar(page) ? "sidebar-add-project" : "sidebar-settings",
+  ).locator("xpath=..");
 }
 
 test.describe("Plugin sidebar items", () => {
@@ -241,16 +250,16 @@ test.describe("Plugin sidebar items", () => {
     });
   });
 
-  test("a header row's shortcut hint presses the row", async ({ page }) => {
+  test("a rail action shows its shortcut hint and opens workspace setup", async ({ page }) => {
     await page.setViewportSize(WIDE);
     await gotoWorkspace(page, workspaceId);
     const newWorkspace = visibleTestId(page, "sidebar-global-new-workspace");
     await expect(newWorkspace).toBeVisible({ timeout: 30_000 });
     await newWorkspace.hover();
-    const hint = page.getByText("Ctrl+N", { exact: true }).locator("visible=true");
+    const hint = page.getByRole("tooltip", { name: /^New workspace (?:Ctrl\+N|⌘N)$/ });
     await expect(hint).toBeVisible();
     await qaScreenshot(page, "phase7-header-row-hint", newWorkspace.locator("xpath=../.."));
-    await hint.click();
+    await newWorkspace.click();
     await expect(page).toHaveURL(/\/new(\?|$)/);
   });
 
@@ -283,7 +292,8 @@ test.describe("Plugin sidebar items", () => {
         page,
         "sidebar-global-new-workspace",
       ).boundingBox())!;
-      expect(entryBox.y).toBeLessThan(newWorkspaceBox.y);
+      expect(entryBox.x).toBeGreaterThanOrEqual(newWorkspaceBox.x + newWorkspaceBox.width);
+      await expect(page.getByTestId("sidebar-project-rail")).toBeVisible();
     });
 
     await test.step("the row opens its surface on its own sidebar route and highlights", async () => {

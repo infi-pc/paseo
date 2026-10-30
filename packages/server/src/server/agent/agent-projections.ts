@@ -2,6 +2,7 @@ import { isSameOrDescendantPath } from "../path-utils.js";
 import type {
   AgentListItemPayload,
   AgentSnapshotPayload,
+  AgentResponseMetadata,
   RecentProviderSessionDescriptorPayload,
 } from "../messages.js";
 import type { SerializableAgentConfig, StoredAgentRecord } from "./agent-storage.js";
@@ -70,6 +71,33 @@ export function resolveEffectiveThinkingOptionId(options: {
     return normalizeThinkingOptionId(runtimeInfo.thinkingOptionId);
   }
   return normalizeThinkingOptionId(options.configuredThinkingOptionId);
+}
+
+function projectResponseMetadata(metadata: AgentResponseMetadata): AgentResponseMetadata {
+  return {
+    namingMode: metadata.namingMode,
+    ...(metadata.automaticTitle !== undefined ? { automaticTitle: metadata.automaticTitle } : {}),
+    ...(metadata.automaticIcon !== undefined ? { automaticIcon: metadata.automaticIcon } : {}),
+    ...(metadata.icon !== undefined ? { icon: metadata.icon } : {}),
+    ...(metadata.lastTurn
+      ? {
+          lastTurn: {
+            turnId: metadata.lastTurn.turnId,
+            ...(metadata.lastTurn.message !== undefined
+              ? { message: metadata.lastTurn.message }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function responseMetadataFields(metadata: AgentResponseMetadata | undefined) {
+  if (!metadata) return {};
+  return {
+    responseMetadata: projectResponseMetadata(metadata),
+    ...(metadata.icon !== undefined ? { icon: metadata.icon } : {}),
+  };
 }
 
 export function toStoredAgentRecord(
@@ -145,10 +173,9 @@ export function toAgentPayload(
     availableModes: cloneAvailableModes(agent.availableModes),
     features: normalizeFeatures(agent.features),
     pendingPermissions: sanitizePendingPermissions(agent.pendingPermissions),
-    icon: agent.responseMetadata?.icon,
     persistence: projectPersistenceHandleForWire(agent.persistence),
     title: options?.title ?? null,
-    responseMetadata: agent.responseMetadata,
+    ...responseMetadataFields(agent.responseMetadata),
     labels: agent.labels,
     archivedAt: options?.archivedAt ?? null,
     ...(agent.internal ? { internal: true } : {}),
@@ -257,8 +284,7 @@ export function buildStoredAgentPayload(
     pendingPermissions: [],
     persistence,
     title: record.title ?? null,
-    responseMetadata: record.responseMetadata,
-    icon: record.responseMetadata?.icon,
+    ...responseMetadataFields(record.responseMetadata),
     requiresAttention: record.requiresAttention ?? false,
     attentionReason: record.attentionReason ?? null,
     attentionTimestamp: record.attentionTimestamp ?? null,
@@ -275,8 +301,10 @@ export function toAgentListItemPayload(agent: AgentSnapshotPayload): AgentListIt
     id: agent.id,
     shortId: agent.id.slice(0, 7),
     title: agent.title,
-    responseMetadata: agent.responseMetadata,
-    icon: agent.icon,
+    ...(agent.responseMetadata
+      ? { responseMetadata: projectResponseMetadata(agent.responseMetadata) }
+      : {}),
+    ...(agent.icon !== undefined ? { icon: agent.icon } : {}),
     provider: agent.provider,
     model: agent.runtimeInfo?.model ?? agent.model,
     thinkingOptionId: agent.thinkingOptionId,

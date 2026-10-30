@@ -1,4 +1,4 @@
-import { OpenCodeRuntimeClient } from "./opencode/runtime-client.js";
+import { openCodeMajorVersion, OpenCodeRuntimeClient } from "./opencode/runtime-client.js";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -16,6 +16,7 @@ import type { PaseoToolCatalog } from "../tools/types.js";
 import { AgentManager } from "../agent-manager.js";
 import { AgentStorage } from "../agent-storage.js";
 import { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
+import type { ProviderRuntimeSettings } from "../provider-launch-config.js";
 import { createPaseoAgentToolManifest, createPaseoToolCatalog } from "../tools/paseo-tools.js";
 import { serializePaseoToolInputParameters } from "../tools/paseo-tool-serialization.js";
 import { OpenCodeAgentClient } from "./opencode-agent.js";
@@ -423,6 +424,7 @@ test.each([
 ])(
   "versioned runtime v$major discovers models and preserves a native session handle",
   async ({
+    major,
     package: cliPackage,
     windowsPackage,
     expectedTimeline,
@@ -430,20 +432,21 @@ test.each([
     expectedNotices,
   }) => {
     const root = await mkdtemp(path.join(os.tmpdir(), "paseo-opencode-versioned-"));
-    const client = new OpenCodeRuntimeClient(createTestLogger(), {
+    const logger = createTestLogger();
+    const binary =
+      process.platform === "win32"
+        ? path.join(
+            root,
+            "node_modules",
+            `${windowsPackage}-${process.arch}`,
+            "bin",
+            "opencode.exe",
+          )
+        : path.join(root, "node_modules", ".bin", "opencode");
+    const runtimeSettings = {
       command: {
         mode: "replace",
-        argv: [
-          process.platform === "win32"
-            ? path.join(
-                root,
-                "node_modules",
-                `${windowsPackage}-${process.arch}`,
-                "bin",
-                "opencode.exe",
-              )
-            : path.join(root, "node_modules", ".bin", "opencode"),
-        ],
+        argv: [binary],
       },
       env: {
         XDG_CONFIG_HOME: path.join(root, "config"),
@@ -451,6 +454,14 @@ test.each([
         XDG_CACHE_HOME: path.join(root, "cache"),
         XDG_STATE_HOME: path.join(root, "state"),
       },
+    } satisfies ProviderRuntimeSettings;
+    // Each installed runtime owns its manager; the previous case deletes its binary.
+    const client = new OpenCodeRuntimeClient(logger, runtimeSettings, {
+      serverManager: new OpenCodeServerManager({
+        logger,
+        runtimeSettings,
+        resolveHomeDir: () => root,
+      }),
     });
     let original: Awaited<ReturnType<typeof client.createSession>> | undefined;
     let resumed: Awaited<ReturnType<typeof client.resumeSession>> | undefined;
@@ -463,6 +474,9 @@ test.each([
           timeout: 180_000,
         },
       );
+      // A freshly installed Windows CLI can exceed the runtime's short probe deadline.
+      const version = await execCommand(binary, ["--version"], { cwd: root, timeout: 30_000 });
+      expect(openCodeMajorVersion(version.stdout)).toBe(major);
       const catalog = await client.fetchCatalog({ scope: "workspace", cwd: root, force: true });
       expect(catalog.models.length).toBeGreaterThan(0);
       expect(catalog.modes.map((mode) => mode.id)).toContain("build");

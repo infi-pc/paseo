@@ -7,7 +7,7 @@ import {
 } from "../support/helpers/new-workspace";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
-import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
+import { selectSidebarProject } from "../support/helpers/sidebar";
 
 // The pin shortcut used to be registered by the sidebar row itself, so it silently did nothing
 // whenever the row was unmounted — a collapsed project section being the common case. It now
@@ -41,27 +41,6 @@ async function collapseProjectSection(page: Page, project: SeededWorkspace): Pro
 
   await header.click();
   await expect(workspaceRow(page, project.workspaceId)).toHaveCount(0, { timeout: 10_000 });
-}
-
-async function switchToStatusGrouping(page: Page): Promise<void> {
-  await selectSidebarStatusGrouping(page);
-  await expect(page.getByTestId("sidebar-status-list-scroll")).toBeVisible({ timeout: 10_000 });
-}
-
-// Status mode buckets workspaces by state rather than project, so the group holding this workspace
-// is discovered from the rows container it sits in rather than assumed.
-async function collapseStatusGroupContaining(page: Page, workspaceId: string): Promise<void> {
-  const rows = page
-    .locator('[data-testid^="sidebar-status-group-rows-"]')
-    .filter({ has: workspaceRow(page, workspaceId) });
-  await expect(rows).toHaveCount(1, { timeout: 30_000 });
-
-  const rowsTestId = await rows.getAttribute("data-testid");
-  const bucket = rowsTestId?.replace("sidebar-status-group-rows-", "");
-  expect(bucket).toBeTruthy();
-
-  await page.getByTestId(`sidebar-status-group-${bucket}`).click();
-  await expect(workspaceRow(page, workspaceId)).toHaveCount(0, { timeout: 10_000 });
 }
 
 function readSessionMessage(
@@ -155,7 +134,7 @@ test.describe("Pin workspace shortcut", () => {
     try {
       const gate = await installPinRpcGate(page);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       await test.step("sends one RPC for each pin transition", async () => {
@@ -186,7 +165,7 @@ test.describe("Pin workspace shortcut", () => {
     const workspace = await seedWorkspace({ repoPrefix: "pin-shortcut-collapsed-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
       await collapseProjectSection(page, workspace);
 
@@ -207,7 +186,7 @@ test.describe("Pin workspace shortcut", () => {
     const workspace = await seedWorkspace({ repoPrefix: "pin-shortcut-unpin-" });
 
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       await page.keyboard.press(PIN_SHORTCUT);
@@ -224,24 +203,31 @@ test.describe("Pin workspace shortcut", () => {
     }
   });
 
-  test("pins the active workspace while its status group is collapsed", async ({ page }) => {
-    const workspace = await seedWorkspace({ repoPrefix: "pin-shortcut-status-" });
-
+  test("pins the active workspace while a different project is selected", async ({ page }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "pin-shortcut-active-" });
+    const other = await seedWorkspace({ repoPrefix: "pin-shortcut-other-" });
     try {
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
-      await switchToStatusGrouping(page);
-      await collapseStatusGroupContaining(page, workspace.workspaceId);
-
+      await selectSidebarProject(page, other.projectKey);
       await page.keyboard.press(PIN_SHORTCUT);
-
-      await expect(pinnedSection(page)).toBeVisible({ timeout: 10_000 });
+      await expect
+        .poll(async () => {
+          const result = await workspace.client.fetchWorkspaces();
+          for (const entry of result.entries) {
+            if (entry.id === workspace.workspaceId) return Boolean(entry.pinnedAt);
+          }
+          return false;
+        })
+        .toBe(true);
+      await selectSidebarProject(page, workspace.projectKey);
       await expect(
         pinnedSection(page).getByTestId(
           `sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`,
         ),
       ).toBeVisible();
     } finally {
+      await other.cleanup();
       await workspace.cleanup();
     }
   });
@@ -254,7 +240,7 @@ test.describe("Pin workspace shortcut", () => {
     try {
       const gate = await installPinRpcGate(page, { rejectFirst: 1 });
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await openWorkspace(page, workspace.workspaceId);
 
       await page.keyboard.press(PIN_SHORTCUT);

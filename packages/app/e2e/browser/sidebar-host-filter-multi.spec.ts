@@ -1,3 +1,4 @@
+import { createMockIdleAgent } from "../support/helpers/archive-tab";
 import { expect } from "@playwright/test";
 import { test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
@@ -25,6 +26,11 @@ test.describe("Sidebar host filter (multi-select)", () => {
 
     try {
       // A second (offline) host is enough to surface the host filter without a second daemon.
+      await createMockIdleAgent(seeded.client, {
+        cwd: seeded.repoPath,
+        workspaceId: seeded.workspaceId,
+        title: "Host filter session",
+      });
       await gotoAppShell(page);
       await addOfflineHostAndReload(page, { serverId: SECONDARY_HOST_ID, label: "Secondary Host" });
       await expect(workspaceRow).toBeVisible({ timeout: 30_000 });

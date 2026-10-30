@@ -68,9 +68,16 @@ async function markAsRead(page: Page, workspaceId: string) {
 }
 
 async function expectStatus(page: Page, workspaceId: string, status: "done" | "attention") {
-  await expect(
-    workspaceRow(page, workspaceId).getByTestId(`workspace-status-indicator-${status}`),
-  ).toBeVisible();
+  const icon = workspaceRow(page, workspaceId).getByTestId(
+    `sidebar-row-project-icon-${getServerId()}:${workspaceId}`,
+  );
+  await expect(icon).toBeVisible();
+  const badge = icon.getByTestId("project-status-badge");
+  if (status === "attention") {
+    await expect(badge).toHaveAttribute("aria-label", "Ready to review");
+  } else {
+    await expect(badge).toHaveCount(0);
+  }
 }
 
 async function markBackgroundWorkspaceAndReopen(page: Page, workspaceId: string) {
@@ -270,4 +277,65 @@ test("reopening a marked unread workspace restores only its agent tab and curren
   await test.step("restore the main tab without Explorer entries and load its latest history", async () => {
     await expectRestoredCompactChat(page);
   });
+});
+
+test("project navigation keeps Inbox flat and switches projects without leaving the workspace", async ({
+  page,
+  workspaces,
+}, testInfo) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await openAgentRoute(page, workspaces.subject);
+  const inbox = page.getByTestId("sidebar-flat-workspaces");
+  await expect(inbox).toBeVisible();
+  await expect(workspaceRow(page, workspaces.subject.workspaceId)).toBeVisible();
+  await expect(workspaceRow(page, workspaces.other.workspaceId)).toBeVisible();
+  const first = inbox.locator('[data-testid^="sidebar-workspace-row-"]').first();
+  await expect(first).toHaveAttribute(
+    "data-testid",
+    `sidebar-workspace-row-${getServerId()}:${workspaces.other.workspaceId}`,
+  );
+  const route = page.url();
+  const name = workspaces.subject.cwd.split("/").at(-1)!;
+  await page.getByTestId("sidebar-project-rail").getByRole("button", { name, exact: true }).click();
+  await expect(workspaceRow(page, workspaces.subject.workspaceId)).toBeVisible();
+  await expect(workspaceRow(page, workspaces.other.workspaceId)).toHaveCount(0);
+  await expect(page).toHaveURL(route);
+  await page.screenshot({ path: testInfo.outputPath("desktop-project.png") });
+  await page.getByTestId("sidebar-display-preferences-menu").click();
+  await expect(page.getByTestId("sidebar-display-grouping")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.getByTestId("sidebar-inbox").click();
+  await expect(workspaceRow(page, workspaces.other.workspaceId)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("desktop-inbox.png") });
+  expect(consoleErrors).toEqual([]);
+});
+
+test("project navigation on mobile uses a drawer picker and closes only when opening a workspace", async ({
+  page,
+  workspaces,
+}, testInfo) => {
+  await openCompactWorkspace(page, workspaces.subject);
+  await expect(page.getByTestId("sidebar-project-rail")).toHaveCount(0);
+  const selector = page.getByTestId("sidebar-project-selector");
+  await expect(selector).toContainText("Inbox");
+  await selector.click();
+  const name = workspaces.subject.cwd.split("/").at(-1)!;
+  await page.getByRole("menuitem").filter({ hasText: name }).click();
+  await expect(selector).toContainText(name);
+  await expect(workspaceRow(page, workspaces.subject.workspaceId)).toBeVisible();
+  await expect(workspaceRow(page, workspaces.other.workspaceId)).toHaveCount(0);
+  await selector.click();
+  await page.screenshot({ path: testInfo.outputPath("mobile-project-picker.png") });
+  await page.getByRole("menuitem", { name: /^Inbox/ }).click();
+  await expect(
+    page.getByRole("button", { name: "Bottom sheet backdrop" }).first(),
+  ).not.toBeVisible();
+  await expect(workspaceRow(page, workspaces.other.workspaceId)).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("mobile-inbox.png") });
+  await workspaceRow(page, workspaces.other.workspaceId).click();
+  await expect(page).toHaveURL(new RegExp(`/workspace/${workspaces.other.workspaceId}`));
+  await expect(selector).not.toBeVisible();
 });

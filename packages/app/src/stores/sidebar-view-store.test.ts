@@ -1,40 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { StateStorage } from "zustand/middleware";
 import {
-  createSidebarViewStorage,
   hasActiveSidebarLabelFilter,
   migrateSidebarViewState,
   SIDEBAR_UNLABELLED_LABEL_KEY,
   useSidebarViewStore,
 } from "./sidebar-view-store";
 
-interface MemoryStorage extends StateStorage<Promise<void>> {
-  reads: string[];
-}
-
-function createMemoryStorage(entries: Record<string, string | null>): MemoryStorage {
-  const reads: string[] = [];
-  return {
-    reads,
-    getItem: async (name) => {
-      reads.push(name);
-      return entries[name] ?? null;
-    },
-    setItem: async (name, value) => {
-      entries[name] = value;
-    },
-    removeItem: async (name) => {
-      entries[name] = null;
-    },
-  };
-}
-
 describe("sidebar view store", () => {
   beforeEach(() => {
     useSidebarViewStore.setState({
       workspaceSort: "created",
       showBackground: false,
-      groupMode: "project",
+
       hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },
@@ -77,7 +54,7 @@ describe("sidebar view store", () => {
     expect(useSidebarViewStore.getState().hostFilters).toEqual(["host-a"]);
   });
 
-  it("migrates legacy per-host group modes to the new global mode", () => {
+  it("ignores removed per-host grouping preferences", () => {
     expect(
       migrateSidebarViewState({
         groupModeByServerId: {
@@ -88,7 +65,7 @@ describe("sidebar view store", () => {
     ).toEqual({
       workspaceSort: "created",
       showBackground: false,
-      groupMode: "status",
+
       hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },
@@ -98,13 +75,12 @@ describe("sidebar view store", () => {
   it("migrates a pre-v2 single host filter to the multi-host list", () => {
     expect(
       migrateSidebarViewState({
-        groupMode: "status",
         hostFilter: "host-a",
       }),
     ).toEqual({
       workspaceSort: "created",
       showBackground: false,
-      groupMode: "status",
+
       hostFilters: ["host-a"],
       projectFilters: [],
       labelFilter: { labels: [] },
@@ -114,13 +90,12 @@ describe("sidebar view store", () => {
   it("keeps current persisted sidebar view state during version migration", () => {
     expect(
       migrateSidebarViewState({
-        groupMode: "status",
         hostFilters: ["host-a", "host-b"],
       }),
     ).toEqual({
       workspaceSort: "created",
       showBackground: false,
-      groupMode: "status",
+
       hostFilters: ["host-a", "host-b"],
       projectFilters: [],
       labelFilter: { labels: [] },
@@ -129,7 +104,6 @@ describe("sidebar view store", () => {
 
   it("clears only the label facet", () => {
     useSidebarViewStore.setState({
-      groupMode: "status",
       hostFilters: ["host-a"],
       labelFilter: { labels: ["urgent", "blocked"] },
     });
@@ -137,7 +111,6 @@ describe("sidebar view store", () => {
     useSidebarViewStore.getState().clearLabelFilter();
 
     expect(useSidebarViewStore.getState()).toMatchObject({
-      groupMode: "status",
       hostFilters: ["host-a"],
       labelFilter: { labels: [] },
     });
@@ -204,7 +177,6 @@ describe("sidebar view store", () => {
 
   it("keeps the other facets when the project filter is cleared", () => {
     useSidebarViewStore.setState({
-      groupMode: "status",
       hostFilters: ["host-a"],
       projectFilters: ["project-a"],
       labelFilter: { labels: ["urgent"] },
@@ -213,26 +185,22 @@ describe("sidebar view store", () => {
     useSidebarViewStore.getState().clearProjectFilters();
 
     expect(useSidebarViewStore.getState()).toMatchObject({
-      groupMode: "status",
       hostFilters: ["host-a"],
       projectFilters: [],
       labelFilter: { labels: ["urgent"] },
     });
   });
 
-  // The persisted schema is a `z.strictObject` behind `createValidatedPersistStorage`, so a key
-  // the schema does not list fails the parse and takes every other sidebar setting down with it.
   it("carries a persisted project filter through the version migration", () => {
     expect(
       migrateSidebarViewState({
-        groupMode: "project",
         hostFilters: ["host-a"],
         projectFilters: ["project-a", "project-b"],
       }),
     ).toEqual({
       workspaceSort: "created",
       showBackground: false,
-      groupMode: "project",
+
       hostFilters: ["host-a"],
       projectFilters: ["project-a", "project-b"],
       labelFilter: { labels: [] },
@@ -243,54 +211,11 @@ describe("sidebar view store", () => {
     expect(migrateSidebarViewState({ projectFilters: "project-a" })).toEqual({
       workspaceSort: "created",
       showBackground: false,
-      groupMode: "project",
+
       hostFilters: [],
       projectFilters: [],
       labelFilter: { labels: [] },
     });
-  });
-
-  it("falls back to the legacy storage key when the new key is empty", async () => {
-    const storage = createMemoryStorage({
-      "sidebar-view": null,
-      "sidebar-group-mode": JSON.stringify({
-        state: { groupModeByServerId: { "host-a": "status" } },
-        version: 0,
-      }),
-    });
-
-    const value = await createSidebarViewStorage(storage).getItem("sidebar-view");
-
-    expect(value).toBe(
-      JSON.stringify({
-        state: { groupModeByServerId: { "host-a": "status" } },
-        version: 0,
-      }),
-    );
-    expect(storage.reads).toEqual(["sidebar-view", "sidebar-group-mode"]);
-  });
-
-  it("uses the new storage key without reading the legacy key when current state exists", async () => {
-    const storage = createMemoryStorage({
-      "sidebar-view": JSON.stringify({
-        state: { groupMode: "project", hostFilters: ["host-a"] },
-        version: 2,
-      }),
-      "sidebar-group-mode": JSON.stringify({
-        state: { groupModeByServerId: { "host-b": "status" } },
-        version: 0,
-      }),
-    });
-
-    const value = await createSidebarViewStorage(storage).getItem("sidebar-view");
-
-    expect(value).toBe(
-      JSON.stringify({
-        state: { groupMode: "project", hostFilters: ["host-a"] },
-        version: 2,
-      }),
-    );
-    expect(storage.reads).toEqual(["sidebar-view"]);
   });
 });
 
@@ -298,9 +223,25 @@ it("defaults to Created and persists the Last prompt choice across migration", (
   expect(migrateSidebarViewState({}).workspaceSort).toBe("created");
   expect(
     migrateSidebarViewState({ workspaceSort: "lastPrompt", groupMode: "status" }),
-  ).toMatchObject({ workspaceSort: "lastPrompt", groupMode: "status" });
+  ).toMatchObject({ workspaceSort: "lastPrompt" });
 });
 
 it("retains the manual sorting preference on reload", () => {
   expect(migrateSidebarViewState({ workspaceSort: "manual" }).workspaceSort).toBe("manual");
+});
+
+it("drops grouping without resetting the other saved view preferences", () => {
+  const migrated = migrateSidebarViewState({
+    groupMode: "status",
+    showBackground: true,
+    hostFilters: ["host-a"],
+    labelFilter: { labels: ["urgent"] },
+  });
+  expect(migrated).toMatchObject({
+    showBackground: true,
+    hostFilters: ["host-a"],
+    labelFilter: { labels: ["urgent"] },
+  });
+  expect(migrated).not.toHaveProperty("groupMode");
+  expect(useSidebarViewStore.getState()).not.toHaveProperty("setGroupMode");
 });

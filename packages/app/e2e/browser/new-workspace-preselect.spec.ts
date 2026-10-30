@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
@@ -176,6 +177,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
 
+    await selectSidebarProject(page, projectB.projectKey);
     await switchWorkspaceViaSidebar({
       page,
       serverId: getServerId(),
@@ -184,6 +186,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await pressNewWorkspaceShortcut(page);
     await expectNewWorkspaceProjectSelected(page, projectB.projectDisplayName);
 
+    await selectSidebarProject(page, projectA.projectKey);
     await switchWorkspaceViaSidebar({
       page,
       serverId: getServerId(),
@@ -197,6 +200,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
 
+    await selectSidebarProject(page, projectB.projectKey);
     await switchWorkspaceViaSidebar({
       page,
       serverId: getServerId(),
@@ -205,6 +209,7 @@ test.describe("New workspace preselects the open workspace's project", () => {
     await openGlobalNewWorkspaceComposer(page);
     await expectNewWorkspaceProjectSelected(page, projectB.projectDisplayName);
 
+    await selectSidebarProject(page, projectA.projectKey);
     await switchWorkspaceViaSidebar({
       page,
       serverId: getServerId(),

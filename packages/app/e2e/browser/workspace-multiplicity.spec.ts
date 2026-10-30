@@ -84,7 +84,7 @@ test.describe("Workspace multiplicity creation flow", () => {
         projectDisplayName: seeded.projectDisplayName,
       };
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await expect(page.getByTestId(workspaceRowTestId(seeded.workspaceId))).toBeVisible({
         timeout: 30_000,
@@ -136,7 +136,7 @@ test.describe("Workspace multiplicity creation flow", () => {
         projectDisplayName: seeded.projectDisplayName,
       };
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       await expect(page.getByTestId(workspaceRowTestId(seeded.workspaceId))).toBeVisible({
         timeout: 30_000,
@@ -182,7 +182,7 @@ test.describe("Workspace multiplicity creation flow", () => {
         projectDisplayName: seeded.projectDisplayName,
       };
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, seeded);
       await waitForSidebarHydration(page);
       // Model B: a non-git project is an expandable parent like any other, with
       // its single workspace already rendered as its own row underneath.

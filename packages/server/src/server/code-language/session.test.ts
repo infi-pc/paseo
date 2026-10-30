@@ -11,7 +11,8 @@ const sessions: CodeLanguageSession[] = [];
 const roots: string[] = [];
 afterEach(async () => {
   for (const host of sessions.splice(0)) host.dispose();
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+  for (const root of roots.splice(0))
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 function session() {
   const value = new CodeLanguageSession(pino({ level: "silent" }));
@@ -44,13 +45,18 @@ test("real bundled server resolves types, aliases, definitions and usages", asyn
   const definition = await host.query({ ...query, operation: "definition" });
   expect(definition.result.kind).toBe("locations");
   if (definition.result.kind === "locations")
-    expect(definition.result.locations[0]?.path).toBe(join(input.cwd, "lib.ts"));
+    expect(await realpath(definition.result.locations[0]!.path)).toBe(
+      await realpath(join(input.cwd, "lib.ts")),
+    );
   const references = await host.query({ ...query, operation: "references" });
   expect(references.result.kind).toBe("locations");
-  if (references.result.kind === "locations")
-    expect(
-      references.result.locations.every((location) => location.path !== join(input.cwd, "lib.ts")),
-    ).toBe(true);
+  if (references.result.kind === "locations") {
+    const declarationPath = await realpath(join(input.cwd, "lib.ts"));
+    const referencePaths = await Promise.all(
+      references.result.locations.map((location) => realpath(location.path)),
+    );
+    expect(referencePaths).not.toContain(declarationPath);
+  }
   if (references.result.kind === "locations")
     expect(references.result.locations.some((location) => location.range.start.line === 1)).toBe(
       true,
@@ -134,7 +140,7 @@ test("supports inferred TSX, declaration dependencies and project references", a
     position: { line: 1, character: 2 },
   });
   if (definition.result.kind === "locations")
-    expect(definition.result.locations[0]?.path).toBe(await realpath(declaration));
+    expect(await realpath(definition.result.locations[0]!.path)).toBe(await realpath(declaration));
   else expect.fail(JSON.stringify(definition));
 });
 

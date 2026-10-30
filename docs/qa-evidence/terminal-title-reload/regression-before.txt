@@ -1,0 +1,36 @@
+
+ RUN  v4.1.6 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/packages/server
+
+(node:39242) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+stdout | src/terminal/worker-terminal-manager.test.ts
+[dotenv@17.3.1] injecting env (0) from .env.test -- tip: 🛡️ auth for agents: https://vestauth.com
+[dotenv@17.3.1] injecting env (0) from ../.env -- tip: ⚙️  suppress all logs with { quiet: true }
+
+ ❯ src/terminal/worker-terminal-manager.test.ts (27 tests | 1 failed | 26 skipped) 331ms
+   × keeps user-set titles in worker snapshots and ignores later shell titles 330ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/terminal/worker-terminal-manager.test.ts > keeps user-set titles in worker snapshots and ignores later shell titles
+AssertionError: expected 'Initial shell title' to be 'User terminal' // Object.is equality
+
+Expected: "User terminal"
+Received: "Initial shell title"
+
+ ❯ src/terminal/worker-terminal-manager.test.ts:378:40
+    376|   expect(session.getTitle()).toBe("User terminal");
+    377|   const renamedSnapshot = await manager.getTerminalState(session.id);
+    378|   expect(renamedSnapshot?.state.title).toBe("User terminal");
+       |                                        ^
+    379|
+    380|   session.send({ type: "input", data: "update\r" });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 26 skipped (27)
+   Start at  18:56:10
+   Duration  550ms (transform 75ms, setup 19ms, import 135ms, tests 331ms, environment 0ms)
+

@@ -133,6 +133,8 @@ export interface PluginFilePanelParams {
   readonly path: string;
   readonly lineStart?: number;
   readonly lineEnd?: number;
+  readonly columnStart?: number;
+  readonly columnEnd?: number;
 }
 export interface PluginWorkspacePanelProps extends PluginPanelProps<PluginWorkspacePanelParams> {
   // COMPAT(pluginPanelFlatProps): added in v0.13.0, remove after 2027-04-23

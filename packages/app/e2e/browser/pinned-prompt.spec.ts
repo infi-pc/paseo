@@ -13,6 +13,8 @@ import {
 const WIDE_VIEWPORT = { width: 1440, height: 900 };
 const COMPACT_VIEWPORT = { width: 420, height: 860 };
 const LOADED_TURNS = 12;
+// Leave enough later content for the chosen prompt to clear a tall viewport.
+const READING_TURN = 6;
 
 function timeline(page: Page) {
   return page.locator('[data-testid="agent-chat-scroll"]:visible').first();
@@ -37,9 +39,7 @@ async function scrollPromptAboveFold(page: Page, prompt: string): Promise<void> 
         // Once the row unmounts it is definitively above the fold.
         if (!promptBox) return true;
         if (promptBox.y + promptBox.height < timelineBox.y) return true;
-        await timeline(page).evaluate((element) => {
-          if (element instanceof HTMLElement) element.scrollTop += 160;
-        });
+        await page.mouse.wheel(0, 160);
         return false;
       },
       { timeout: 15_000 },
@@ -50,23 +50,19 @@ async function scrollPromptAboveFold(page: Page, prompt: string): Promise<void> 
 test.describe("pinned current prompt", () => {
   let agent: LongTimelineAgent;
 
-  test.beforeAll(async () => {
-    test.setTimeout(120_000);
-    agent = await seedLongMockAgentTimeline({ turns: LOADED_TURNS });
-  });
-
-  test.afterAll(async () => {
-    await agent.cleanup();
-  });
-
   test.beforeEach(async ({ page }) => {
+    agent = await seedLongMockAgentTimeline({ turns: LOADED_TURNS });
     await page.setViewportSize(WIDE_VIEWPORT);
     await openAgentTimeline(page, agent);
     await expectTimelinePromptVisible(page, agent.newestPrompt);
   });
 
+  test.afterEach(async () => {
+    await agent?.cleanup();
+  });
+
   test("pins nothing while the prompt's own bubble is on screen", async ({ page }) => {
-    await scrollTimelinePromptIntoView(page, agent.prompts[8]!);
+    await scrollTimelinePromptIntoView(page, agent.prompts[READING_TURN]!);
 
     await expect(pinnedPrompt(page)).toHaveCount(0);
   });
@@ -74,9 +70,9 @@ test.describe("pinned current prompt", () => {
   test("pins the prompt of the turn being read once its bubble scrolls past the top", async ({
     page,
   }) => {
-    await scrollPromptAboveFold(page, agent.prompts[8]!);
+    await scrollPromptAboveFold(page, agent.prompts[READING_TURN]!);
 
-    await expect(pinnedPrompt(page)).toContainText(agent.prompts[8]!);
+    await expect(pinnedPrompt(page)).toContainText(agent.prompts[READING_TURN]!);
   });
 
   test("caps the pin at 70% of the content rail and keeps it on the right edge", async ({
@@ -104,26 +100,26 @@ test.describe("pinned current prompt", () => {
   });
 
   test("swaps the pin when the reader crosses into the next turn", async ({ page }) => {
-    await scrollPromptAboveFold(page, agent.prompts[8]!);
-    await expect(pinnedPrompt(page)).toContainText(agent.prompts[8]!);
+    await scrollPromptAboveFold(page, agent.prompts[READING_TURN]!);
+    await expect(pinnedPrompt(page)).toContainText(agent.prompts[READING_TURN]!);
 
-    await scrollPromptAboveFold(page, agent.prompts[9]!);
+    await scrollPromptAboveFold(page, agent.prompts[READING_TURN + 1]!);
 
-    await expect(pinnedPrompt(page)).toContainText(agent.prompts[9]!);
+    await expect(pinnedPrompt(page)).toContainText(agent.prompts[READING_TURN + 1]!);
   });
 
   test("scrolls the real message back under the pin when clicked", async ({ page }) => {
-    await scrollPromptAboveFold(page, agent.prompts[8]!);
+    await scrollPromptAboveFold(page, agent.prompts[READING_TURN]!);
     await pinnedPrompt(page).click();
 
-    await expectTimelinePromptLandedBelowTop(page, agent.prompts[8]!);
+    await expectTimelinePromptLandedBelowTop(page, agent.prompts[READING_TURN]!);
     // The prompt is the reading row again, so its own bubble carries the turn.
     await expect(pinnedPrompt(page)).toHaveCount(0);
   });
 
   test("fades a prompt longer than the pinned cap", async ({ page }) => {
     const longPrompt = Array.from({ length: 20 }, (_unused, line) => `pinned cap line ${line}`)
-      .join(" ")
+      .join("\n")
       .concat(" end");
     await agent.client.sendAgentMessage(agent.agentId, longPrompt);
     await agent.client.waitForFinish(agent.agentId, 15_000);
@@ -135,7 +131,7 @@ test.describe("pinned current prompt", () => {
 
   test("pins nothing on a compact viewport", async ({ page }) => {
     await page.setViewportSize(COMPACT_VIEWPORT);
-    await scrollPromptAboveFold(page, agent.prompts[8]!);
+    await scrollPromptAboveFold(page, agent.prompts[READING_TURN]!);
 
     await expect(pinnedPrompt(page)).toHaveCount(0);
   });

@@ -1,3 +1,4 @@
+import { emptyChangeBreakdown } from "@getpaseo/protocol/diff-stat";
 import { execFileSync } from "child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
@@ -62,6 +63,7 @@ describe("getCommitFileDiff", () => {
       isDeleted: false,
       additions: 0,
       deletions: 0,
+      breakdown: emptyChangeBreakdown(),
       hunks: [],
     });
   });
@@ -110,6 +112,7 @@ describe("getCommitFileDiff", () => {
       isDeleted: false,
       additions: 0,
       deletions: 0,
+      breakdown: emptyChangeBreakdown(),
       hunks: [],
     });
   });
@@ -280,6 +283,7 @@ describe("getCommitFileDiff", () => {
       isDeleted: false,
       additions: 0,
       deletions: 0,
+      breakdown: emptyChangeBreakdown(),
       hunks: [],
     });
   });

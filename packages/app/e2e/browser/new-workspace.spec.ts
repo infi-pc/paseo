@@ -51,7 +51,7 @@ import {
   type LocalGhPrFixture,
 } from "../support/helpers/github-fixtures";
 import { getServerId } from "../support/helpers/server-id";
-import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { getE2EDaemonPort } from "../support/helpers/daemon-port";
 import { chooseAddProjectMethod, expectAddProjectPage } from "../support/helpers/add-project-flow";
 import { seedSavedSettingsHosts } from "../support/helpers/settings";
@@ -70,7 +70,7 @@ const BACKGROUND_RESOLUTION_FILE = {
   buffer: Buffer.from(JSON.stringify({ composer: "background-resolution" })),
 };
 
-interface WorkspaceStatusGroupEvent {
+interface WorkspaceStatusEvent {
   rowTestId: string;
   bucket: string;
   indicatorTestId: string | null;
@@ -78,14 +78,9 @@ interface WorkspaceStatusGroupEvent {
   at: number;
 }
 
-async function switchSidebarToStatusGrouping(page: import("@playwright/test").Page) {
-  await selectSidebarStatusGrouping(page);
-  await expect(page.getByTestId("sidebar-status-group-done")).toBeVisible({ timeout: 30_000 });
-}
-
-async function startTrackingSidebarStatusGroups(page: import("@playwright/test").Page) {
+async function startTrackingSidebarStatuses(page: import("@playwright/test").Page) {
   await page.evaluate(() => {
-    interface StatusGroupEvent {
+    interface StatusEvent {
       rowTestId: string;
       bucket: string;
       indicatorTestId: string | null;
@@ -93,42 +88,37 @@ async function startTrackingSidebarStatusGroups(page: import("@playwright/test")
       at: number;
     }
     const win = window as typeof window & {
-      __workspaceStatusGroupEvents?: StatusGroupEvent[];
-      __workspaceStatusGroupObserver?: MutationObserver;
+      __workspaceStatusEvents?: StatusEvent[];
+      __workspaceStatusObserver?: MutationObserver;
     };
-    win.__workspaceStatusGroupEvents = [];
-    win.__workspaceStatusGroupObserver?.disconnect();
+    win.__workspaceStatusEvents = [];
+    win.__workspaceStatusObserver?.disconnect();
 
     const capture = () => {
-      const events = win.__workspaceStatusGroupEvents;
+      const events = win.__workspaceStatusEvents;
       if (!events) return;
-      const groups = document.querySelectorAll<HTMLElement>(
-        '[data-testid^="sidebar-status-group-"]',
+      const rows = document.querySelectorAll<HTMLElement>(
+        '[data-testid^="sidebar-workspace-row-"]',
       );
-      for (const group of groups) {
-        const groupTestId = group.getAttribute("data-testid") ?? "";
-        const bucket = groupTestId.replace("sidebar-status-group-", "");
-        const label = group.textContent ?? "";
-        const block = group.parentElement?.parentElement;
-        if (!block) continue;
-        const rows = block.querySelectorAll<HTMLElement>('[data-testid^="sidebar-workspace-row-"]');
-        for (const row of rows) {
-          const rowTestId = row.getAttribute("data-testid");
-          if (!rowTestId) continue;
-          const indicatorTestId =
-            row
-              .querySelector<HTMLElement>('[data-testid^="workspace-status-indicator-"]')
-              ?.getAttribute("data-testid") ?? null;
-          const last = events.at(-1);
-          if (
-            last?.rowTestId === rowTestId &&
-            last.bucket === bucket &&
-            last.indicatorTestId === indicatorTestId
-          ) {
-            continue;
-          }
-          events.push({ rowTestId, bucket, indicatorTestId, label, at: performance.now() });
+      for (const row of rows) {
+        const rowTestId = row.getAttribute("data-testid");
+        if (!rowTestId) continue;
+        const indicatorTestId =
+          row
+            .querySelector<HTMLElement>('[data-testid^="workspace-status-indicator-"]')
+            ?.getAttribute("data-testid") ?? null;
+        if (!indicatorTestId) continue;
+        const bucket = indicatorTestId.replace("workspace-status-indicator-", "");
+        const label = row.textContent ?? "";
+        const last = events.at(-1);
+        if (
+          last?.rowTestId === rowTestId &&
+          last.bucket === bucket &&
+          last.indicatorTestId === indicatorTestId
+        ) {
+          continue;
         }
+        events.push({ rowTestId, bucket, indicatorTestId, label, at: performance.now() });
       }
     };
 
@@ -141,22 +131,22 @@ async function startTrackingSidebarStatusGroups(page: import("@playwright/test")
       attributes: true,
       attributeFilter: ["data-testid"],
     });
-    win.__workspaceStatusGroupObserver = observer;
+    win.__workspaceStatusObserver = observer;
   });
 }
 
-async function getTrackedSidebarStatusGroups(
+async function getTrackedSidebarStatuses(
   page: import("@playwright/test").Page,
-): Promise<WorkspaceStatusGroupEvent[]> {
+): Promise<WorkspaceStatusEvent[]> {
   return page.evaluate(() => {
     const win = window as typeof window & {
-      __workspaceStatusGroupEvents?: WorkspaceStatusGroupEvent[];
+      __workspaceStatusEvents?: WorkspaceStatusEvent[];
     };
-    return win.__workspaceStatusGroupEvents ?? [];
+    return win.__workspaceStatusEvents ?? [];
   });
 }
 
-async function waitForWorkspaceStatusGroupEvent(input: {
+async function waitForWorkspaceStatusEvent(input: {
   page: import("@playwright/test").Page;
   rowTestId: string;
   bucket: string;
@@ -164,9 +154,9 @@ async function waitForWorkspaceStatusGroupEvent(input: {
   await input.page.waitForFunction(
     ({ expectedRowTestId, expectedBucket }) => {
       const win = window as typeof window & {
-        __workspaceStatusGroupEvents?: WorkspaceStatusGroupEvent[];
+        __workspaceStatusEvents?: WorkspaceStatusEvent[];
       };
-      for (const event of win.__workspaceStatusGroupEvents ?? []) {
+      for (const event of win.__workspaceStatusEvents ?? []) {
         if (event.rowTestId === expectedRowTestId && event.bucket === expectedBucket) {
           return true;
         }
@@ -178,19 +168,19 @@ async function waitForWorkspaceStatusGroupEvent(input: {
   );
 }
 
-async function expectWorkspaceStatusGroupEvents(input: {
+async function expectWorkspaceStatusEvents(input: {
   page: import("@playwright/test").Page;
   rowTestId: string;
   includes: string;
   excludes: string;
   excludesIndicator?: string;
 }) {
-  await waitForWorkspaceStatusGroupEvent({
+  await waitForWorkspaceStatusEvent({
     page: input.page,
     rowTestId: input.rowTestId,
     bucket: input.includes,
   });
-  const createdWorkspaceEvents = (await getTrackedSidebarStatusGroups(input.page)).filter(
+  const createdWorkspaceEvents = (await getTrackedSidebarStatuses(input.page)).filter(
     (event) => event.rowTestId === input.rowTestId,
   );
   expect(createdWorkspaceEvents.map((event) => event.bucket)).toContain(input.includes);
@@ -269,7 +259,7 @@ test.describe("New workspace flow", () => {
         },
       ]);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
 
@@ -308,9 +298,10 @@ test.describe("New workspace flow", () => {
       localWorkspaceIds.add(firstWorkspace.workspaceId);
       localWorkspaceIds.add(secondWorkspace.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, firstWorkspace);
       await waitForSidebarHydration(page);
 
+      await selectSidebarProject(page, firstWorkspace.projectKey);
       await switchWorkspaceViaSidebar({
         page,
         serverId,
@@ -321,6 +312,7 @@ test.describe("New workspace flow", () => {
         subtitle: firstWorkspace.projectDisplayName,
       });
 
+      await selectSidebarProject(page, secondWorkspace.projectKey);
       await switchWorkspaceViaSidebar({
         page,
         serverId,
@@ -335,6 +327,7 @@ test.describe("New workspace flow", () => {
         subtitle: secondWorkspace.projectDisplayName,
       });
 
+      await selectSidebarProject(page, firstWorkspace.projectKey);
       await switchWorkspaceViaSidebar({
         page,
         serverId,
@@ -364,7 +357,7 @@ test.describe("New workspace flow", () => {
       localWorkspaceIds.add(rootWorkspace.workspaceId);
       createdWorktreeDirectories.add(worktreeWorkspace.workspaceDirectory);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, rootWorkspace);
       await waitForSidebarHydration(page);
 
       await switchWorkspaceViaSidebar({
@@ -439,7 +432,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
 
       await switchWorkspaceViaSidebar({
@@ -514,7 +507,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
 
       await switchWorkspaceViaSidebar({
@@ -583,9 +576,7 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  test("new workspace with initial agent never appears in the Done status group", async ({
-    page,
-  }) => {
+  test("new workspace with initial agent never shows its Done status", async ({ page }) => {
     const serverId = getServerId();
 
     const tempRepo = await createTempGitRepo("new-workspace-status-optimistic-");
@@ -594,7 +585,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
 
       await switchWorkspaceViaSidebar({
@@ -607,8 +598,8 @@ test.describe("New workspace flow", () => {
         subtitle: openedProject.projectDisplayName,
       });
 
-      await switchSidebarToStatusGrouping(page);
-      await startTrackingSidebarStatusGroups(page);
+      await selectSidebarProject(page, openedProject.projectKey);
+      await startTrackingSidebarStatuses(page);
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
@@ -625,7 +616,7 @@ test.describe("New workspace flow", () => {
       createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
 
       const rowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
-      await expectWorkspaceStatusGroupEvents({
+      await expectWorkspaceStatusEvents({
         page,
         rowTestId,
         includes: "running",
@@ -636,9 +627,7 @@ test.describe("New workspace flow", () => {
     }
   });
 
-  test("new workspace without an initial agent appears in the Done status group", async ({
-    page,
-  }) => {
+  test("new workspace without an initial agent shows its Done status", async ({ page }) => {
     const serverId = getServerId();
 
     const tempRepo = await createTempGitRepo("new-workspace-status-empty-");
@@ -647,7 +636,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
 
       await switchWorkspaceViaSidebar({
@@ -660,8 +649,8 @@ test.describe("New workspace flow", () => {
         subtitle: openedProject.projectDisplayName,
       });
 
-      await switchSidebarToStatusGrouping(page);
-      await startTrackingSidebarStatusGroups(page);
+      await selectSidebarProject(page, openedProject.projectKey);
+      await startTrackingSidebarStatuses(page);
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
@@ -676,14 +665,14 @@ test.describe("New workspace flow", () => {
       createdWorktreeDirectories.add(createdWorkspace.workspaceDirectory);
 
       const rowTestId = `sidebar-workspace-row-${serverId}:${createdWorkspace.workspaceId}`;
-      await expectWorkspaceStatusGroupEvents({
+      await expectWorkspaceStatusEvents({
         page,
         rowTestId,
         includes: "done",
         excludes: "running",
         excludesIndicator: "workspace-status-indicator-loading",
       });
-      await expectWorkspaceStatusGroupEvents({
+      await expectWorkspaceStatusEvents({
         page,
         rowTestId,
         includes: "done",
@@ -706,7 +695,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
 
       await switchWorkspaceViaSidebar({
@@ -765,7 +754,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, repoPath);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: openedProject.projectKey,
@@ -899,7 +888,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: openedProject.projectKey,
@@ -924,7 +913,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: openedProject.projectKey,
@@ -954,7 +943,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, pr.localPath);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: openedProject.projectKey,
@@ -1096,7 +1085,7 @@ test.describe("New workspace flow", () => {
       const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
       localWorkspaceIds.add(openedProject.workspaceId);
 
-      await gotoAppShell(page);
+      await gotoAppShell(page, openedProject);
       await waitForSidebarHydration(page);
       await openNewWorkspaceComposer(page, {
         projectKey: openedProject.projectKey,
