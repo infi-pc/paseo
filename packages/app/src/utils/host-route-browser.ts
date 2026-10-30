@@ -12,7 +12,7 @@ export function replaceBrowserRouteWithCanonicalHostWorkspaceRoute(route: string
   if (!isWeb || typeof window === "undefined") {
     return;
   }
-  window.history.replaceState(null, "", stripHostWorkspaceRouteEchoSearch(route));
+  window.history.replaceState(window.history.state, "", stripHostWorkspaceRouteEchoSearch(route));
 }
 
 export function stripHostWorkspaceRouteEchoSearchFromBrowserUrl(): void {
@@ -24,7 +24,7 @@ export function stripHostWorkspaceRouteEchoSearchFromBrowserUrl(): void {
   if (canonicalRoute === currentRoute) {
     return;
   }
-  window.history.replaceState(null, "", canonicalRoute);
+  window.history.replaceState(window.history.state, "", canonicalRoute);
 }
 
 export function stripHostWorkspaceRouteEchoSearchFromBrowserUrlAfterCommit(): void {

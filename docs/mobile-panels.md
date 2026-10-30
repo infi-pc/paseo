@@ -17,7 +17,7 @@ not navigate the center panel. The next workspace or tab navigation selects its 
 project list is open; Inbox navigation stays in Inbox. Back/forward restores the Inbox or project
 context recorded for that visit, even if you browsed other projects afterward. Observe committed
 navigation centrally so shortcuts, links, notifications, and browser history follow the same rule.
-Choosing a workspace still closes the compact drawer.
+In-place preview replacements count as tab navigation. Choosing a workspace still closes the compact drawer.
 
 Inbox includes workspaces with session activity in the last 48 hours or unread sessions of any age,
 ordered by latest session activity. Keep qualifying rows for the current Inbox visit so reading a

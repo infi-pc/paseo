@@ -119,6 +119,34 @@ describe("recorded navigation replay", () => {
     expect(nav.projectKey()).toBe("project-second");
   });
 
+  it("follows the workspace project when a preview tab is retargeted in place", () => {
+    const nav = createNavigation(true);
+    const key = "srv:first";
+    const tabId = nav.layout.getState().openTab({
+      workspaceKey: key,
+      target: { kind: "file", path: "first.ts" },
+      intent: "new",
+    })!;
+    nav.selectProject("project-first");
+    nav.navigate("/h/srv/workspace/first");
+    nav.selectProject("project-second");
+    nav.observe();
+    expect(nav.projectKey()).toBe("project-second");
+    nav.layout.getState().replaceTab(key, tabId, { kind: "file", path: "second.ts" });
+    nav.observe();
+    expect(nav.projectKey()).toBe("project-first");
+    expect(nav.history.getState().entries).toEqual([
+      {
+        kind: "workspace",
+        serverId: "srv",
+        workspaceId: "first",
+        tabId,
+        target: { kind: "file", path: "second.ts" },
+        sidebarProjectKey: "project-first",
+      },
+    ]);
+  });
+
   it("waits for the destination project and leaves later rail browsing alone", () => {
     const history = createNavigationHistoryStore();
     const entry: HistoryEntry = {

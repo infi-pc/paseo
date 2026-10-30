@@ -309,3 +309,49 @@ test("browser navigation keeps the project rail and compact selector in sync", a
     await first.seed.cleanup();
   }
 });
+
+test("browser Back restores Inbox for the original visit to a workspace", async ({ page }) => {
+  const first = await seedActiveProject(1);
+  const second = await seedActiveProject(1);
+  try {
+    await gotoAppShell(page);
+    await selectSidebarInbox(page);
+    await page
+      .getByTestId(`sidebar-workspace-row-${getServerId()}:${first.seed.workspaceId}`)
+      .click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+    await selectSidebarProject(page, second.seed.projectKey);
+    await page.evaluate(
+      ({ serverId, id }) => {
+        window.history.pushState(null, "", `/h/${serverId}/workspace/${id}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: second.seed.workspaceId },
+    );
+    await expect(page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`)).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${second.seed.workspaceId}`));
+    await expect(page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`)).toBeVisible();
+    // Another entry for the same workspace has its own project context.
+    await page.evaluate(
+      ({ serverId, id }) => {
+        window.history.pushState(null, "", `/h/${serverId}/workspace/${id}`);
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: first.seed.workspaceId },
+    );
+    await expect(page.getByTestId(`sidebar-project-row-${first.seed.projectKey}`)).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`)).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+  } finally {
+    await second.seed.cleanup();
+    await first.seed.cleanup();
+  }
+});
