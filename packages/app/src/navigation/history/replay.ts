@@ -1,3 +1,4 @@
+import { useSidebarNavigationStore } from "@/components/sidebar/navigation/store";
 import { router, type Href } from "expo-router";
 import {
   navigateToWorkspace,
@@ -15,12 +16,15 @@ export interface HistoryReplayDeps {
   navigateToWorkspace: (input: NavigateToWorkspaceInput) => void;
   focusTab: (workspaceKey: string, tabId: string) => void;
   navigateToRoute: (path: string) => void;
+  selectSidebarProject: (projectKey: string | null) => void;
   workspaceExists: (serverId: string, workspaceId: string) => boolean;
   tabExists: (workspaceKey: string, tabId: string) => boolean;
   agentExists: (serverId: string, agentId: string) => boolean;
 }
 
 const defaultDeps: HistoryReplayDeps = {
+  selectSidebarProject: (projectKey) =>
+    useSidebarNavigationStore.getState().selectProject(projectKey),
   navigateToWorkspace: (input) => {
     navigateToWorkspace(input);
   },
@@ -76,6 +80,9 @@ export function goHistory(
     return false;
   }
   store.setIndex(nextIndex);
+  if (entry.sidebarProjectKey !== undefined) {
+    deps.selectSidebarProject(entry.sidebarProjectKey);
+  }
 
   if (entry.kind === "route") {
     deps.navigateToRoute(entry.path);

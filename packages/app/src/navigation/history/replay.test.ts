@@ -39,6 +39,7 @@ const route = (path: string): HistoryEntry => ({ kind: "route", path });
 function createFakeDeps(overrides: Partial<HistoryReplayDeps> = {}) {
   const calls: string[] = [];
   const deps: HistoryReplayDeps = {
+    selectSidebarProject: () => {},
     navigateToWorkspace: (input) =>
       calls.push(`navigate:${input.workspaceId}:${input.target ? input.target.kind : "no-target"}`),
     focusTab: (workspaceKey, tabId) => calls.push(`focus:${workspaceKey}:${tabId}`),

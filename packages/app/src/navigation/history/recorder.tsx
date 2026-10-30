@@ -4,6 +4,9 @@ import {
   useWorkspaceLayoutStore,
   useWorkspaceLayoutStoreHydrated,
 } from "@/stores/workspace-layout-store";
+import { useSidebarNavigationStore } from "@/components/sidebar/navigation/store";
+import { useHosts } from "@/runtime/host-runtime";
+import { useWorkspaceStructure } from "@/stores/session-store-hooks";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { classifyLocation, entriesEqual, type HistoryEntry } from "./model";
@@ -35,6 +38,9 @@ export function NavigationHistoryRecorder({
   const paramServerId = params.serverId;
   const paramWorkspaceId = params.workspaceId;
   const hydrated = useWorkspaceLayoutStoreHydrated();
+  const hosts = useHosts();
+  const serverIds = useMemo(() => hosts.map((host) => host.serverId), [hosts]);
+  const { projects } = useWorkspaceStructure(serverIds);
 
   const location = useMemo(
     () =>
@@ -46,6 +52,9 @@ export function NavigationHistoryRecorder({
   );
   const workspaceKey =
     location?.kind === "workspace" ? buildWorkspaceTabPersistenceKey(location) : null;
+  const destinationProjectKey = projects.find((project) =>
+    workspaceKey ? project.workspaceKeys.includes(workspaceKey) : false,
+  )?.viewKey;
   const focusedTabId = useWorkspaceLayoutStore((state) =>
     workspaceKey && hydrated ? selectActiveWorkspaceTabId(state, workspaceKey) : null,
   );
@@ -95,13 +104,34 @@ export function NavigationHistoryRecorder({
         });
       }
     }
-    recordNavigationLocation(store, entry);
-  }, [focusedTabId, focusedTabTargetSignature, hydrated, location, store, workspaceKey]);
+    recordNavigationLocation(store, entry, {
+      ...useSidebarNavigationStore.getState(),
+      destinationProjectKey,
+    });
+  }, [
+    destinationProjectKey,
+    focusedTabId,
+    focusedTabTargetSignature,
+    hydrated,
+    location,
+    store,
+    workspaceKey,
+  ]);
 
   return null;
 }
 
-export function recordNavigationLocation(store: NavigationHistoryStore, entry: HistoryEntry) {
+interface SidebarNavigationContext {
+  projectKey: string | null;
+  destinationProjectKey: string | undefined;
+  selectProject: (projectKey: string | null) => void;
+}
+
+export function recordNavigationLocation(
+  store: NavigationHistoryStore,
+  entry: HistoryEntry,
+  sidebar?: SidebarNavigationContext,
+) {
   // Missing layouts and Explorer-only focus are transitional. Settled empty workspaces have
   // a New tab; recording a tabless location cannot restore its focus when replayed.
   if (entry.kind === "workspace" && (!entry.tabId || !entry.target)) {
@@ -109,7 +139,13 @@ export function recordNavigationLocation(store: NavigationHistoryStore, entry: H
   }
   const { entries, index } = store.getState();
   const current = entries[index];
-  if (current && entriesEqual(current, entry)) {
+  const sameLocation = current && entriesEqual(current, entry);
+  entry = followSidebarNavigation(entry, sameLocation ? current : undefined, sidebar);
+  if (sameLocation) {
+    if (current.sidebarProjectKey === undefined && entry.sidebarProjectKey !== undefined) {
+      store.replaceCurrent(entry);
+      return;
+    }
     // A same-kind tab replacement can keep the tab id while changing its target. Keep the
     // current entry's replay payload fresh without turning that retarget into a new place.
     if (
@@ -120,9 +156,25 @@ export function recordNavigationLocation(store: NavigationHistoryStore, entry: H
           entry.target !== null &&
           !workspaceTabTargetsEqual(current.target, entry.target)))
     ) {
-      store.replaceCurrent(entry);
+      store.replaceCurrent({ ...entry, sidebarProjectKey: current.sidebarProjectKey });
     }
     return;
   }
   store.record(entry);
+}
+
+function followSidebarNavigation(
+  entry: HistoryEntry,
+  current: HistoryEntry | undefined,
+  sidebar: SidebarNavigationContext | undefined,
+): HistoryEntry {
+  // FORK(project-navigation): browsing the rail does not rewrite the current visit.
+  if (!sidebar || current?.sidebarProjectKey !== undefined) return entry;
+  if (entry.kind === "workspace" && sidebar.destinationProjectKey === undefined) return entry;
+  let projectKey = sidebar.projectKey;
+  if (entry.kind === "workspace" && projectKey !== null && sidebar.destinationProjectKey) {
+    projectKey = sidebar.destinationProjectKey;
+  }
+  sidebar.selectProject(projectKey);
+  return { ...entry, sidebarProjectKey: projectKey };
 }

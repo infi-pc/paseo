@@ -240,3 +240,72 @@ async function dragProject(
   // dnd-kit suppresses document clicks for 50 ms after releasing a pointer drag.
   await page.waitForTimeout(60);
 }
+
+test("browser navigation keeps the project rail and compact selector in sync", async ({ page }) => {
+  const first = await seedActiveProject(1);
+  const second = await seedActiveProject(1);
+  try {
+    await gotoAppShell(page, first.seed);
+    const firstRow = page.getByTestId(
+      `sidebar-workspace-row-${getServerId()}:${first.seed.workspaceId}`,
+    );
+    const secondRow = page.getByTestId(
+      `sidebar-workspace-row-${getServerId()}:${second.seed.workspaceId}`,
+    );
+    const firstHeader = page.getByTestId(`sidebar-project-row-${first.seed.projectKey}`);
+    const secondHeader = page.getByTestId(`sidebar-project-row-${second.seed.projectKey}`);
+    await firstRow.click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await selectSidebarInbox(page);
+    await secondRow.click();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${second.seed.workspaceId}`));
+    await expect(page.getByText("Inbox", { exact: true })).toBeVisible();
+    // A route change outside the sidebar must also select its destination project.
+    await selectSidebarProject(page, first.seed.projectKey);
+    await page.evaluate(
+      (workspaceId) => {
+        window.history.pushState(
+          null,
+          "",
+          `/h/${encodeURIComponent(workspaceId.serverId)}/workspace/${workspaceId.id}`,
+        );
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: first.seed.workspaceId },
+    );
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await selectSidebarProject(page, first.seed.projectKey);
+    await page.evaluate(
+      (workspaceId) => {
+        window.history.pushState(
+          null,
+          "",
+          `/h/${encodeURIComponent(workspaceId.serverId)}/workspace/${workspaceId.id}`,
+        );
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      },
+      { serverId: getServerId(), id: second.seed.workspaceId },
+    );
+    await expect(secondHeader).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await expect(firstHeader).toBeVisible();
+    await page.goForward();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${second.seed.workspaceId}`));
+    await expect(secondHeader).toBeVisible();
+    await expect(secondRow).toBeVisible();
+    await page.screenshot({ path: "test-results/project-navigation-history.png" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goBack();
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.seed.workspaceId}`));
+    await page.getByRole("button", { name: "Open menu", exact: true }).click();
+    await expect(page.getByTestId("sidebar-project-selector")).toContainText(
+      first.seed.projectDisplayName,
+    );
+    await expect(firstRow).toBeVisible();
+    await expect(secondRow).toHaveCount(0);
+  } finally {
+    await second.seed.cleanup();
+    await first.seed.cleanup();
+  }
+});

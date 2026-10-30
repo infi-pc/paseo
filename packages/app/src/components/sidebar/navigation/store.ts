@@ -11,8 +11,12 @@ export const useSidebarNavigationStore = create<SidebarNavigationState>((set) =>
   projectKey: null,
   inboxVisit: 0,
   selectProject: (projectKey) =>
-    set((state) => ({
-      projectKey,
-      inboxVisit: state.inboxVisit + Number(projectKey !== state.projectKey),
-    })),
+    set((state) =>
+      projectKey === state.projectKey
+        ? state
+        : {
+            projectKey,
+            inboxVisit: state.inboxVisit + 1,
+          },
+    ),
 }));

@@ -9,7 +9,7 @@ import {
  * steps through tabs as well as workspaces. `target` is payload for re-opening a closed tab,
  * never identity: only `tabId` decides whether two entries are the same place.
  */
-export type HistoryEntry =
+export type HistoryEntry = (
   | {
       kind: "workspace";
       serverId: string;
@@ -17,7 +17,11 @@ export type HistoryEntry =
       tabId: string | null;
       target: WorkspaceTabTarget | null;
     }
-  | { kind: "route"; path: string };
+  | { kind: "route"; path: string }
+) & {
+  // Undefined until the destination project directory has hydrated; null means Inbox.
+  sidebarProjectKey?: string | null;
+};
 
 export interface HistoryState {
   entries: readonly HistoryEntry[];

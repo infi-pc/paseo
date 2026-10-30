@@ -150,9 +150,9 @@ describe("NavigationHistoryRecorder", () => {
     navigate("/sessions");
 
     expect(history.getState().entries).toEqual([
-      { kind: "route", path: "/settings/general" },
+      { kind: "route", path: "/settings/general", sidebarProjectKey: null },
       ws("ws-1", "agent_a1", AGENT),
-      { kind: "route", path: "/sessions" },
+      { kind: "route", path: "/sessions", sidebarProjectKey: null },
     ]);
     expect(history.getState().index).toBe(2);
   });
@@ -238,7 +238,7 @@ describe("NavigationHistoryRecorder", () => {
     navigate("/settings/general");
     expect(history.getState().entries).toEqual([
       ws("ws-1", "agent_a1", AGENT),
-      { kind: "route", path: "/settings/general" },
+      { kind: "route", path: "/settings/general", sidebarProjectKey: null },
     ]);
   });
 

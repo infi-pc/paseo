@@ -6,7 +6,11 @@ import { goHistory, type HistoryReplayDeps } from "./replay";
 import { selectActiveWorkspaceTabId } from "./select-active-tab";
 import { createNavigationHistoryStore } from "./store";
 
-function createNavigation() {
+function createNavigation(followSidebar = false) {
+  let projectKey: string | null = null;
+  const selectProject = (key: string | null) => {
+    projectKey = key;
+  };
   const layout = createWorkspaceLayoutStore(undefined, {
     getItem: () => null,
     setItem: () => {},
@@ -27,13 +31,25 @@ function createNavigation() {
         .find((candidate) => candidate.tabId === tabId);
       entry = { ...location, tabId, target: tab?.target ?? null };
     }
-    recordNavigationLocation(history, entry);
+    recordNavigationLocation(
+      history,
+      entry,
+      followSidebar
+        ? {
+            projectKey,
+            destinationProjectKey:
+              location.kind === "workspace" ? `project-${location.workspaceId}` : undefined,
+            selectProject,
+          }
+        : undefined,
+    );
   };
   const navigate = (path: string) => {
     pathname = path;
     observe();
   };
   const deps: HistoryReplayDeps = {
+    selectSidebarProject: selectProject,
     navigateToRoute: navigate,
     navigateToWorkspace: ({ serverId, workspaceId, target }) => {
       if (target)
@@ -59,10 +75,85 @@ function createNavigation() {
     observe();
     return result;
   };
-  return { layout, history, observe, navigate, step, pathname: () => pathname };
+  return {
+    layout,
+    history,
+    observe,
+    navigate,
+    step,
+    selectProject,
+    projectKey: () => projectKey,
+    pathname: () => pathname,
+  };
 }
 
 describe("recorded navigation replay", () => {
+  it("follows destination projects and restores Inbox without recording rail browsing", () => {
+    const nav = createNavigation(true);
+    for (const id of ["first", "second"]) {
+      nav.layout.getState().openTab({
+        workspaceKey: `srv:${id}`,
+        target: { kind: "agent", agentId: id },
+        intent: "new",
+      });
+    }
+    nav.selectProject("project-second");
+    nav.navigate("/h/srv/workspace/first");
+    expect(nav.projectKey()).toBe("project-first");
+    nav.selectProject(null);
+    nav.navigate("/h/srv/workspace/second");
+    expect(nav.projectKey()).toBe(null);
+    nav.selectProject("project-second");
+    nav.observe();
+    expect(nav.projectKey()).toBe("project-second");
+    expect(nav.history.getState().entries).toHaveLength(2);
+    expect(nav.step(-1)).toBe(true);
+    expect(nav.projectKey()).toBe("project-first");
+    expect(nav.step(1)).toBe(true);
+    expect(nav.projectKey()).toBe(null);
+    nav.selectProject("project-second");
+    nav.navigate("/settings/general");
+    nav.navigate("/h/srv/workspace/first");
+    expect(nav.projectKey()).toBe("project-first");
+    expect(nav.step(-1)).toBe(true);
+    expect(nav.projectKey()).toBe("project-second");
+  });
+
+  it("waits for the destination project and leaves later rail browsing alone", () => {
+    const history = createNavigationHistoryStore();
+    const entry: HistoryEntry = {
+      kind: "workspace",
+      serverId: "srv",
+      workspaceId: "first",
+      tabId: "agent_first",
+      target: { kind: "agent", agentId: "first" },
+    };
+    let projectKey: string | null = "project-second";
+    const selectProject = (key: string | null) => {
+      projectKey = key;
+    };
+    recordNavigationLocation(history, entry, {
+      projectKey,
+      destinationProjectKey: undefined,
+      selectProject,
+    });
+    expect(projectKey).toBe("project-second");
+    recordNavigationLocation(history, entry, {
+      projectKey,
+      destinationProjectKey: "project-first",
+      selectProject,
+    });
+    expect(projectKey).toBe("project-first");
+    selectProject("project-second");
+    recordNavigationLocation(history, entry, {
+      projectKey,
+      destinationProjectKey: "project-first",
+      selectProject,
+    });
+    expect(projectKey).toBe("project-second");
+    expect(history.getState().entries).toEqual([{ ...entry, sidebarProjectKey: "project-first" }]);
+  });
+
   it("preserves Forward after visiting a workspace before its layout exists", () => {
     const nav = createNavigation();
     nav.navigate("/settings/general");
