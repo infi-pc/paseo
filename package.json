@@ -81,6 +81,7 @@
     "lint:fix": "oxlint --fix",
     "knip": "knip",
     "fork:status": "node scripts/fork-status.mjs",
+    "fork:npm:pack": "npm run build:server:clean && node scripts/fork-npm.mjs",
     "acp:version-drift": "node scripts/check-acp-catalog-version-drift.mjs",
     "acp:version-drift:check": "node scripts/check-acp-catalog-version-drift.mjs --fail-on-drift",
     "acp:version-drift:update": "node scripts/check-acp-catalog-version-drift.mjs --update",

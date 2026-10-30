@@ -40,7 +40,10 @@ function readMatchingPackageVersion(
   } catch {
     return null;
   }
-  if (packageJson.name !== packageName) {
+  // FORK(npm-release): npm aliases retain imports while the installed metadata names the fork.
+  const matchesFork =
+    packageName === "@getpaseo/server" && packageJson.name === "@infi-pc/paseo-server";
+  if (packageJson.name !== packageName && !matchesFork) {
     return null;
   }
   if (typeof packageJson.version === "string" && packageJson.version.trim().length > 0) {

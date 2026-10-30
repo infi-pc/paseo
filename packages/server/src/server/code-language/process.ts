@@ -3,6 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
+// FORK(npm-release): keep vscode-languageserver-protocol pinned; 3.18 removes this entry point.
 import {
   createProtocolConnection,
   StreamMessageReader,

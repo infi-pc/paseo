@@ -87,7 +87,10 @@ function resolvePackageRootFrom(startPath: string, packageName: string): string 
         const packageJson = PackageJsonSchema.parse(
           JSON.parse(readFileSync(packageJsonPath, "utf8")),
         );
-        if (packageJson.name === packageName) {
+        // FORK(npm-release): source and published server packages have different names.
+        const matchesFork =
+          packageName === "@getpaseo/server" && packageJson.name === "@infi-pc/paseo-server";
+        if (packageJson.name === packageName || matchesFork) {
           return currentDir;
         }
       } catch {

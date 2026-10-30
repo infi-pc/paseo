@@ -12,6 +12,45 @@ This repository is Michael's long-term personal fork of Paseo. The policy (what 
 
 Keep `main` a pure mirror. That is what makes `git log main..paseo-customizations` and GitHub's compare view answer "what has the fork changed" without guesswork. `backup/main-before-upstream-reset-*` exists because `main` once carried fork commits and had to be reset.
 
+## Install and update remote daemons
+
+The native fork CLI is `@infi-pc/paseo`. Its six supporting packages also publish under `@infi-pc`; npm aliases preserve the source imports. Keep the checkout's package names unchanged so upstream merges do not become a package rename exercise.
+
+On each macOS or Linux host, install Node.js 22 or newer, then run:
+
+```bash
+npm install -g @infi-pc/paseo
+paseo
+```
+
+Pair the host with your desktop and phone. **Update daemon** in the host's settings installs `@infi-pc/paseo@latest` and restarts that host. Updates are initiated from the app; this does not install a launchd/systemd service or an unattended update timer. Install agent CLIs and authenticate them as the same user that runs the daemon.
+
+Publish a unique fork version without changing upstream's version files:
+
+```bash
+npm run fork:npm:pack -- --version 0.13.1-infi.20261030.1
+node scripts/fork-npm.mjs --version 0.13.1-infi.20261030.1 --publish
+```
+
+The first command builds the daemon stack and writes seven tarballs under `artifacts/fork-npm/<version>/`. The second packs and publishes them in dependency order, with the CLI last. Fork releases explicitly use npm's `latest` tag even when the version contains `-infi`; that is the channel the app updater follows. Use a fresh version for each release. These headless packages do not build the optional daemon-served web UI.
+
+GitHub Actions publishes through npm trusted publishing (OIDC); it does not use an `NPM_TOKEN` secret. Each of the seven packages trusts `infi-pc/paseo` and the workflow filename `fork-npm.yml`, with direct publishing enabled. To configure a new package, authenticate with npm 11.15 or newer and run:
+
+```bash
+npm trust github @infi-pc/paseo --file fork-npm.yml --repository infi-pc/paseo --allow-publish --yes
+```
+
+Repeat for each supporting package. npm requires browser authentication for these trust changes. Complete the first workflow publish within two days so the trust configuration does not expire.
+
+To ship a daemon update, tag the desired commit on `paseo-customizations` and push the tag:
+
+```bash
+git tag fork-daemon-v0.13.1-infi.20261030.2
+git push origin fork-daemon-v0.13.1-infi.20261030.2
+```
+
+The **Fork npm release** workflow builds, tests, and publishes all seven packages with provenance. These tags do not trigger the upstream desktop/mobile release workflows. Release tags are the trigger because `main` remains an upstream mirror; a workflow that exists only on the fork branch cannot use GitHub's manual workflow dispatch. Registry processing may delay availability after npm accepts a publish.
+
 ## Sync with upstream
 
 Run this when upstream has moved. Start with the report so you know what you are walking into:
@@ -268,6 +307,12 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 - Commits: `fae603ccb`, `202ad64a9`, `7db463fe8`, `ff66c741b`, `fb4f42001`, `84dd166a1`
 - Owns: the fork section of `CLAUDE.md`, this doc, `scripts/fork-status.mjs`, `findings/`
 - Wires into: `CLAUDE.md`, `package.json` (`fork:status`)
+
+### Standalone fork npm releases
+
+- Owns: `scripts/fork-npm.mjs`, `packages/server/src/server/session/daemon/fork-npm.test.ts`, `.github/workflows/fork-npm.yml`
+- Wires into: `package.json` (`fork:npm:pack`), daemon npm update target and install-origin checks, server version resolution, and CLI daemon runner resolution.
+- Packages keep upstream import names through npm aliases. Install and update instructions live in [remote daemon installation](#install-and-update-remote-daemons).
 
 ### Shared hotspots
 

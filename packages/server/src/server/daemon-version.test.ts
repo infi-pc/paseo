@@ -20,19 +20,22 @@ afterEach(() => {
 });
 
 describe("resolveDaemonVersion", () => {
-  it("resolves server version by walking up to @getpaseo/server package.json", () => {
-    const root = createTempDir();
-    writeFileSync(
-      path.join(root, "package.json"),
-      JSON.stringify({ name: "@getpaseo/server", version: "9.8.7" }),
-      "utf8",
-    );
-    const nestedDir = path.join(root, "dist", "server");
-    mkdirSync(nestedDir, { recursive: true });
+  it.each(["@getpaseo/server", "@infi-pc/paseo-server"])(
+    "resolves the installed %s version",
+    (name) => {
+      const root = createTempDir();
+      writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name, version: "9.8.7" }),
+        "utf8",
+      );
+      const nestedDir = path.join(root, "dist", "server");
+      mkdirSync(nestedDir, { recursive: true });
 
-    const moduleUrl = pathToFileURL(path.join(nestedDir, "index.js")).href;
-    expect(resolveDaemonVersion(moduleUrl)).toBe("9.8.7");
-  });
+      const moduleUrl = pathToFileURL(path.join(nestedDir, "index.js")).href;
+      expect(resolveDaemonVersion(moduleUrl)).toBe("9.8.7");
+    },
+  );
 
   it("throws when @getpaseo/server package metadata cannot be resolved", () => {
     const root = createTempDir();

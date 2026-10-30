@@ -9,7 +9,9 @@ function resolveServerRunnerFromDir(currentDir: string): string | null {
   if (!existsSync(packageJsonPath)) return null;
   try {
     const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8")) as { name?: string };
-    if (packageJson.name !== "@getpaseo/server") return null;
+    // FORK(npm-release): published packages use npm aliases to preserve source imports.
+    const isServer = ["@getpaseo/server", "@infi-pc/paseo-server"].includes(packageJson.name ?? "");
+    if (!isServer) return null;
     const distRunner = path.join(currentDir, "dist", "scripts", "supervisor-entrypoint.js");
     if (existsSync(distRunner)) {
       return distRunner;

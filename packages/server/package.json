@@ -144,7 +144,7 @@
     "typescript": "^5.9.3",
     "typescript-language-server": "^4.4.1",
     "uuid": "^9.0.1",
-    "vscode-languageserver-protocol": "^3.17.5",
+    "vscode-languageserver-protocol": "3.17.5",
     "which": "^5.0.0",
     "ws": "^8.14.2",
     "yaml": "2.9.1",

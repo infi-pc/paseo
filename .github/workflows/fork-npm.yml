@@ -1,0 +1,40 @@
+name: Fork npm release
+
+on:
+  push:
+    tags: ["fork-daemon-v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-npm-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'infi-pc/paseo'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ONNXRUNTIME_NODE_INSTALL: skip
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+      - name: Install npm with trusted publishing support
+        run: npm install --global npm@11.19.0
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+      - name: Build daemon packages
+        run: npm run build:server:clean
+      - name: Verify fork updates and packaging
+        run: npx vitest run packages/server/src/server/session/daemon/fork-npm.test.ts packages/server/src/server/session/daemon/npm-global-cli.test.ts packages/server/src/server/session/daemon/daemon-self-updater.test.ts packages/server/src/server/daemon-version.test.ts --bail=1
+      - name: Publish fork packages
+        run: |
+          version="${GITHUB_REF_NAME#fork-daemon-v}"
+          node scripts/fork-npm.mjs --version "$version" --publish
