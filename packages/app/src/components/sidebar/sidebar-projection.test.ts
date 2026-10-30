@@ -1,6 +1,7 @@
 import { visibleRailProjectCount } from "./navigation/project-order";
 import {
   buildSessionActivity,
+  groupMainFolderWorkspaces,
   inboxWorkspaceKeys,
   retainInboxKeys,
   sortBySessionActivity,
@@ -261,5 +262,43 @@ describe("project rail capacity", () => {
     expect(visibleRailProjectCount(168, 3)).toBe(3);
     expect(visibleRailProjectCount(167, 3)).toBe(1);
     expect(visibleRailProjectCount(480, 0)).toBe(0);
+  });
+});
+
+describe("project workspace grouping", () => {
+  it("puts main-folder workspaces first and keeps the shortcut order aligned", () => {
+    const worktreeNew = makeWorkspace("worktree-new").entry;
+    const mainNew = {
+      ...makeWorkspace("main-new").entry,
+      workspaceKind: "local_checkout" as const,
+    };
+    const worktreeOld = makeWorkspace("worktree-old").entry;
+    const mainOld = { ...makeWorkspace("main-old").entry, workspaceKind: "checkout" as const };
+    const rows = groupMainFolderWorkspaces([worktreeNew, mainNew, worktreeOld, mainOld]);
+    expect(rows.map((row) => row.workspaceId)).toEqual([
+      "main-new",
+      "main-old",
+      "worktree-new",
+      "worktree-old",
+    ]);
+    const projection = buildSidebarProjection({
+      ...projectionInput(),
+      pinnedKeys: { pinnedWorkspaceKeys: [], pinnedAtByKey: {} },
+      projects: [makeProject(rows)],
+    });
+    expect(projection.shortcutModel.shortcutTargets.map((target) => target.workspaceId)).toEqual([
+      "main-new",
+      "main-old",
+      "worktree-new",
+      "worktree-old",
+    ]);
+  });
+
+  it("keeps empty and single-kind lists unchanged", () => {
+    const worktree = makeWorkspace("worktree").entry;
+    const main = { ...makeWorkspace("main").entry, workspaceKind: "local_checkout" as const };
+    expect(groupMainFolderWorkspaces([])).toEqual([]);
+    expect(groupMainFolderWorkspaces([worktree])).toEqual([worktree]);
+    expect(groupMainFolderWorkspaces([main])).toEqual([main]);
   });
 });

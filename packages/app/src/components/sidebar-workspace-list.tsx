@@ -1,3 +1,4 @@
+import { groupMainFolderWorkspaces } from "@/components/sidebar/navigation/model";
 import { ProjectPullRequestsShortcut } from "@/screens/project-pull-requests/shortcut";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
@@ -11,6 +12,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import {
+  Fragment,
   memo,
   useCallback,
   useMemo,
@@ -1615,11 +1617,16 @@ function ProjectBlock({
     [workspaceEntriesByKey],
   );
   const {
-    visibleItems: visibleWorkspaces,
+    visibleItems,
     expanded: workspacesExpanded,
     canToggle: canToggleWorkspaces,
     toggleExpanded: toggleWorkspacesExpanded,
   } = useLimitedSidebarGroup(project.workspaces, visibilityPolicy);
+  const visibleWorkspaces = useMemo(() => groupMainFolderWorkspaces(visibleItems), [visibleItems]);
+  const firstWorktreeKey =
+    visibleWorkspaces[0]?.workspaceKind !== "worktree"
+      ? visibleWorkspaces.find((workspace) => workspace.workspaceKind === "worktree")?.workspaceKey
+      : undefined;
   const activeServerId = activeWorkspaceSelection?.serverId ?? null;
   const activeHostStatus = useHostRuntimeConnectionStatus(activeServerId ?? "");
   const preferredServerId = activeHostStatus === "online" ? activeServerId : null;
@@ -1657,28 +1664,37 @@ function ProjectBlock({
       },
     ) => {
       return (
-        <MemoWorkspaceRowItem
-          key={item.workspaceKey}
-          workspace={item}
-          workspaceEntry={workspaceEntriesByKey.get(item.workspaceKey) ?? null}
-          hostBadge={hostBadgeByServerId.get(item.serverId) ?? null}
-          shortcutNumber={shortcutIndexByWorkspaceKey.get(item.workspaceKey) ?? null}
-          showShortcutBadge={showShortcutBadges}
-          canCopyBranchName={project.projectKind === "git"}
-          canPin={supportsPinningByServerId.get(item.serverId) === true}
-          onToggleWorkspacePin={onToggleWorkspacePin}
-          isCreating={creatingWorkspaceIds.has(item.workspaceId)}
-          selectionEnabled={selectionEnabled}
-          activeWorkspaceSelection={activeWorkspaceSelection}
-          onWorkspacePress={onWorkspacePress}
-          drag={input?.drag}
-          isDragging={input?.isDragging}
-          dragHandleProps={input?.dragHandleProps}
-        />
+        <Fragment key={item.workspaceKey}>
+          {item.workspaceKey === firstWorktreeKey ? (
+            <View
+              testID={`sidebar-worktree-separator-${project.viewKey}`}
+              style={styles.worktreeSeparator}
+            />
+          ) : null}
+          <MemoWorkspaceRowItem
+            workspace={item}
+            workspaceEntry={workspaceEntriesByKey.get(item.workspaceKey) ?? null}
+            hostBadge={hostBadgeByServerId.get(item.serverId) ?? null}
+            shortcutNumber={shortcutIndexByWorkspaceKey.get(item.workspaceKey) ?? null}
+            showShortcutBadge={showShortcutBadges}
+            canCopyBranchName={project.projectKind === "git"}
+            canPin={supportsPinningByServerId.get(item.serverId) === true}
+            onToggleWorkspacePin={onToggleWorkspacePin}
+            isCreating={creatingWorkspaceIds.has(item.workspaceId)}
+            selectionEnabled={selectionEnabled}
+            activeWorkspaceSelection={activeWorkspaceSelection}
+            onWorkspacePress={onWorkspacePress}
+            drag={input?.drag}
+            isDragging={input?.isDragging}
+            dragHandleProps={input?.dragHandleProps}
+          />
+        </Fragment>
       );
     },
     [
       project.projectKind,
+      project.viewKey,
+      firstWorktreeKey,
       onToggleWorkspacePin,
       supportsPinningByServerId,
       activeWorkspaceSelection,
@@ -2514,6 +2530,12 @@ const styles = StyleSheet.create((theme) => ({
   // headers closes up to the pitch of a list instead of staying spaced for content that is gone.
   projectBlockExpanded: {
     paddingBottom: theme.spacing[3],
+  },
+  worktreeSeparator: {
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.colors.border,
+    marginVertical: theme.spacing[2],
+    marginHorizontal: theme.spacing[2],
   },
   workspaceListContainer: {},
   // Kept in step with `workspaceRow` above. It stands in a project's list where a workspace row

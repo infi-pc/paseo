@@ -73,3 +73,13 @@ export function sortBySessionActivity(
     return delta || a.workspaceKey.localeCompare(b.workspaceKey);
   });
 }
+
+// FORK(project-navigation): main-folder workspaces precede worktrees within a project.
+export function groupMainFolderWorkspaces<T extends { workspaceKind: string }>(
+  workspaces: readonly T[],
+): T[] {
+  return [
+    ...workspaces.filter((workspace) => workspace.workspaceKind !== "worktree"),
+    ...workspaces.filter((workspace) => workspace.workspaceKind === "worktree"),
+  ];
+}

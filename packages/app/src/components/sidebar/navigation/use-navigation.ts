@@ -7,6 +7,7 @@ import type {
 } from "@/hooks/use-sidebar-workspaces-list";
 import {
   buildSessionActivity,
+  groupMainFolderWorkspaces,
   inboxWorkspaceKeys,
   retainInboxKeys,
   sortBySessionActivity,
@@ -57,7 +58,8 @@ export function useSidebarNavigation(
         ? workspace.projectViewKey === selectedProject.viewKey
         : retainedKeys.has(workspace.workspaceKey) && !workspace.snooze,
     );
-    return sortBySessionActivity(included, activity);
+    const sorted = sortBySessionActivity(included, activity);
+    return selectedProject ? groupMainFolderWorkspaces(sorted) : sorted;
   }, [workspaces, selectedProject, retainedKeys, activity]);
   const unreadByProject = useMemo(() => {
     const counts = new Map<string, number>();
