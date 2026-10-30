@@ -1384,6 +1384,9 @@ export const en = {
   sidebar: {
     navigation: {
       inbox: "Inbox",
+      allProjects: "All projects",
+      reorderProject: "Reorder {{name}}",
+      reorderHint: "Drag to change the project order.",
       select: "Inbox and projects",
       empty: "No recent or unread workspaces",
     },

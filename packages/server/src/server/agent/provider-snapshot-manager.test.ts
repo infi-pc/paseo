@@ -43,6 +43,7 @@ const CLOSED_PARENT: ManagedAgent = {
   config: { provider: "codex", cwd: "/tmp/project" },
   createdAt: new Date(0),
   updatedAt: new Date(0),
+  lastActivityAt: new Date(0),
   availableModes: [],
   currentModeId: null,
   pendingPermissions: new Map(),

@@ -12432,3 +12432,42 @@ test("an out-of-band command racing idle cleanup waits for the resumed runtime",
   expect(h.commands).toEqual(["/maintenance"]);
   expect(h.prompts).toEqual([]);
 });
+
+test("session activity survives reads, metadata updates, history hydration and runtime reload", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "inbox-session-activity-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {});
+  try {
+    await manager.appendTimelineItem(agent.id, {
+      type: "assistant_message",
+      text: "Completed work",
+    });
+    const activity = toAgentPayload(manager.getAgent(agent.id)!).lastActivityAt;
+    expect(typeof activity).toBe("string");
+    const session = manager.getAgent(agent.id)!.session as TestAgentSession;
+    session.pushEvent({ type: "usage_updated", provider: "codex", usage: {} });
+    session.pushEvent({ type: "thread_started", provider: "codex", sessionId: session.id });
+    await manager.drainSessionEvents(agent.id);
+    await manager.clearAgentAttention(agent.id);
+    await manager.setTitle(agent.id, "Read this workspace");
+    await manager.hydrateTimelineFromProvider(agent.id, { force: true });
+    await manager.reloadAgentSession(agent.id);
+    expect(toAgentPayload(manager.getAgent(agent.id)!).lastActivityAt).toBe(activity);
+    await manager.flush();
+    expect((await storage.get(agent.id))?.lastActivityAt).toBe(activity);
+    await manager.closeAgent(agent.id);
+    await ensureAgentLoaded(agent.id, { agentManager: manager, agentStorage: storage, logger });
+    expect(toAgentPayload(manager.getAgent(agent.id)!).lastActivityAt).toBe(activity);
+    await manager.appendTimelineItem(agent.id, { type: "assistant_message", text: "New changes" });
+    const next = toAgentPayload(manager.getAgent(agent.id)!).lastActivityAt!;
+    expect(Date.parse(next)).toBeGreaterThan(Date.parse(activity!));
+  } finally {
+    await manager.closeAgent(agent.id);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});

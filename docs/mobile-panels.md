@@ -19,9 +19,15 @@ Inbox includes workspaces with session activity in the last 48 hours or unread s
 ordered by latest session activity. Keep qualifying rows for the current Inbox visit so reading a
 session cannot remove the row under the user. Selecting a project ends that visit; returning to
 Inbox reevaluates membership. Snoozed and removed workspaces do not remain through this retention.
-Git refreshes and status transitions must not advance session activity. Pins remain in activity
-order in Inbox; project views retain their pinned section. Both lists have a fixed presentation;
+Session activity has its own durable clock: access, metadata snapshots, history replay, and runtime
+reloads must not advance it. Git refreshes and metadata-only status snapshots must not advance it.
+Pins remain in activity order in Inbox; project views retain their pinned section. Both lists have a fixed presentation;
 there is no grouping preference or grouping command.
+
+Desktop project icons use the persisted sidebar project order. Reserve space for Add project and
+show only the icons that fit between Inbox and the footer. The overflow button opens all projects;
+dragging there and in the rail changes the same order, also used by the compact picker. Selection
+never promotes a project into the visible rail; reorder it to keep it there.
 
 Sidebar selection starts at Inbox in a new app session. It is shared across layout changes, while
 the drawer's visibility remains owned by the compact panel model below.

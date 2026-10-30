@@ -1,0 +1,9 @@
+
+ RUN  v4.1.6 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/packages/server
+
+
+ Test Files  2 passed (2)
+      Tests  52 passed (52)
+   Start at  09:42:50
+   Duration  445ms (transform 164ms, setup 26ms, import 266ms, tests 31ms, environment 0ms)
+

@@ -913,6 +913,7 @@ export const AgentSnapshotPayloadSchema = z.object({
   effectiveThinkingOptionId: z.string().nullable().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  lastActivityAt: z.string().optional(),
   lastUserMessageAt: z.string().nullable(),
   status: AgentStatusSchema,
   activeTurn: AgentActiveTurnPayloadSchema.nullable().optional(),

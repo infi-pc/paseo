@@ -1,3 +1,4 @@
+import { visibleRailProjectCount } from "./navigation/project-order";
 import {
   buildSessionActivity,
   inboxWorkspaceKeys,
@@ -249,5 +250,16 @@ describe("Inbox navigation", () => {
       "unpinned",
       "pinned",
     ]);
+  });
+});
+
+describe("project rail capacity", () => {
+  it("reserves Add project and More without creating a scrolling rail", () => {
+    expect(visibleRailProjectCount(0, 5)).toBe(0);
+    expect(visibleRailProjectCount(80, 5)).toBe(0);
+    expect(visibleRailProjectCount(124, 5)).toBe(1);
+    expect(visibleRailProjectCount(168, 3)).toBe(3);
+    expect(visibleRailProjectCount(167, 3)).toBe(1);
+    expect(visibleRailProjectCount(480, 0)).toBe(0);
   });
 });

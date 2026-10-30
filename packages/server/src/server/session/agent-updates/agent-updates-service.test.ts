@@ -195,6 +195,7 @@ function buildHarness() {
         },
         createdAt: new Date(payload.createdAt),
         updatedAt: new Date(payload.updatedAt),
+        lastActivityAt: new Date(payload.lastActivityAt ?? payload.updatedAt),
         lastUserMessageAt: null,
         pendingPermissions: new Map(),
         attention: {

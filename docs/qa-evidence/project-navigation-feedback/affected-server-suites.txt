@@ -1,0 +1,11 @@
+
+ RUN  v4.1.6 /Users/michaelmusil/.paseo/worktrees/3pdqpnjh/tiny-ostrich/packages/server
+
+(node:39895) [DEP0205] DeprecationWarning: `module.register()` is deprecated. Use `module.registerHooks()` instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  3 passed (3)
+      Tests  402 passed | 4 skipped (406)
+   Start at  09:43:14
+   Duration  16.27s (transform 3.43s, setup 23ms, import 5.30s, tests 10.78s, environment 0ms)
+

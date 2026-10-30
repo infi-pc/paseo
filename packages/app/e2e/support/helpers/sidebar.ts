@@ -233,7 +233,14 @@ export async function selectSidebarProject(page: Page, projectKey: string): Prom
       page.getByRole("button", { name: "Bottom sheet backdrop" }).first(),
     ).not.toBeVisible();
   } else {
-    await page.getByTestId(`sidebar-project-tab-${key}`).click();
+    const tab = page.getByTestId(`sidebar-project-tab-${key}`);
+    await expect(tab.or(page.getByTestId("sidebar-project-overflow")).first()).toBeVisible();
+    if (await tab.isVisible()) {
+      await tab.click();
+    } else {
+      await page.getByTestId("sidebar-project-overflow").click();
+      await page.getByTestId(`sidebar-all-project-option-${key}`).click();
+    }
   }
 }
 
@@ -246,10 +253,17 @@ export async function selectSidebarProjectByName(page: Page, name: string): Prom
       page.getByRole("button", { name: "Bottom sheet backdrop" }).first(),
     ).not.toBeVisible();
   } else {
-    await page
-      .getByTestId("sidebar-project-rail")
-      .getByRole("button", { name, exact: true })
-      .click();
+    const tab = page.getByTestId("sidebar-project-rail").getByRole("button", { name, exact: true });
+    await expect(tab.or(page.getByTestId("sidebar-project-overflow")).first()).toBeVisible();
+    if (await tab.isVisible()) {
+      await tab.click();
+    } else {
+      await page.getByTestId("sidebar-project-overflow").click();
+      await page
+        .getByTestId("sidebar-all-projects-dialog")
+        .getByRole("button", { name, exact: true })
+        .click();
+    }
   }
 }
 
