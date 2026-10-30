@@ -7,6 +7,21 @@ interface BrowserSidebarContext {
 
 let committedContext: BrowserSidebarContext | null = null;
 let historyContextInstalled = false;
+let observedPathname: string | null = null;
+let pendingRestore: BrowserSidebarContext | null = null;
+let pendingPathname: string | null = null;
+let selectSidebarProject: ((projectKey: string | null) => void) | null = null;
+
+export function restoreBrowserSidebarContext(pathname: string): boolean {
+  if (pendingPathname !== null && pendingPathname !== pathname) return false;
+  observedPathname = pathname;
+  if (pendingPathname === null) return true;
+  pendingPathname = null;
+  committedContext = pendingRestore;
+  pendingRestore = null;
+  if (committedContext?.pathname === pathname) selectSidebarProject?.(committedContext.projectKey);
+  return true;
+}
 
 function readContext(state: unknown): BrowserSidebarContext | null {
   if (state === null || typeof state !== "object" || !("paseoSidebarContext" in state)) return null;
@@ -32,11 +47,14 @@ export function initializeBrowserSidebarContext(
   if (!isWeb || typeof window === "undefined" || historyContextInstalled) return;
   installHistoryContext();
   historyContextInstalled = true;
+  selectSidebarProject = selectProject;
   function restoreContext() {
-    committedContext = readContext(window.history.state);
-    if (committedContext?.pathname === window.location.pathname) {
-      selectProject(committedContext.projectKey);
-    }
+    pendingRestore = readContext(window.history.state);
+    pendingPathname = window.location.pathname;
+    // Router POP_TO also traverses browser history before replacing the old URL.
+    // Restore only when the app commits that entry, not during this intermediate hop.
+    if (observedPathname === window.location.pathname)
+      restoreBrowserSidebarContext(observedPathname);
   }
   // Root layouts can be between mounts when popstate fires. The store action and
   // browser listener share the JS session lifetime, as do the history wrappers.
@@ -56,6 +74,10 @@ function installHistoryContext() {
     previous: unknown,
   ) {
     const pathname = new URL(url ?? window.location.href, window.location.href).pathname;
+    if (pendingPathname !== null && pendingPathname !== pathname) {
+      pendingRestore = null;
+      pendingPathname = null;
+    }
     let context = committedContext;
     if (context?.pathname !== pathname) context = readContext(data);
     if (context?.pathname !== pathname) context = readContext(previous);

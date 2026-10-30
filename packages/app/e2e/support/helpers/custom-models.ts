@@ -19,6 +19,7 @@ export async function addCustomModel(page: Page, id: string): Promise<void> {
     .getByRole("button", { name: "Add", exact: true })
     .click();
   await expect(page.getByRole("button", { name: `Remove ${id}`, exact: true })).toHaveCount(1);
+  await expect(page.getByTestId("add-custom-model-sheet")).not.toBeVisible();
 }
 
 export async function removeCustomModel(page: Page, id: string): Promise<void> {

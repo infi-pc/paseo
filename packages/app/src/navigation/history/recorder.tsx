@@ -14,6 +14,7 @@ import { classifyLocation, entriesEqual, type HistoryEntry } from "./model";
 import {
   rememberBrowserSidebarContext,
   initializeBrowserSidebarContext,
+  restoreBrowserSidebarContext,
 } from "./browser-sidebar-context";
 import { selectActiveWorkspaceTabId } from "./select-active-tab";
 import { navigationHistoryStore, type NavigationHistoryStore } from "./store";
@@ -84,6 +85,7 @@ export function NavigationHistoryRecorder({
     if (!location) {
       return;
     }
+    if (!restoreBrowserSidebarContext(pathname)) return;
     let entry: HistoryEntry;
     if (location.kind === "workspace") {
       if (!hydrated || !workspaceKey) {
@@ -131,6 +133,7 @@ export function NavigationHistoryRecorder({
     focusedTabTargetSignature,
     hydrated,
     location,
+    pathname,
     store,
     workspaceKey,
   ]);

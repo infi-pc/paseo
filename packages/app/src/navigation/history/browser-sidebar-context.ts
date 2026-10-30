@@ -6,3 +6,6 @@ export function rememberBrowserSidebarContext(
 export function initializeBrowserSidebarContext(
   _selectProject: (projectKey: string | null) => void,
 ): void {}
+export function restoreBrowserSidebarContext(_pathname: string): boolean {
+  return true;
+}
