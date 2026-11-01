@@ -16,6 +16,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { resolveDaemonVersion } from "../daemon-version.js";
+import { PASEO_CLI_PACKAGE } from "../session/daemon/npm-global-cli.js";
 import { readDaemonInstance, stopDaemonInstance } from "../daemon-instance.js";
 import { currentBootId } from "../pid-lock.js";
 import { connectTerminalWorker } from "../../terminal/terminal-worker-client.js";
@@ -413,7 +414,7 @@ describe("terminals across daemon restarts", { timeout: 240_000 }, () => {
     const listing = JSON.stringify({
       path: path.join(fakeBin, "global"),
       dependencies: {
-        "@getpaseo/cli": {
+        [PASEO_CLI_PACKAGE]: {
           version: resolveDaemonVersion(import.meta.url),
           path: SERVER_ROOT,
         },
@@ -424,9 +425,9 @@ describe("terminals across daemon restarts", { timeout: 240_000 }, () => {
       fakeNpm,
       `const args = process.argv.slice(2);
 const has = (...tokens) => tokens.every((token) => args.includes(token));
-if (has("-g", "ls", "@getpaseo/cli", "--json", "--depth=0", "--long")) {
+if (has("-g", "ls", ${JSON.stringify(PASEO_CLI_PACKAGE)}, "--json", "--depth=0", "--long")) {
   process.stdout.write(${JSON.stringify(listing)} + "\\n");
-} else if (args[0] === "install" && has("-g", "@getpaseo/cli@latest")) {
+} else if (args[0] === "install" && has("-g", ${JSON.stringify(`${PASEO_CLI_PACKAGE}@latest`)})) {
   // The installed version is already the running one: nothing to do.
 } else {
   process.stderr.write("unexpected npm call: " + args.join(" ") + "\\n");

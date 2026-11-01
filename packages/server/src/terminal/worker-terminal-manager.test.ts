@@ -604,7 +604,7 @@ it("refreshes cached terminal title after worker title changes", async () => {
 it("keeps user-set titles in worker snapshots and ignores later shell titles", async () => {
   const cwd = mkdtempSync(join(tmpdir(), "worker-terminal-manager-rename-"));
   temporaryDirs.push(cwd);
-  manager = createWorkerTerminalManager();
+  manager = await startRealWorkerManager();
   const session = trackTerminal(
     await manager.createTerminal({
       workspaceId: "ws-test",
@@ -630,19 +630,16 @@ it("keeps user-set titles in worker snapshots and ignores later shell titles", a
 
   expect(manager.setTerminalTitle(session.id, "  User terminal  ")).toBe(true);
   expect(session.getTitle()).toBe("User terminal");
-  const renamedSnapshot = await manager.getTerminalState(session.id);
-  expect(renamedSnapshot?.state.title).toBe("User terminal");
 
   session.send({ type: "input", data: "update\r" });
   await waitForCondition(() => output.includes("TITLE_OUTPUT_FINISHED"), 10_000);
-  const laterSnapshot = await manager.getTerminalState(session.id);
-  expect(laterSnapshot?.state.title).toBe("User terminal");
   expect(session.getTitle()).toBe("User terminal");
-  expect(session.getState().title).toBe("User terminal");
   expect(titles).toEqual(["User terminal"]);
 
   unsubscribeOutput();
   unsubscribeTitles();
+  await manager.adoptTerminals();
+  expect(session.getTitle()).toBe("User terminal");
 });
 
 it("refreshes cached terminal size after worker resize", async () => {

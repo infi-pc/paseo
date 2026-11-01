@@ -350,7 +350,10 @@ test("opening a turn keeps the received message above it clipped on every frame"
       .getByTestId("turn-summary")
       .getByRole("button", { name: "Ran 7 commands", exact: true })
       .click();
-    await expect(page.getByText("echo stress-6", { exact: true })).toBeVisible();
+    const commands = page.getByRole("button", { name: "Run shell command", exact: true });
+    await expect(commands).toHaveCount(7);
+    await commands.last().click();
+    await expect(page.getByText("$ echo stress-6", { exact: false })).toBeVisible();
     await expectReceivedMessagePreviewUndisturbed(page);
   } finally {
     await recipient.cleanup();
@@ -505,8 +508,8 @@ async function openOneToolOutput(page: Page) {
   await expect(output).toHaveCount(0);
   const command = page
     .getByTestId("tool-call-badge")
-    .filter({ hasText: "node scripts/simulate-stream-burst.mjs" })
-    .first();
+    .filter({ has: page.getByRole("button", { name: "Run shell command", exact: true }) })
+    .last();
   await command.getByRole("button").first().click();
   await expect(output.first()).toBeVisible();
   await command.getByRole("button").first().click();
@@ -534,7 +537,7 @@ async function expectThinkingPresentation(page: Page, autoExpandReasoning: boole
     // until the reader opens it.
     const thought = group
       .getByTestId("tool-call-badge")
-      .filter({ hasText: /^Thinking/ })
+      .filter({ has: page.getByRole("button", { name: "Run Thinking", exact: true }) })
       .first();
     await expect(thought).toBeVisible();
     await expect(reasoning).toHaveCount(0);
@@ -592,9 +595,8 @@ test("a scheduled heartbeat opens a separate turn without reopening the previous
     scheduleId = created.schedule!.id;
     const fired = await schedules.scheduleRunOnce({ id: scheduleId });
     expect(fired.error).toBeNull();
-    await expect(
-      page.getByTestId("tool-call-badge").filter({ hasText: /^Heartbeat/ }),
-    ).toBeVisible();
+    const heartbeat = page.getByTestId("tool-call-badge").filter({ hasText: /heartbeat/i });
+    await expect(heartbeat).toBeVisible();
     await expect(summaries.first()).toHaveText(previousSummary);
     const previousReply = page
       .locator(`[data-message-id="${previousReplyId}"]`)

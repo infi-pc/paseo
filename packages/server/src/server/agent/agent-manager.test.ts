@@ -1655,6 +1655,7 @@ async function createControlledInterruptFixture(options: {
   agentId: string;
   turnId: string;
   interrupt: (session: ControlledInterruptSession) => Promise<void>;
+  interruptSessionMs?: number;
 }): Promise<ControlledInterruptFixture> {
   const workdir = mkdtempSync(join(tmpdir(), `agent-manager-${options.name}-`));
   const session = new ControlledInterruptSession(
@@ -1671,7 +1672,7 @@ async function createControlledInterruptFixture(options: {
     clients: { codex: client },
     registry: new AgentStorage(join(workdir, "agents"), logger),
     logger,
-    rescueTimeouts: { interruptSessionMs: 10 },
+    rescueTimeouts: { interruptSessionMs: options.interruptSessionMs ?? 10 },
     idFactory: () => options.agentId,
   });
   const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
@@ -3018,6 +3019,8 @@ test("cancelAgentRun succeeds when the provider queues completion before rejecti
     name: "interrupt-queued-completion",
     agentId: "00000000-0000-4000-8000-000000000306",
     turnId: "queued-completion-turn",
+    // Queued completion persists state before settling; use the production grace period.
+    interruptSessionMs: 2_000,
     interrupt: async (session) => {
       session.pushEvent({
         type: "turn_completed",

@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import pino from "pino";
+import { tmpdir } from "node:os";
 import { AgentManager } from "../agent-manager.js";
 import { createTestAgentClient } from "../../test-utils/fake-agent-client.js";
 import type { ToolCallSummarySource, ToolCallSummaryTarget } from "./types.js";
@@ -63,7 +64,7 @@ async function activityFixture() {
     logger: pino({ level: "silent" }),
   });
   const source = await manager.createAgent(
-    { provider: "codex", cwd: "/tmp", internal: true },
+    { provider: "codex", cwd: tmpdir(), internal: true },
     undefined,
     { workspaceId: undefined, persistSession: false },
   );
@@ -204,7 +205,7 @@ describe("tool-call summary scheduling", () => {
       logger: pino({ level: "silent" }),
     });
     const source = await manager.createAgent(
-      { provider: "codex", cwd: "/tmp", internal: true },
+      { provider: "codex", cwd: tmpdir(), internal: true },
       undefined,
       { workspaceId: undefined, persistSession: false },
     );

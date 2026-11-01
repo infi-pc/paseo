@@ -11,7 +11,7 @@ import {
 
 async function readVisibleWorkspaceOrder(page: Page): Promise<string[]> {
   const rows = page.getByRole("button", { name: /^Workspace \d{2}$/ });
-  await expect(rows).toHaveCount(12);
+  await expect(rows).toHaveCount(24);
   return rows.evaluateAll(
     (elements, prefix) =>
       elements.map((element) => element.getAttribute("data-testid")!.slice(prefix.length)),
@@ -38,7 +38,7 @@ test("previous and next traverse every visible workspace while digit shortcuts s
     title: "Workspace 01",
   });
   try {
-    for (let index = 2; index <= 12; index += 1) {
+    for (let index = 2; index <= 24; index += 1) {
       const created = await project.client.createWorkspace({
         source: { kind: "directory", path: project.repoPath },
         title: `Workspace ${String(index).padStart(2, "0")}`,
@@ -58,7 +58,7 @@ test("previous and next traverse every visible workspace while digit shortcuts s
 
     await test.step("wrapping uses the true first and last visible workspace", async () => {
       await switchWorkspaceViaSidebar({ page, serverId: getServerId(), workspaceId: order[0] });
-      await navigateWorkspace(page, "previous", order[11]);
+      await navigateWorkspace(page, "previous", order[23]);
       await navigateWorkspace(page, "next", order[0]);
     });
 
@@ -79,22 +79,23 @@ test("previous and next traverse every visible workspace while digit shortcuts s
 });
 
 async function expectCollapsedWorkspaceShortcuts(page: Page, order: string[]) {
+  await switchWorkspaceViaSidebar({ page, serverId: getServerId(), workspaceId: order[23] });
   await page.getByLabel("Show less", { exact: true }).click();
   const rows = page.getByRole("button", { name: /^Workspace \d{2}$/ });
-  await expect(rows).toHaveCount(8);
-  await expectSidebarWorkspaceSelected({ page, serverId: getServerId(), workspaceId: order[8] });
+  await expect(rows).toHaveCount(21);
+  await expectSidebarWorkspaceSelected({ page, serverId: getServerId(), workspaceId: order[23] });
   await switchWorkspaceViaSidebar({ page, serverId: getServerId(), workspaceId: order[0] });
-  await expect(rows).toHaveCount(7);
+  await expect(rows).toHaveCount(20);
   await page.keyboard.press("Alt+9");
   await expect(page).toHaveURL(new RegExp(`/workspace/${order[8]}$`));
   await expectSidebarWorkspaceSelected({ page, serverId: getServerId(), workspaceId: order[8] });
-  await expect(rows).toHaveCount(8);
+  await expect(rows).toHaveCount(20);
   await page.keyboard.press("Alt+]");
   await expect(page).toHaveURL(new RegExp(`/workspace/${order[9]}$`));
   await expectSidebarWorkspaceSelected({ page, serverId: getServerId(), workspaceId: order[9] });
-  await expect(rows).toHaveCount(8);
-  await expect(page.getByTestId(`sidebar-workspace-row-${getServerId()}:${order[8]}`)).toHaveCount(
+  await expect(rows).toHaveCount(20);
+  await expect(page.getByTestId(`sidebar-workspace-row-${getServerId()}:${order[23]}`)).toHaveCount(
     0,
   );
-  await expect(page.getByLabel("Show more", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Show all", { exact: true })).toBeVisible();
 }
