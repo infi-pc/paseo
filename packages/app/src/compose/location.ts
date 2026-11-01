@@ -5,11 +5,20 @@ export function normalizeComposeDirectory(path: string): string {
   return normalized || "/";
 }
 
-export function formatComposeReference(target: ComposeDeepLinkTarget): string {
+export function formatComposeReference(
+  target: ComposeDeepLinkTarget,
+  workspaceDirectory: string,
+): string {
   const cwd = normalizeComposeDirectory(target.cwd);
+  const workspaceRoot = normalizeComposeDirectory(workspaceDirectory);
   const file = target.file.replace(/\\/g, "/");
-  const prefix = cwd === "/" ? "/" : `${cwd}/`;
-  let reference = file.startsWith(prefix) ? file.slice(prefix.length) : file;
+  const isAbsolute = file.startsWith("/") || /^[A-Za-z]:\//.test(file);
+  const sourcePrefix = cwd === "/" ? "/" : `${cwd}/`;
+  const sourcePath = isAbsolute ? file : `${sourcePrefix}${file}`;
+  const workspacePrefix = workspaceRoot === "/" ? "/" : `${workspaceRoot}/`;
+  let reference = sourcePath.startsWith(workspacePrefix)
+    ? sourcePath.slice(workspacePrefix.length)
+    : sourcePath;
   if (target.line !== null) reference += `:${target.line}`;
   if (target.column !== null) reference += `:${target.column}`;
   return reference;
@@ -20,8 +29,21 @@ export function matchComposeWorkspace<T extends { workspaceDirectory: string }>(
   cwd: string,
 ): T | null {
   const directory = normalizeComposeDirectory(cwd);
-  const matches = Array.from(workspaces).filter(
-    (workspace) => normalizeComposeDirectory(workspace.workspaceDirectory) === directory,
-  );
-  return matches.length === 1 ? matches[0]! : null;
+  let closest: T | null = null;
+  let closestLength = -1;
+  let ambiguous = false;
+  for (const workspace of workspaces) {
+    const root = normalizeComposeDirectory(workspace.workspaceDirectory);
+    const prefix = root === "/" ? "/" : `${root}/`;
+    const containsDirectory = directory === root || directory.startsWith(prefix);
+    if (!containsDirectory || root.length < closestLength) continue;
+    if (root.length === closestLength) {
+      ambiguous = true;
+      continue;
+    }
+    closest = workspace;
+    closestLength = root.length;
+    ambiguous = false;
+  }
+  return ambiguous ? null : closest;
 }

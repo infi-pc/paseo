@@ -10,39 +10,100 @@ describe("compose source locations", () => {
     ];
     expect(matchComposeWorkspace(workspaces, "/repo/")).toEqual(workspaces[0]);
     expect(matchComposeWorkspace(workspaces, "/repo/worktrees/feature")).toEqual(workspaces[2]);
-    expect(matchComposeWorkspace(workspaces, "/repo/src")).toBeNull();
+    expect(matchComposeWorkspace(workspaces, "/repo/src")).toEqual(workspaces[0]);
     expect(matchComposeWorkspace([...workspaces, workspaces[0]!], "/repo")).toBeNull();
   });
+  it("selects the closest registered ancestor regardless of workspace order", () => {
+    const workspaces = [
+      { id: "root", workspaceDirectory: "/worktrees/subtle-otter" },
+      { id: "nested", workspaceDirectory: "/worktrees/subtle-otter/apps/web" },
+    ];
+    expect(matchComposeWorkspace(workspaces, "/worktrees/subtle-otter/apps/web/src/app")).toEqual(
+      workspaces[1],
+    );
+    expect(
+      matchComposeWorkspace(workspaces.toReversed(), "/worktrees/subtle-otter/apps/web/src/app/"),
+    ).toEqual(workspaces[1]);
+    expect(matchComposeWorkspace(workspaces, "/worktrees/subtle-otter/apps/api")).toEqual(
+      workspaces[0],
+    );
+  });
+
+  it("respects directory boundaries and rejects ambiguity only at the closest root", () => {
+    const root = { id: "root", workspaceDirectory: "/repo" };
+    const nested = { id: "nested", workspaceDirectory: "/repo/apps/web" };
+    expect(matchComposeWorkspace([root], "/repo-other/apps/web")).toBeNull();
+    expect(matchComposeWorkspace([nested], "/repo/apps/web-other/src")).toBeNull();
+    expect(matchComposeWorkspace([root, root, nested], "/repo/apps/web/src")).toEqual(nested);
+    expect(matchComposeWorkspace([root, nested, nested], "/repo/apps/web/src")).toBeNull();
+  });
+
+  it("handles filesystem roots and Windows separators", () => {
+    const filesystem = { id: "filesystem", workspaceDirectory: "/" };
+    const windows = { id: "windows", workspaceDirectory: "C:\\repo\\" };
+    expect(matchComposeWorkspace([filesystem], "/apps/web")).toEqual(filesystem);
+    expect(matchComposeWorkspace([windows], "C:\\repo\\apps\\web")).toEqual(windows);
+    expect(matchComposeWorkspace([windows], "C:\\repo-other\\apps\\web")).toBeNull();
+  });
+
+  it.each([
+    "/worktrees/subtle-otter/apps/web/src/app/[locale]/(web)/Hero.tsx",
+    "src/app/[locale]/(web)/Hero.tsx",
+  ])("formats a nested app file relative to the matched worktree: %s", (file) => {
+    expect(
+      formatComposeReference(
+        {
+          kind: "compose",
+          serverId: null,
+          cwd: "/worktrees/subtle-otter/apps/web",
+          file,
+          line: 13,
+          column: 13,
+        },
+        "/worktrees/subtle-otter",
+      ),
+    ).toBe("apps/web/src/app/[locale]/(web)/Hero.tsx:13:13");
+  });
+
   it("formats absolute locations relative to the checkout", () => {
     expect(
-      formatComposeReference({
-        kind: "compose",
-        serverId: null,
-        cwd: "/repo/",
-        file: "/repo/src/Button.tsx",
-        line: 42,
-        column: 7,
-      }),
+      formatComposeReference(
+        {
+          kind: "compose",
+          serverId: null,
+          cwd: "/repo/",
+          file: "/repo/src/Button.tsx",
+          line: 42,
+          column: 7,
+        },
+        "/repo",
+      ),
     ).toBe("src/Button.tsx:42:7");
     expect(
-      formatComposeReference({
-        kind: "compose",
-        serverId: null,
-        cwd: "/repo",
-        file: "src/Button.tsx",
-        line: null,
-        column: null,
-      }),
+      formatComposeReference(
+        {
+          kind: "compose",
+          serverId: null,
+          cwd: "/repo",
+          file: "src/Button.tsx",
+          line: null,
+          column: null,
+        },
+        "/repo",
+      ),
     ).toBe("src/Button.tsx");
     expect(
-      formatComposeReference({
-        kind: "compose",
-        serverId: null,
-        cwd: "C:\\repo",
-        file: "C:\\repo\\src\\Button.tsx",
-        line: 42,
-        column: null,
-      }),
+      formatComposeReference(
+        {
+          kind: "compose",
+          serverId: null,
+          cwd: "C:\\repo",
+          file: "C:\\repo\\src\\Button.tsx",
+          line: 42,
+          column: null,
+        },
+        "C:\\repo",
+      ),
     ).toBe("src/Button.tsx:42");
   });
 });
