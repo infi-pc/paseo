@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Load the copies the Expo CLI uses for prebuild, not older hoisted ones.
 const requireFromExpo = createRequire(require.resolve("expo/package.json"));
@@ -14,6 +14,48 @@ interface ManifestEntry {
 }
 
 const originalFdroidFlag = process.env.PASEO_FDROID_BUILD;
+const { getConfig } = requireFromExpo("@expo/config");
+
+describe("Personal TestFlight identity", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  function configureTestflight() {
+    vi.stubEnv("APP_VARIANT", "testflight");
+    vi.stubEnv("PASEO_IOS_BUILD_NUMBER", "2");
+    // An upstream Firebase credential must not enter the personal archive.
+    vi.stubEnv("GOOGLE_SERVICE_INFO_PLIST_PROD", "/upstream/GoogleService-Info.plist");
+  }
+
+  it("uses the personal Apple and Expo identities without upstream Firebase credentials", () => {
+    configureTestflight();
+    const { exp } = getConfig(__dirname);
+    expect(exp).toMatchObject({
+      name: "Paseo Personal",
+      slug: "infi-paseo",
+      ios: { bundleIdentifier: "cz.infi.paseo", appleTeamId: "UQAKP649X7", buildNumber: "2" },
+      extra: { eas: { projectId: "f5b7f971-d12b-4e9c-91fa-d9d4c76395ae" } },
+    });
+    expect(exp.ios.googleServicesFile).toBeUndefined();
+    expect(exp.owner).toBeUndefined();
+  });
+
+  it("rejects an invalid build number", () => {
+    configureTestflight();
+    vi.stubEnv("PASEO_IOS_BUILD_NUMBER", "0");
+    expect(() => getConfig(__dirname)).toThrow();
+  });
+
+  it("keeps the upstream production identity for its existing release jobs", () => {
+    vi.stubEnv("APP_VARIANT", "production");
+    const { exp } = getConfig(__dirname);
+    expect(exp).toMatchObject({
+      slug: "voice-mobile",
+      owner: "getpaseo",
+      ios: { bundleIdentifier: "sh.paseo" },
+      extra: { eas: { projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a" } },
+    });
+  });
+});
 
 async function resolveAndroidManifest() {
   const { exp } = await getPrebuildConfigAsync(__dirname, { platforms: ["android"] });

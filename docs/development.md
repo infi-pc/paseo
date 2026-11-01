@@ -98,6 +98,8 @@ Starting the service must not create, focus, reveal, or leave behind macOS Simul
 
 ### Running the iOS app on a local simulator
 
+For the personal fork's signed TestFlight archive, see [ios.md](ios.md).
+
 For fast, native, interactive iOS dev at the Mac — as opposed to the remote `/.sim` preview above — skip the service and build the dev client directly:
 
 ```bash
