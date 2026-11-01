@@ -101,6 +101,9 @@ beforeEach(async () => {
   integration.refresh.mockReset().mockResolvedValue(undefined);
   integration.fetchAgent.mockReset().mockResolvedValue({ agent: { workspaceId: "feature" } });
   integration.params.cwd = "/repo-feature";
+  integration.params.file = "/repo-feature/src/Button.tsx";
+  integration.params.line = "42";
+  integration.params.column = "7";
   integration.params.requestId = "click-1";
   await useWorkspaceLayoutStore.persist.rehydrate();
   await useDraftStore.persist.rehydrate();
@@ -144,6 +147,28 @@ describe("compose URL screen", () => {
       useDraftStore.getState().attachmentFocusRequestByDraftKey["agent:host:last-focused"],
     ).toBe(1);
   });
+  it.each([
+    "/repo-feature/apps/web/src/app/[locale]/(web)/Hero.tsx",
+    "src/app/[locale]/(web)/Hero.tsx",
+  ])("opens the containing worktree from a nested app directory: %s", async (file) => {
+    integration.params.cwd = "/repo-feature/apps/web";
+    integration.params.file = file;
+    integration.params.line = "13";
+    integration.params.column = "13";
+    mount();
+    await waitFor(() =>
+      expect(integration.navigate).toHaveBeenCalledWith({
+        serverId: "host",
+        workspaceId: "feature",
+        target: { kind: "agent", agentId: "last-focused" },
+        pin: true,
+      }),
+    );
+    expect(useDraftStore.getState().getDraftInput("agent:host:last-focused")?.text).toBe(
+      "Existing prompt\napps/web/src/app/[locale]/(web)/Hero.tsx:13:13",
+    );
+  });
+
   it("treats a second click on the same source as a fresh append", async () => {
     const view = mount();
     await waitFor(() => expect(integration.navigate).toHaveBeenCalledTimes(1));

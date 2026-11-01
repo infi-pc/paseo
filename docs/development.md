@@ -648,24 +648,28 @@ sending a message. Use `paseo://h/<server-id>/agent/<agent-id>`, or run
 default; pass `--server <server-id>` when targeting another server.
 
 LocatorJS and other source pickers can open an unsent file reference in the last-focused
-agent of an exact worktree:
+agent of the containing worktree:
 
 ```text
 paseo://compose?cwd=%2Fpath%2Fto%2Fworktree&file=src%2FButton.tsx&line=42&column=7
 ```
 
-`cwd` is the absolute worktree directory registered in Paseo. `file` accepts an
-absolute or relative source path; `line` and `column` are optional positive,
+`cwd` is an absolute directory inside the source worktree, including a monorepo
+app directory such as `apps/web`. Paseo chooses the closest containing registered
+workspace; an exact directory match takes precedence. `file` accepts an absolute
+path or a path relative to `cwd`. References use the matched workspace root, so
+`apps/web/src/Button.tsx` stays correct for an agent at the worktree root.
+`line` and `column` are optional positive,
 one-based positions. URL-encode every query value. Omit `serverId` for the local
 desktop host or supply it explicitly for a connected host. LocatorJS supplies
-project path, file path, line, and column through its custom editor link; point
-its project path at the actual checkout, including when using a git worktree.
+project path, file path, line, and column through its custom editor link.
 
 The reference appends to the existing composer text and requests input focus;
 it never sends the message. Focus memory survives app restarts and switching to
 other tab types. A missing or moved remembered agent opens a new draft in the
-matched workspace. An unknown or ambiguous directory shows an error; it never
-selects another worktree. Compose routing is transient and does not enter
+matched workspace. A directory outside every registered workspace, or multiple
+workspaces at the closest root, shows an error. Sibling directory names do not
+match each other. Compose routing is transient and does not enter
 Back/Forward history.
 
 ## Agent state

@@ -79,7 +79,7 @@ export function ComposeScreen() {
         workspaceId: workspace.id,
         tabTarget,
         draftKey,
-        text: formatComposeReference(target),
+        text: formatComposeReference(target, workspace.workspaceDirectory),
       };
     },
   });
