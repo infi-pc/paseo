@@ -322,6 +322,8 @@ for (const display of ["collapseToolCalls", "collapseTurns"] as const) {
     page,
   }) => {
     test.setTimeout(120_000);
+    // Leave enough scrollable history above the tail for the anchor assertion.
+    await page.setViewportSize({ width: 1280, height: 520 });
     const agent = await createOverviewAgent(page, "Desktop overview tool calls", display);
     await recordReactRenders(page);
     try {

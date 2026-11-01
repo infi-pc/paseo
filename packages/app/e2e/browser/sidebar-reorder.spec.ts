@@ -142,12 +142,12 @@ test("project pins can reorder while Inbox keeps its activity order", async ({ p
 
 test("project Show more survives collapse and follows new session activity", async ({ page }) => {
   test.setTimeout(120_000);
-  const { seed, ids, agents } = await seedActiveProject(9);
+  const { seed, ids, agents } = await seedActiveProject(22);
   try {
     await gotoAppShell(page, seed);
     const rows = workspaceRows(page);
     const newestFirst = ids.toReversed();
-    await expectOrder(rows, newestFirst.slice(0, 7));
+    await expectOrder(rows, newestFirst.slice(0, 20));
     await page.getByTestId(`sidebar-project-show-more-${seed.projectKey}`).click();
     await expectOrder(rows, newestFirst);
     const header = page.getByTestId(`sidebar-project-row-${seed.projectKey}`);
@@ -159,10 +159,10 @@ test("project Show more survives collapse and follows new session activity", asy
     const updated = [ids[0], ...newestFirst.filter((id) => id !== ids[0])];
     await expectOrder(rows, updated);
     await page.getByTestId(`sidebar-project-show-more-${seed.projectKey}`).click();
-    await expectOrder(rows, updated.slice(0, 7));
+    await expectOrder(rows, updated.slice(0, 20));
     await page.reload();
     await selectSidebarProject(page, seed.projectKey);
-    await expectOrder(rows, updated.slice(0, 7));
+    await expectOrder(rows, updated.slice(0, 20));
   } finally {
     await seed.cleanup();
   }
