@@ -864,8 +864,10 @@ describe("CheckoutSession", () => {
               },
             },
           ]);
-          expect(readPaseoWorktreeMetadata(selected.worktreePath)?.baseRefName).toBe("develop");
-          expect(readPaseoWorktreeMetadata(sibling.worktreePath)?.baseRefName).toBe("main");
+          expect((await readPaseoWorktreeMetadata(selected.worktreePath))?.baseRefName).toBe(
+            "develop",
+          );
+          expect((await readPaseoWorktreeMetadata(sibling.worktreePath))?.baseRefName).toBe("main");
           expect(
             execFileSync("git", ["config", "--get", "paseo.baseBranch"], {
               cwd,
@@ -889,7 +891,7 @@ describe("CheckoutSession", () => {
               encoding: "utf8",
             }).trim(),
           ).toBe("develop");
-          expect(readPaseoWorktreeMetadata(sibling.worktreePath)?.baseRefName).toBe("main");
+          expect((await readPaseoWorktreeMetadata(sibling.worktreePath))?.baseRefName).toBe("main");
         } finally {
           rmSync(cwd, { recursive: true, force: true });
         }

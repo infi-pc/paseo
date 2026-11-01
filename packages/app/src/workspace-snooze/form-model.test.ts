@@ -109,8 +109,20 @@ test("snoozed-only and pinned groups remain reachable through Show all without c
     lastCheck: null,
     config: { mode: "ai" as const, prompt: "CI passes", intervalHours: 1 as const },
   };
-  const hidden = { workspaceKey: "hidden", snooze, statusBucket: "running" as const };
-  const awake = { workspaceKey: "awake", snooze: null, statusBucket: "done" as const };
+  const hidden = {
+    serverId: "host",
+    workspaceId: "hidden",
+    workspaceKey: "hidden",
+    snooze,
+    statusBucket: "running" as const,
+  };
+  const awake = {
+    serverId: "host",
+    workspaceId: "awake",
+    workspaceKey: "awake",
+    snooze: null,
+    statusBucket: "done" as const,
+  };
   const entries = new Map<string, Pick<SidebarWorkspaceEntry, "snooze" | "statusBucket">>([
     ["hidden", hidden],
     ["awake", awake],
@@ -121,18 +133,33 @@ test("snoozed-only and pinned groups remain reachable through Show all without c
     isSnoozed: (item: { workspaceKey: string }) => Boolean(entries.get(item.workspaceKey)?.snooze),
   };
   for (const policy of [workspacePolicy, pinnedPolicy]) {
-    expect(selectSidebarGroupVisibility([hidden], false, policy)).toEqual({
+    expect(
+      selectSidebarGroupVisibility({ items: [hidden], expanded: false, policy, selection: null }),
+    ).toEqual({
+      leadingItem: null,
       visibleItems: [],
       canToggle: true,
     });
-    expect(selectSidebarGroupVisibility([hidden, awake], false, policy).visibleItems).toEqual([
-      awake,
-    ]);
-    expect(selectSidebarGroupVisibility([hidden, awake], true, policy).visibleItems).toEqual([
-      awake,
-      hidden,
-    ]);
-    expect(selectSidebarGroupVisibility([{ workspaceKey: "hidden" }], false, policy)).toEqual({
+    expect(
+      selectSidebarGroupVisibility({
+        items: [hidden, awake],
+        expanded: false,
+        policy,
+        selection: null,
+      }).visibleItems,
+    ).toEqual([awake]);
+    expect(
+      selectSidebarGroupVisibility({
+        items: [hidden, awake],
+        expanded: true,
+        policy,
+        selection: null,
+      }).visibleItems,
+    ).toEqual([awake, hidden]);
+    expect(
+      selectSidebarGroupVisibility({ items: [hidden], expanded: false, policy, selection: null }),
+    ).toEqual({
+      leadingItem: null,
       visibleItems: [],
       canToggle: true,
     });

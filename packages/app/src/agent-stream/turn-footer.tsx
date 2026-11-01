@@ -220,7 +220,7 @@ function CompletedTurnFooter({
     <View style={stylesheet.turnFooterBlock}>
       <View style={stylesheet.turnFooterSlot}>
         <AssistantTurnFooter
-          getContent={getContent}
+          getContent={items[startIndex]?.kind === "assistant_message" ? getContent : undefined}
           completedAt={timing?.completedAt}
           durationMs={timing?.durationMs}
           onFork={boundary && onForkAssistantTurn ? handleFork : undefined}

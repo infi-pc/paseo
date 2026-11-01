@@ -954,6 +954,7 @@ function mapCollabAgentToolCallItem(
     type: "sub_agent",
     subAgentType: "Sub-agent",
     ...(item.prompt ? { description: item.prompt } : {}),
+    // COMPAT(subagent-log): remove after 2027-04-30.
     log: "",
     actions: [],
   };
@@ -1010,6 +1011,7 @@ function mapSubAgentActivityItem(
       type: "sub_agent",
       subAgentType: nativeName,
       description,
+      // COMPAT(subagent-log): remove after 2027-04-30.
       log: "",
       actions: [],
     },

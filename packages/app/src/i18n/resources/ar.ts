@@ -92,6 +92,7 @@ export const ar = {
       daemonClientUnavailable: "عميل Daemon غير متوفر",
       daemonClientDisconnected: "تم قطع اتصال عميل Daemon",
       noFileFound: "لم يتم العثور على ملف لـ{{token}}",
+      folderOutsideWorkspace: "{{path}} خارج مساحة العمل هذه",
       unexpectedDictationError: "حدث خطأ غير متوقع أثناء معالجة الإملاء.",
     },
     connectionStatus: {
@@ -641,6 +642,7 @@ export const ar = {
     terminal: {
       hostDisconnected: "Host غير متصل",
       updateHost: "حدّث المضيف لاستخدام عارض الطرفية الأصلي.",
+      restoreRequiresUpdate: "حدّث المضيف لعرض الطرفيات.",
       unableToSubscribe: "غير قادر على الاشتراك في المحطة",
       fileUploaded: "تم رفع الملف",
       pasteFileFailed: "تعذر لصق الملف: {{reason}}",
@@ -1976,7 +1978,6 @@ export const ar = {
     parent: {
       backToParent: "العودة إلى الوكيل الأصلي",
       backTo: "العودة إلى {{label}}",
-      parent: "الأصل",
       parentAgent: "الوكيل الأصلي",
       openParent: "فتح الوكيل الأصلي",
     },
@@ -2076,17 +2077,17 @@ export const ar = {
   toolCallDetails: {
     error: "خطأ",
     empty: "لا توجد تفاصيل إضافية متاحة",
-    subAgentActivity: "نشاط الوكيل الفرعي",
     input: "مدخل",
     output: "الإخراج",
   },
   turnSummary: {
-    messages: {
-      one: "كتب {{count}} رسالة",
-      other: "كتب {{count}} رسائل",
-    },
+    details: "عرض تفاصيل الجولة",
+    sentBy: "أرسلها {{name}}",
+    showMore: "عرض المزيد",
+    showLess: "عرض أقل",
   },
   toolCallGroup: {
+    thought: "فكّر",
     editedFiles: {
       one: "حرّر {{count}} ملفًا",
       other: "حرّر {{count}} ملفات",
@@ -2154,6 +2155,11 @@ export const ar = {
     },
   },
   providerUsage: {
+    checkUsage: "التحقق من الاستخدام",
+    checkUsageHint: "ينطبق على {{host}} على جميع الأجهزة",
+    off: "التحقق من الاستخدام متوقف على {{host}}.",
+    turnOn: "تشغيل",
+
     options: "الإعدادات",
     refreshFailed: "تعذّر تحديث الاستخدام",
     noHosts: "لا توجد مضيفات متصلة",
@@ -2219,6 +2225,7 @@ export const ar = {
       minutes_few: "{{value}} دقائق",
       minutes_many: "{{value}} دقيقة",
       minutes_other: "{{value}} دقيقة",
+      pair: "{{first}} و{{second}}",
     },
     timing: {
       lastUpdated: "آخر تحديث {{relativeTime}}",
@@ -2226,6 +2233,8 @@ export const ar = {
       resetTimePassed: "مضى وقت إعادة التعيين",
       resettingNow: "تتم إعادة التعيين الآن",
       resetsIn: "تتم إعادة التعيين خلال {{duration}}",
+      resetsAtWeekday: "{{weekday}} {{time}}",
+      resetsAtDate: "{{date}}، {{time}}",
       runsOutNow: "ينفد الآن",
       runsOutIn: "ينفد خلال {{duration}}",
       justNow: "الآن",
@@ -2432,10 +2441,23 @@ export const ar = {
             "عند تشغيل الوكيل، يوجّه Enter الجولة النشطة. يضيف Command/Ctrl+Enter إلى قائمة الانتظار.",
           queue: "عند تشغيل الوكيل، يضيف Enter إلى قائمة الانتظار. Command/Ctrl+Enter يرسل.",
         },
+        commandEnterDescriptions: {
+          interrupt: "عند تشغيل الوكيل، يوقف {{modifier}}+Enter التشغيل. يُدرج Enter سطرًا جديدًا.",
+          steer: "عند تشغيل الوكيل، يوجّه {{modifier}}+Enter الجولة النشطة. يُدرج Enter سطرًا جديدًا.",
+          queue:
+            "عند تشغيل الوكيل، يضيف {{modifier}}+Enter إلى قائمة الانتظار. يُدرج Enter سطرًا جديدًا.",
+        },
         options: {
           interrupt: "مقاطعة",
           steer: "توجيه",
           queue: "طابور",
+        },
+      },
+      sendShortcut: {
+        label: "اختصار الإرسال",
+        options: {
+          enter: "Enter",
+          "mod-enter": "{{modifier}}+Enter",
         },
       },
       serviceUrls: {
@@ -2827,6 +2849,14 @@ export const ar = {
       },
       agents: {
         unavailable: "Connect to this host to manage agents",
+        resumeOnStartup: {
+          title: "استئناف الوكلاء بعد إعادة التشغيل",
+          info: "إعادة فتح الوكلاء الذين كانوا يعملون عند توقف المضيف وإرسال طلب الاستئناف. ينطبق ذلك بعد إعادة التشغيل العادية والتعطّل.",
+          hint: "متابعة العمل المنقطع تلقائيًا.",
+          prompt: "طلب الاستئناف",
+          edit: "تحرير",
+          editAccessibilityLabel: "تعديل الطلب",
+        },
         idleRuntimeCleanup: {
           title: "تحرير الوكلاء الخاملين",
           hint: "تحرير الذاكرة بعد ساعة من الخمول.",
@@ -2922,6 +2952,10 @@ export const ar = {
           requestFailedTitle: "خطأ",
           requestFailedMessage:
             "فشل في إرسال طلب إعادة التشغيل.  يقوم Paseo بإعادة الاتصال تلقائيًا - حاول مرة أخرى بمجرد ظهور المضيف على أنه متصل بالإنترنت.",
+          closeTerminals: "إعادة التشغيل وإغلاق الطرفيات",
+          closeTerminalsHint: "يعيد التشغيل ويغلق أيضًا كل الطرفيات المفتوحة على هذا المضيف.",
+          closeTerminalsConfirmMessage:
+            "سيُعاد تشغيل الخدمة وتُغلق كل طرفياتها، مما ينهي البرامج التي تعمل فيها. سيعيد التطبيق الاتصال تلقائيًا.",
           dialogFailedMessage: "غير قادر على فتح مربع حوار تأكيد إعادة التشغيل.",
         },
         update: {

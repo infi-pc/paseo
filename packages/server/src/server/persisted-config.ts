@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { PluginRegistriesSchema } from "@getpaseo/protocol/plugin-registry";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -9,7 +10,12 @@ import {
   ProviderOverridesSchema,
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
-import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
+import {
+  ensurePrivateFile,
+  ensurePrivateFileAsync,
+  writePrivateFileAtomic,
+  writePrivateFileAtomicSync,
+} from "./private-files.js";
 import { AgentProfileSchema, AgentSkillSelectionSchema } from "@getpaseo/protocol/agent-profile";
 // FORK(agent-defaults): persist host and project launch defaults.
 import { AgentDefaultsSchema } from "@getpaseo/protocol/agent-defaults";
@@ -255,6 +261,7 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        usage: z.object({ enabled: z.boolean().optional() }).optional(),
         browserTools: z
           .object({
             enabled: z.boolean().optional(),
@@ -347,6 +354,8 @@ export const PersistedConfigSchema = z
       .object({
         providers: z.preprocess(normalizeAgentProviders, ProviderOverridesSchema).optional(),
         idleRuntimeCleanup: z.boolean().optional(),
+        resumeOnStartup: z.boolean().optional(),
+        resumePrompt: z.string().optional(),
         catalogRefreshTimeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
         metadataGeneration: AgentMetadataGenerationSchema.optional(),
         toolCallSummaries: z.object({ enabled: z.boolean().optional() }).strict().optional(),
@@ -529,6 +538,40 @@ export function loadPersistedConfig(paseoHome: string, logger?: LoggerLike): Per
   return config;
 }
 
+/** Runtime config IO. Startup and offline CLI consumers retain their synchronous entry points. */
+export async function loadPersistedConfigAsync(
+  paseoHome: string,
+  logger?: LoggerLike,
+): Promise<PersistedConfig> {
+  const log = getLogger(logger);
+  const configPath = getConfigPath(paseoHome);
+  let raw: string;
+  await ensurePrivateFileAsync(configPath);
+  try {
+    raw = await readFile(configPath, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error(
+        `[Config] Failed to read ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
+    try {
+      raw = JSON.stringify(DEFAULT_PERSISTED_CONFIG, null, 2) + "\n";
+      await writePrivateFileAtomic(configPath, raw);
+      log?.info(`Initialized config file at ${configPath}`);
+    } catch (initializationError) {
+      throw new Error(
+        `[Config] Failed to initialize ${configPath}: ${initializationError instanceof Error ? initializationError.message : String(initializationError)}`,
+        { cause: initializationError },
+      );
+    }
+  }
+  const config = parseConfigFile(configPath, raw, log);
+  log?.info(`Loaded from ${configPath}`);
+  return config;
+}
+
 /** Observe the file without initializing a home, identity, or default configuration. */
 export function readPersistedConfig(
   paseoHome: string,
@@ -648,6 +691,20 @@ export function savePersistedConfig(
   const log = getLogger(logger);
   const configPath = getConfigPath(paseoHome);
 
+  const data = serializePersistedConfig(config);
+
+  try {
+    writePrivateFileAtomicSync(configPath, data);
+    log?.info(`Saved to ${configPath}`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`[Config] Failed to write ${configPath}: ${message}`, {
+      cause: err,
+    });
+  }
+}
+
+function serializePersistedConfig(config: PersistedConfig): string {
   const result = PersistedConfigSchema.safeParse(config);
   if (!result.success) {
     const issues = result.error.issues
@@ -656,13 +713,23 @@ export function savePersistedConfig(
     throw new Error(`[Config] Invalid config to save:\n${issues}`);
   }
 
+  return JSON.stringify(result.data, null, 2) + "\n";
+}
+
+export async function savePersistedConfigAsync(
+  paseoHome: string,
+  config: PersistedConfig,
+  logger?: LoggerLike,
+): Promise<void> {
+  const configPath = getConfigPath(paseoHome);
+  const data = serializePersistedConfig(config);
   try {
-    writePrivateFileAtomicSync(configPath, JSON.stringify(result.data, null, 2) + "\n");
-    log?.info(`Saved to ${configPath}`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`[Config] Failed to write ${configPath}: ${message}`, {
-      cause: err,
-    });
+    await writePrivateFileAtomic(configPath, data);
+    getLogger(logger)?.info(`Saved to ${configPath}`);
+  } catch (error) {
+    throw new Error(
+      `[Config] Failed to write ${configPath}: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
   }
 }
