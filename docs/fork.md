@@ -120,7 +120,7 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 ### Inbox and project navigation
 
 - Owns: `packages/app/src/components/sidebar/navigation/`.
-- Wires into: sidebar shell, shared projection and shortcuts, navigation actions, display preferences, desktop width calculation, and English resources.
+- Wires into: sidebar shell, shared projection and shortcuts, group visibility, navigation actions, display preferences, desktop width calculation, and English resources.
 - Desktop project rail and compact drawer picker share selection. See [Inbox and project navigation](mobile-panels.md#inbox-and-project-navigation) for the activity and retention contract.
 
 ### Codex MCP consent for a session

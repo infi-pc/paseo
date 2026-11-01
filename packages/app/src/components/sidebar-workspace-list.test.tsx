@@ -461,38 +461,29 @@ describe("sidebar group visibility", () => {
   const names = (items: readonly ReturnType<typeof createSidebarWorkspaceEntry>[]) =>
     items.map((item) => item.workspaceId);
 
-  it.each([0, 7, 8])("limits %i Done rows to seven", (count) => {
+  it.each([0, 20, 21])("limits %i Done rows to twenty", (count) => {
     const items = entries(Array(count).fill("done"));
     const { result } = renderHook(() => useLimitedSidebarGroup({ items, selection: null, policy }));
-    expect(result.current.visibleItems).toEqual(items.slice(0, 7));
-    expect(result.current.canToggle).toBe(count > 7);
+    expect(result.current.visibleItems).toEqual(items.slice(0, 20));
+    expect(result.current.canToggle).toBe(count > 20);
   });
 
   it.each(["needs_input", "failed", "attention", "running"] as const)(
-    "keeps row twelve visible for %s without filling gaps",
+    "keeps row twenty-five visible for %s without filling gaps",
     (status) => {
-      const items = entries([...Array(11).fill("done"), status]);
+      const items = entries([...Array(24).fill("done"), status]);
       const { result } = renderHook(() =>
         useLimitedSidebarGroup({ items, selection: null, policy }),
       );
-      expect(names(result.current.visibleItems)).toEqual([
-        "row-1",
-        "row-2",
-        "row-3",
-        "row-4",
-        "row-5",
-        "row-6",
-        "row-7",
-        "row-12",
-      ]);
-      expect(result.current.visibleItems[7]).toBe(items[11]);
+      expect(names(result.current.visibleItems)).toEqual([...names(items.slice(0, 20)), "row-25"]);
+      expect(result.current.visibleItems[20]).toBe(items[24]);
       expect(result.current.canToggle).toBe(true);
     },
   );
 
   it("treats placements without a hydrated entry as Done", () => {
-    const items = entries([...Array(8).fill("done"), "running", "done"]);
-    const hydrated = new Map(items.slice(0, 9).map((item) => [item.workspaceKey, item]));
+    const items = entries([...Array(21).fill("done"), "running", "done"]);
+    const hydrated = new Map(items.slice(0, 22).map((item) => [item.workspaceKey, item]));
     for (const entriesByKey of [new Map(), hydrated]) {
       const { result } = renderHook(() =>
         useLimitedSidebarGroup({
@@ -503,13 +494,16 @@ describe("sidebar group visibility", () => {
       );
       expect(result.current.canToggle).toBe(true);
       expect(names(result.current.visibleItems)).toEqual(
-        entriesByKey.size === 0 ? names(items.slice(0, 7)) : [...names(items.slice(0, 7)), "row-9"],
+        entriesByKey.size === 0
+          ? names(items.slice(0, 20))
+          : [...names(items.slice(0, 20)), "row-22"],
       );
     }
   });
 
-  it("shows eight active rows once with no redundant toggle", () => {
+  it("shows twenty-one active rows once with no redundant toggle", () => {
     const items = entries([
+      ...Array(13).fill("running"),
       "running",
       "needs_input",
       "attention",
@@ -526,7 +520,7 @@ describe("sidebar group visibility", () => {
 
   it("recomputes current ordered membership and retains reveal through status, order and size changes", () => {
     const items = entries([
-      ...Array(7).fill("done"),
+      ...Array(20).fill("done"),
       "running",
       "done",
       "failed",
@@ -538,16 +532,10 @@ describe("sidebar group visibility", () => {
       { initialProps: { rows: items } },
     );
     expect(names(result.current.visibleItems)).toEqual([
-      "row-1",
-      "row-2",
-      "row-3",
-      "row-4",
-      "row-5",
-      "row-6",
-      "row-7",
-      "row-8",
-      "row-10",
-      "row-12",
+      ...names(items.slice(0, 20)),
+      "row-21",
+      "row-23",
+      "row-25",
     ]);
     act(() => result.current.toggleExpanded());
     expect(result.current.visibleItems).toEqual(items);
@@ -559,34 +547,26 @@ describe("sidebar group visibility", () => {
     rerender({ rows: items.toReversed() });
     expect(result.current.visibleItems).toEqual(items.toReversed());
     act(() => result.current.toggleExpanded());
-    expect(names(result.current.visibleItems)).toEqual([
-      "row-12",
-      "row-11",
-      "row-10",
-      "row-9",
-      "row-8",
-      "row-7",
-      "row-6",
-    ]);
+    expect(result.current.visibleItems).toEqual(items.toReversed().slice(0, 20));
     const newest = { ...items[0], workspaceId: "new", workspaceKey: "srv:new" };
     rerender({ rows: [newest, ...items] });
     expect(result.current.visibleItems[0]).toBe(newest);
-    expect(result.current.visibleItems).toHaveLength(10);
+    expect(result.current.visibleItems).toHaveLength(23);
     expect(result.current.expanded).toBe(false);
     act(() => result.current.toggleExpanded());
     unmount();
     const remounted = renderHook(() => useLimitedSidebarGroup({ items, selection: null, policy }));
     expect(remounted.result.current.expanded).toBe(false);
-    expect(remounted.result.current.visibleItems).toHaveLength(10);
+    expect(remounted.result.current.visibleItems).toHaveLength(23);
   });
 
   it("follows effective pending creation, recovery and agent activity without changing Created order", () => {
-    const items = entries(Array(12).fill("done"));
+    const items = entries(Array(25).fill("done"));
     const descriptor = workspace({
-      id: "row-12",
+      id: "row-25",
       projectId: "project-a",
       projectDisplayName: "Project A",
-      name: "Row 12",
+      name: "Row 25",
     });
     const pending = {
       draftId: "draft",
@@ -600,14 +580,10 @@ describe("sidebar group visibility", () => {
     };
     const { result, rerender } = renderHook(
       ({ last }) =>
-        useLimitedSidebarGroup({
-          items: [...items.slice(0, 11), last],
-          selection: null,
-          policy,
-        }),
-      { initialProps: { last: items[11] } },
+        useLimitedSidebarGroup({ items: [...items.slice(0, 24), last], selection: null, policy }),
+      { initialProps: { last: items[24] } },
     );
-    expect(result.current.visibleItems).toHaveLength(7);
+    expect(result.current.visibleItems).toHaveLength(20);
     const creating = createSidebarWorkspaceEntry({
       serverId: SERVER_ID,
       workspace: descriptor,
@@ -615,14 +591,14 @@ describe("sidebar group visibility", () => {
     });
     expect(creating.statusBucket).toBe("running");
     rerender({ last: creating });
-    expect(names(result.current.visibleItems)).toEqual([...names(items.slice(0, 7)), "row-12"]);
+    expect(names(result.current.visibleItems)).toEqual([...names(items.slice(0, 20)), "row-25"]);
     const abandoned = createSidebarWorkspaceEntry({
       serverId: SERVER_ID,
       workspace: descriptor,
       pendingCreateAttempts: { draft: { ...pending, lifecycle: "abandoned" } },
     });
     rerender({ last: abandoned });
-    expect(result.current.visibleItems).toHaveLength(7);
+    expect(result.current.visibleItems).toHaveLength(20);
     rerender({ last: creating });
     for (const status of ["running", "attention", "needs_input", "failed", "done"] as const) {
       const last = createSidebarWorkspaceEntry({
@@ -635,7 +611,7 @@ describe("sidebar group visibility", () => {
       expect(last.statusBucket).toBe(status);
       rerender({ last });
       expect(names(result.current.visibleItems)).toEqual(
-        status === "done" ? names(items.slice(0, 7)) : [...names(items.slice(0, 7)), "row-12"],
+        status === "done" ? names(items.slice(0, 20)) : [...names(items.slice(0, 20)), "row-25"],
       );
     }
   });

@@ -60,7 +60,8 @@ export function selectSidebarGroupVisibility<T extends SidebarGroupItem>(
   input: SidebarGroupVisibilityInput<T>,
 ): SidebarGroupVisibility<T> {
   const { items, expanded, policy, selection } = input;
-  const limit = policy.kind === "pinned" ? 20 : 7;
+  // FORK(project-navigation): keep twenty project rows visible, matching pinned groups.
+  const limit = 20;
   const baseline: T[] = [];
   let leadingItem: T | null = null;
   let canToggle = false;
