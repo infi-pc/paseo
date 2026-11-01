@@ -1,7 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { formatComposeReference, matchComposeWorkspace } from "./location";
+import { canComposeIntoAgent, formatComposeReference, matchComposeWorkspace } from "./location";
 
 describe("compose source locations", () => {
+  it.each([
+    { archivedAt: null, isArchiving: false, expected: true },
+    { archivedAt: undefined, isArchiving: false, expected: true },
+    { archivedAt: "2026-11-01T12:00:00.000Z", isArchiving: false, expected: false },
+    { archivedAt: null, isArchiving: true, expected: false },
+    { archivedAt: "2026-11-01T12:00:00.000Z", isArchiving: true, expected: false },
+  ])("checks session eligibility for compose: %j", ({ archivedAt, isArchiving, expected }) => {
+    expect(
+      canComposeIntoAgent({
+        agent: { workspaceId: "feature", archivedAt },
+        workspaceId: "feature",
+        isArchiving,
+      }),
+    ).toBe(expected);
+  });
+
+  it("rejects missing sessions and sessions moved to another workspace", () => {
+    expect(canComposeIntoAgent({ agent: null, workspaceId: "feature", isArchiving: false })).toBe(
+      false,
+    );
+    expect(
+      canComposeIntoAgent({
+        agent: { workspaceId: "main", archivedAt: null },
+        workspaceId: "feature",
+        isArchiving: false,
+      }),
+    ).toBe(false);
+  });
+
   it("matches the exact checkout, keeping sibling and nested worktrees distinct", () => {
     const workspaces = [
       { id: "main", workspaceDirectory: "/repo" },
