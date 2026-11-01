@@ -71,6 +71,12 @@ One entry per fork feature: the commits that built it, the files that own it, an
 
 Commits are the fork commits that built the feature (`git show --stat <sha>` for the full file list). "Owns" lists the fork-owned entry points. "Wires into" lists the upstream files the feature edits, largest first.
 
+### Personal iOS TestFlight builds
+
+- Owns: `packages/app/testflight/config.js`, `scripts/build-ios-testflight.mjs`.
+- Wires into: Expo app configuration, its existing test suite, root npm scripts, and the Markdown dependency patch.
+- Uses Michael's Apple identity with local Xcode signing. See [iOS builds](ios.md).
+
 ### Inbox and project navigation
 
 - Owns: `packages/app/src/components/sidebar/navigation/`.
