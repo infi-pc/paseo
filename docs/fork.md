@@ -169,11 +169,12 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 - Uses the host's `linear` CLI and its existing workspace credentials. The daemon must have the CLI on its PATH; no credentials enter the app. Linking adds the PR URL as a Linear attachment. Creating an issue opens Linear's form, after which you can link its identifier.
 - PR URLs are the lookup identity; a shared short-lived daemon cache prevents each connected client from launching another CLI process.
 
-### Workspace PR toolbar button
+### Workspace PR toolbar buttons
 
 - Owns: `packages/app/src/git/workspace-pull-request-button.tsx`
 - Wires into: Git action policy and hook, `git/workspace-actions.tsx`, and the workspace header.
 - Keeps the current PR directly accessible from the toolbar; branches without a PR offer creation from the grey icon's menu.
+- `FORK(codiff-toolbar)` adds a Codiff shortcut in `git/workspace-actions.tsx`, wired through `workspace-screen.tsx` and the English resources. It appears when a PR is found and launches `codiff pr <number>` through the host's existing terminal profile flow.
 
 ### Project PR browser
 

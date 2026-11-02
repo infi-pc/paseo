@@ -613,6 +613,10 @@ export const en = {
     },
   },
   workspace: {
+    // FORK(codiff-toolbar): PR review shortcut.
+    codiff: {
+      open: "Open PR #{{number}} in Codiff",
+    },
     linear: {
       title: "Linear issues",
       link: "Link issue",

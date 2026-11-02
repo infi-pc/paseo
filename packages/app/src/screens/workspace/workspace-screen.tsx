@@ -3228,7 +3228,15 @@ function WorkspaceScreenContent({
         {workspaceDirectory ? (
           <>
             {/* FORK(pr-toolbar): keep the PR shortcut before the run/editor controls. */}
-            <WorkspaceActions serverId={normalizedServerId} cwd={workspaceDirectory}>
+            {/* FORK(codiff-toolbar): reuse terminal launch, tab selection, and error feedback. */}
+            <WorkspaceActions
+              serverId={normalizedServerId}
+              cwd={workspaceDirectory}
+              onCreateTerminalWithProfile={handleCreateTerminalWithProfile}
+              terminalPending={
+                createTerminalMutation.isPending || pendingTerminalCreateInput !== null
+              }
+            >
               {workspaceDescriptor ? (
                 <WorkspaceScriptsButton
                   serverId={normalizedServerId}
@@ -3272,6 +3280,9 @@ function WorkspaceScreenContent({
       handleScriptTerminalStarted,
       handleViewScriptTerminal,
       handleOpenUrlInBrowserTab,
+      handleCreateTerminalWithProfile,
+      createTerminalMutation.isPending,
+      pendingTerminalCreateInput,
       handleToggleExplorerSidebar,
       explorerSidebarToggleLabel,
       explorerSidebarToggleAccessibilityState,
