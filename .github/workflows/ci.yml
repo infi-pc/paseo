@@ -442,7 +442,18 @@ jobs:
         run: node scripts/npm-retry.mjs ci
 
       - name: Install shell integration test dependency
-        run: sudo apt-get update && sudo apt-get install -y zsh
+        timeout-minutes: 5
+        run: |
+          # The runner's Azure Ubuntu mirror repeatedly fails DNS resolution.
+          # Keep Ubuntu signature checks and use the canonical package servers.
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          fi
+          if [[ -f /etc/apt/apt-security-mirrors.txt ]]; then
+            printf '%s\n' 'https://security.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-security-mirrors.txt > /dev/null
+          fi
+          sudo apt-get update -o Acquire::Retries=2
+          sudo apt-get install -y zsh
 
       - name: Install Playwright browsers
         timeout-minutes: 10

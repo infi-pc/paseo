@@ -15,7 +15,7 @@ Local checks:
   plugin subscriptions/footer placement, appearance settings, inline renaming,
   sidebar views, onboarding, compact footer overflow, and the mobile project picker.
 - Together with the separate reading/disclosure and provider-removal checks below,
-  this verifies 78 distinct browser cases. No full local suite was run.
+  this first verifies 78 distinct browser cases. No full local suite was run.
 - Corrected onboarding project-discovery case: passed.
 - Pinned-prompt reading-line case and Expand thinking=true disclosure: 2 passed.
 - Short compact plugin navigation after height adjustment: passed.
@@ -31,4 +31,18 @@ restored default view remains visible when browser history returns to Inbox.
 Local macOS cursor positioning and footer shortcuts use the platform modifier;
 the compact Settings shortcut asserts the compact Settings landing route.
 
-At submission, the new full GitHub Actions run is pending.
+The canceled initial shard 7 also contained failures before cancellation. Its
+17 affected cases now pass across targeted runs and corrected-case reruns:
+- multi-project hover scanning has real mock-agent session activity in Inbox;
+- compact sidebar opening is idempotent, and pin retention checks stored pin state;
+- phone terminals select their project and wait for the drawer to close before gestures;
+- archive/undo fixtures select their project, measure the toast's workspace-column
+  host, and measure the column width when resizing beside the utility rail;
+- compact workspace-label picker navigation passes with the idempotent opener.
+
+Total: 95 distinct affected browser cases verified locally. Formatting, lint, and
+workspace typecheck pass; workflow YAML parses and the apt shell block passes bash -n.
+
+Run 43043575729 repeated the Azure Ubuntu mirror DNS failure. The browser job now
+uses archive.ubuntu.com/security.ubuntu.com mirror lists while retaining package
+signature verification. A new full GitHub Actions run is pending at submission.

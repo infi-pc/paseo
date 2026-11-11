@@ -470,6 +470,21 @@ test.describe("Sidebar workspace list", () => {
     );
 
     try {
+      // The scan crosses projects in Inbox, so each workspace needs session activity.
+      await Promise.all(
+        workspaces.map(async (workspace) => {
+          const agent = await workspace.client.createAgent({
+            provider: "mock",
+            cwd: workspace.repoPath,
+            workspaceId: workspace.workspaceId,
+            title: workspace.workspaceName,
+            model: "e2e-fast-stream",
+            modeId: "load-test",
+            initialPrompt: "Seed hover scan activity",
+          });
+          await workspace.client.waitForFinish(agent.id, 15_000);
+        }),
+      );
       await gotoAppShell(page);
       for (const workspace of workspaces) {
         await waitForSidebarWorkspace(page, workspace.workspaceId);
@@ -590,7 +605,15 @@ test.describe("Mobile sidebar panelState transition", () => {
       const row = page.getByTestId(getWorkspaceRowTestId(workspace.workspaceId));
       await expect(row).toBeVisible({ timeout: 30_000 });
       await pinWorkspaceFromSidebar(page, workspace.workspaceId);
-      await expect(page.getByTestId("sidebar-pinned-section")).toBeVisible();
+      await expect
+        .poll(async () => {
+          const { entries } = await workspace.client.fetchWorkspaces();
+          for (const entry of entries) {
+            if (entry.id === workspace.workspaceId) return Boolean(entry.pinnedAt);
+          }
+          return false;
+        })
+        .toBe(true);
 
       await closeMobileAgentSidebar(page);
       await expectMobileAgentSidebarHidden(page);

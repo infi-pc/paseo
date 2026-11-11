@@ -1,3 +1,7 @@
+import {
+  expectMobileAgentSidebarHidden,
+  selectSidebarProjectByName,
+} from "../support/helpers/sidebar";
 import { getServerId } from "../support/helpers/server-id";
 import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
 import { spawnSync } from "node:child_process";
@@ -566,8 +570,9 @@ async function openPhoneInputCapture(page: Page, mode: "alternate" | "mouse") {
 
 async function openPhoneTerminal(page: Page) {
   await page.goto("/");
-  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await selectSidebarProjectByName(page, path.basename(harness.tempRepo.path));
   await page.getByTestId(`sidebar-workspace-row-${getServerId()}:${harness.workspaceId}`).click();
+  await expectMobileAgentSidebarHidden(page);
   await expect(page.getByRole("textbox", { name: "Terminal input" })).toBeVisible();
   await expect(page.getByTestId("terminal-surface").filter({ visible: true })).toBeVisible();
 }

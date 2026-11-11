@@ -56,13 +56,13 @@ test.describe("Workspace archive undo", () => {
   });
 
   async function seedWorktree(page: Page, slug: string) {
-    await openProjectViaDaemon(client, tempRepo.path);
+    const project = await openProjectViaDaemon(client, tempRepo.path);
     const worktree = await createWorktreeViaDaemon(client, {
       cwd: tempRepo.path,
       slug: `${slug}-${Date.now()}`,
     });
     worktreeDirectories.add(worktree.workspaceDirectory);
-    await gotoAppShell(page);
+    await gotoAppShell(page, project);
     await waitForSidebarHydration(page);
     await waitForWorkspaceInSidebar(page, {
       serverId: getServerId(),
@@ -91,7 +91,7 @@ test.describe("Workspace archive undo", () => {
     expect(kebabBox.x - (buttonBox.x + buttonBox.width)).toBeGreaterThanOrEqual(8);
   });
 
-  test("the archived toast sits over the sidebar above its footer, and only Undo presses", async ({
+  test("the archived toast overlays the workspace column, and only Undo presses", async ({
     page,
   }) => {
     const worktree = await seedWorktree(page, "archive-toast-sidebar");
@@ -100,13 +100,14 @@ test.describe("Workspace archive undo", () => {
 
     const [toastBox, footerBox] = await Promise.all([
       page.getByTestId("workspace-archived-toast").boundingBox(),
-      page.getByTestId("sidebar-footer").boundingBox(),
+      page.getByTestId("sidebar-toast-region").boundingBox(),
     ]);
     if (!toastBox || !footerBox) throw new Error("Toast or footer is not laid out");
     expect(toastBox.x).toBeGreaterThanOrEqual(footerBox.x);
     expect(toastBox.x + toastBox.width).toBeLessThanOrEqual(footerBox.x + footerBox.width);
-    expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(footerBox.y);
-    expect(footerBox.y - (toastBox.y + toastBox.height)).toBeLessThanOrEqual(16);
+    const regionBottom = footerBox.y + footerBox.height;
+    expect(toastBox.y + toastBox.height).toBeLessThanOrEqual(regionBottom);
+    expect(regionBottom - (toastBox.y + toastBox.height)).toBeLessThanOrEqual(16);
 
     await expect(page.getByTestId("app-toast-message")).toHaveCSS("cursor", "auto");
     await expect(undoButton(page)).toHaveCSS("cursor", "pointer");

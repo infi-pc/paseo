@@ -266,6 +266,12 @@ export function isCompactSidebar(page: Page): boolean {
 }
 
 async function revealSidebarNavigation(page: Page): Promise<void> {
+  const viewport = page.viewportSize();
+  const closeButton = page.getByTestId("sidebar-close");
+  if (isCompactSidebar(page) && (await closeButton.count()) > 0) {
+    const close = await closeButton.boundingBox();
+    if (close && viewport && close.x >= 0 && close.x + close.width <= viewport.width) return;
+  }
   const open = page.getByRole("button", { name: "Open menu", exact: true });
   if (await open.isVisible()) await open.click();
 }

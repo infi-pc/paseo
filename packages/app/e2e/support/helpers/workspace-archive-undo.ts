@@ -60,7 +60,10 @@ export async function resizeSidebarToMinimum(page: Page): Promise<void> {
   await page.mouse.move(10, y, { steps: 16 });
   await page.mouse.up();
   await expect
-    .poll(async () => (await page.getByTestId("sidebar-footer").boundingBox())?.width)
+    .poll(async () => {
+      const region = await page.getByTestId("sidebar-toast-region").boundingBox();
+      return region?.width;
+    })
     .toBeLessThanOrEqual(200);
 }
 

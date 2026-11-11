@@ -36,7 +36,7 @@ export function SidebarToastRegion({ active, children }: { active: boolean; chil
   }, [appToast, sidebarToast]);
 
   return (
-    <View style={styles.region}>
+    <View style={styles.region} testID="sidebar-toast-region">
       <ToastApiProvider api={api}>{children}</ToastApiProvider>
       <ToastViewport toast={toast} onDismiss={dismiss} placement="sidebar" />
     </View>
