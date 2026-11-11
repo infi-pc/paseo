@@ -7,6 +7,7 @@ import { seedWorkspace } from "./seed-client";
 import { gotoWorkspace } from "./launcher";
 import { openSidebarNavSettings, leaveSettings } from "./sidebar-nav-settings";
 import { visibleTestId } from "./plugin-sidebar-items";
+import { selectSidebarProject } from "./sidebar";
 import { getServerId } from "./server-id";
 
 export async function withSidebarViews(
@@ -33,6 +34,7 @@ export async function withSidebarViews(
     await client.installDirectoryPlugin(example.directory);
     await page.setViewportSize({ width: 1280, height: 900 });
     await gotoWorkspace(page, workspace.workspaceId);
+    await selectSidebarProject(page, workspace.projectKey);
     await run(sidebarViews(page, workspace.workspaceId, client));
   } finally {
     await client.removePlugin("sidebar-views");

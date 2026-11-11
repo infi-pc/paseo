@@ -32,15 +32,16 @@ const NARROW_TOUCH_LINE = [
   "sidebar-settings",
 ];
 
-test.describe("Sidebar footer on a touch screen", () => {
-  test.use({ viewport: { width: 1280, height: 800 }, hasTouch: true });
+test.describe("Sidebar footer in a compact touch sidebar", () => {
+  test.use({ viewport: { width: 220, height: 800 }, hasTouch: true });
 
-  test("a narrow docked sidebar moves the actions it can't fit behind a caret", async ({
+  test("a narrow compact sidebar moves the actions it can't fit behind a caret", async ({
     page,
   }) => {
     await seedDockedSidebarWidth(page, MIN_SIDEBAR_WIDTH);
     await watchFooterClipping(page);
     await gotoAppShell(page);
+    await openCompactSidebar(page);
     await expectFooterLine(page, { testIDs: NARROW_TOUCH_LINE, controlSize: TOUCH_CONTROL });
     await expectFooterNeverClipped(page);
 
@@ -64,17 +65,19 @@ test.describe("Sidebar footer on a touch screen", () => {
     });
 
     await test.step("Add project and Settings shortcuts still work", async () => {
-      await page.keyboard.press("Control+o");
+      await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+o`);
       await expect(addProjectFlow(page)).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(addProjectFlow(page)).toBeHidden();
-      await page.keyboard.press("Control+,");
-      await expect(page).toHaveURL(/\/settings\/general$/);
+      await page.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+,`);
+      await expect(page).toHaveURL(/\/settings$/);
     });
   });
 
-  test("the default sidebar width keeps all five actions inline", async ({ page }) => {
+  test("the usual phone width keeps all five actions inline", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
     await gotoAppShell(page);
+    await openCompactSidebar(page);
     await expectFooterLine(page, { testIDs: ALL_INLINE, controlSize: TOUCH_CONTROL });
   });
 });

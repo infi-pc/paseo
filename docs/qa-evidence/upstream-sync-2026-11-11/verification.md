@@ -72,8 +72,9 @@ That run found issues outside the initial targeted set:
   commands for 1,000 files. Windows confirmation remains owned by the follow-up CI run.
 - Pi's new history test assumed a checkpoint-only fork even when the selected reply is the latest.
   Keep the fork's current-context rule and retain the test's exclusion of abandoned branches.
-- The desktop sidebar displayed Add project in both the rail and footer. The desktop footer now
-  excludes that action from both its inline and overflow lists; compact layouts retain it.
+- Desktop utilities had moved below the whole sidebar and duplicated Add project. Utilities now
+  stay in the project rail, with plugin/Usage rows beside it. Compact layouts retain their
+  horizontal utility row and upstream's overflow menus.
 
 Follow-up local verification passed: archive behavior (13), archive unit tests (6), snooze transport
 (3), Pi history (17), diff content E2E (12), diff manager (7), and desktop project picker (2).
@@ -83,12 +84,23 @@ project-prefixed Inbox accessibility label. The chat memo comparison now include
 so draft hydration can enable the quote action after the first render. The diff wire test harness
 recognizes negotiated metadata end frames.
 
-Full CI is **not green**. The initial run also reported unresolved browser failures in sidebar
-footer layout, project visibility/selection, plugin sidebar views, onboarding, pinned-prompt
-visibility, PR-to-workspace setup, and turn-collapse reasoning. Some fixtures assume upstream's
-project list rather than the fork's Inbox, but these still need case-by-case investigation; they
-are not classified as harmless. A provider-removal test also reported a module-export loading
-error. The initial CI status snapshot is recorded in `ci-initial-status.json`.
+Browser follow-up restores the fork's desktop rail/footer geometry and keeps the compact project
+picker above scrolling navigation. Compact built-in actions use a row, and plugin navigation leaves
+room for a project header and its first workspace on short screens. PR shortcuts select worktree
+isolation through upstream's shared setup model before choosing the PR.
+
+Upstream fixtures that expect inactive workspaces now select their project explicitly; onboarding
+checks discover added projects through the rail. The pinned-prompt test places its prompt at the
+reading line after the shared scroll helper centers it. Disclosure tests disable generated tool
+summaries so their labels stay deterministic, and settle scrolling before clicking the turn summary.
+The overflow journey runs in the compact horizontal footer; the desktop utility checks retain the
+fork's vertical rail contract.
+
+The second full CI run at `ce38a3825` stopped every Linux browser job during apt installation
+because `azure.archive.ubuntu.com` could not resolve. It therefore did not recheck the original
+browser failures. The provider-removal module-export error is checked separately against a fresh
+local build. Full CI remains pending for these browser follow-up changes. Exact browser commands
+and results are recorded in `browser-ci-follow-up.txt`.
 
 No production daemon restart or release was performed. This pass does not establish native
 device behavior or packaged desktop startup. Native timeline and

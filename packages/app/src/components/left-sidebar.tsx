@@ -427,9 +427,10 @@ function SidebarFooter({
   handleAddHost,
   handleOpenHostSettings,
   onBeforeNavigate,
-  showAddProject = true,
+  // FORK(project-navigation): desktop utilities stay in the project rail.
+  rail = false,
 }: {
-  showAddProject?: boolean;
+  rail?: boolean;
   handleOpenProject: () => void;
   handleSettings: () => void;
   labels: {
@@ -452,26 +453,28 @@ function SidebarFooter({
   }, []);
   const { inline, overflow } = useMemo(
     () =>
-      resolveSidebarFooterLayout({
-        rowWidth,
-        controlSize: TOOLBAR_CONTROL_SIZES[controlSizingForLayout(isCompactLayout)],
-        rowPadding: FOOTER_ROW_PADDING,
-        actions: showAddProject
-          ? SIDEBAR_FOOTER_ACTIONS
-          : SIDEBAR_FOOTER_ACTIONS.filter((action) => action !== "add-project"),
-      }),
-    [rowWidth, isCompactLayout, showAddProject],
+      rail
+        ? {
+            inline: SIDEBAR_FOOTER_ACTIONS.filter((action) => action !== "add-project"),
+            overflow: [],
+          }
+        : resolveSidebarFooterLayout({
+            rowWidth,
+            controlSize: TOOLBAR_CONTROL_SIZES[controlSizingForLayout(isCompactLayout)],
+            rowPadding: FOOTER_ROW_PADDING,
+            actions: SIDEBAR_FOOTER_ACTIONS,
+          }),
+    [rowWidth, isCompactLayout, rail],
   );
   const isInline = (action: SidebarFooterAction) => inline.includes(action);
 
-  // One line of icons: Add project, Usage, Hosts, then Help and Settings at the end. Actions that
-  // don't fit move behind a caret before Settings.
+  // Compact utilities use one line; actions that do not fit move behind a caret before Settings.
   return (
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
-        <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />
+        {rail ? null : <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />}
         <View
-          style={styles.sidebarFooter}
+          style={[styles.sidebarFooter, rail && styles.railFooter]}
           onLayout={handleRowLayout}
           testID="sidebar-footer-bottom-line"
         >
@@ -492,7 +495,7 @@ function SidebarFooter({
               onOpenHostSettings={handleOpenHostSettings}
             />
           ) : null}
-          <View style={styles.footerSpacer} />
+          {rail ? null : <View style={styles.footerSpacer} />}
           {isInline("help") ? <SidebarHelpMenu /> : null}
           {overflow.length > 0 ? (
             <SidebarFooterOverflowMenu
@@ -626,12 +629,6 @@ function MobileSidebar({
 
   const navRows = (
     <>
-      <View style={styles.mobileNavigationHeader}>
-        <View style={styles.navigationTitle}>
-          <SidebarProjectSelector />
-        </View>
-        {closeButton}
-      </View>
       <SidebarNavRows
         iconOnly
         itemsKind="builtin"
@@ -650,6 +647,14 @@ function MobileSidebar({
     >
       <View style={styles.sidebarContent} pointerEvents="auto">
         <WindowChromeSafeArea placement="below" />
+        {/* FORK(project-navigation): the project picker stays above scrolling navigation. */}
+        <View style={styles.mobileNavigationHeader}>
+          <View style={styles.navigationTitle}>
+            <SidebarProjectSelector />
+          </View>
+          {closeButton}
+        </View>
+
         {platformIsNative ? (
           <GHScrollView
             // Same contract as the workspace list: vertical drags scroll the nav
@@ -718,14 +723,16 @@ function MobileSidebar({
 
 function SidebarNavigationColumns({
   onAddProject,
+  footer,
   children,
 }: {
   onAddProject: () => void;
+  footer: ReactNode;
   children: ReactNode;
 }) {
   return (
     <View style={styles.navigationColumns}>
-      <SidebarProjectRail onAddProject={onAddProject} footer={null} />
+      <SidebarProjectRail onAddProject={onAddProject} footer={footer} />
       <View style={styles.workspaceColumn}>{children}</View>
     </View>
   );
@@ -861,6 +868,27 @@ function DesktopSidebar({
     () => [styles.sidebarHeaderGroup, (ownsTopLeft || inTopBand) && styles.sidebarHeaderGroupFlush],
     [ownsTopLeft, inTopBand],
   );
+  const railFooter = useMemo(
+    () => (
+      <SidebarFooter
+        rail
+        handleOpenProject={handleOpenProject}
+        handleSettings={handleSettings}
+        labels={labels}
+        handleAddHost={handleAddHost}
+        handleOpenHostSettings={handleOpenHostSettings}
+        onBeforeNavigate={closeSidebar}
+      />
+    ),
+    [
+      handleOpenProject,
+      handleSettings,
+      labels,
+      handleAddHost,
+      handleOpenHostSettings,
+      closeSidebar,
+    ],
+  );
   return (
     <MobilePanelOverlay
       panel="agent-list"
@@ -892,14 +920,15 @@ function DesktopSidebar({
             ) : (
               <TitlebarDragRegion />
             )}
+          </View>
+
+          <SidebarNavigationColumns onAddProject={handleOpenProject} footer={railFooter}>
             <SidebarNavRows
               itemsKind="plugin"
               style={sidebarHeaderGroupStyle}
               onBeforeNavigate={closeSidebar}
             />
-          </View>
 
-          <SidebarNavigationColumns onAddProject={handleOpenProject}>
             <SidebarViewSlot dismiss={closeSidebar}>
               <SidebarToastRegion active={active}>
                 {isInitialLoad && !hasActiveHostFilter ? (
@@ -928,19 +957,11 @@ function DesktopSidebar({
                 )}
               </SidebarToastRegion>
             </SidebarViewSlot>
+            <SidebarCalloutSlot />
+            <UsageSidebarRoot>
+              <SidebarFooterRows onBeforeNavigate={closeSidebar} />
+            </UsageSidebarRoot>
           </SidebarNavigationColumns>
-
-          <SidebarCalloutSlot />
-
-          <SidebarFooter
-            showAddProject={false}
-            handleOpenProject={handleOpenProject}
-            handleSettings={handleSettings}
-            labels={labels}
-            handleAddHost={handleAddHost}
-            handleOpenHostSettings={handleOpenHostSettings}
-            onBeforeNavigate={closeSidebar}
-          />
 
           {!overlay && divisionLayout === null ? (
             <SidebarResizeHandle
@@ -992,7 +1013,7 @@ const staticStyles = RNStyleSheet.create({
 
 const styles = StyleSheet.create((theme) => ({
   navigationColumns: { flex: 1, minHeight: 0, flexDirection: "row" },
-  workspaceColumn: { flex: 1, minWidth: 0 },
+  workspaceColumn: { flex: 1, minWidth: 0, minHeight: 0 },
   mobileNavigationHeader: { flexDirection: "row", alignItems: "center" },
   navigationTitle: { flex: 1, minWidth: 0 },
   mobileNavigationActions: {
@@ -1012,14 +1033,16 @@ const styles = StyleSheet.create((theme) => ({
   sidebarHeaderGroupFlush: {
     paddingTop: 0,
   },
-  // The nav block caps at half the sidebar; a long item list scrolls inside the
-  // cap instead of crowding the workspace list off a short screen.
+  // FORK(project-navigation): leave room for the project header and its first workspace
+  // on short screens; long plugin navigation scrolls inside its own cap.
   mobileNavScroll: {
     flexGrow: 0,
     flexShrink: 1,
-    maxHeight: "50%",
+    maxHeight: "40%",
   },
   mobileNavRowsGroup: {
+    flexDirection: "row",
+    justifyContent: "space-around",
     paddingTop: theme.spacing[2],
     gap: 2,
     paddingBottom: theme.spacing[1.5],

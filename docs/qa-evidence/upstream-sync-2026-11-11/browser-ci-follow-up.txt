@@ -1,0 +1,23 @@
+Browser CI follow-up, November 11, 2026
+Base: ce38a3825
+
+Full CI run 43036009269 did not execute browser tests: apt failed to resolve
+azure.archive.ubuntu.com in every browser job. Earlier behavioral failures came
+from run 43030661788.
+
+Local checks:
+- npm run format: passed.
+- npm run lint: passed, zero warnings/errors.
+- npm run typecheck: passed across all workspaces.
+- Focused Playwright run over 12 affected specs: running; completed cases include
+  PR handoff, project navigation/order, plugin subscriptions/footer placement,
+  sidebar appearance settings, and the mobile project picker.
+- Corrected onboarding project-discovery case: passed.
+- Pinned-prompt reading-line case and Expand thinking=true disclosure: 2 passed.
+- Short compact plugin navigation after height adjustment: passed.
+- Provider-removal case with a fresh stack: passed; no module-export failure.
+- Compact footer overflow, nested Help/Usage, and shortcuts: passed.
+- Composer insertion at cursor on macOS after platform-specific Home key: passed.
+
+Tests ran against ephemeral daemons and Metro instances. Port 6767 was untouched.
+Full-suite coverage remains owned by GitHub Actions.

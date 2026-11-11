@@ -16,6 +16,8 @@ test.use({
   e2eDaemonConfig: {
     version: 1,
     agents: {
+      // This suite asserts disclosure labels, independently of generated tool summaries.
+      toolCallSummaries: { enabled: false },
       providers: {
         codex: {
           enabled: true,
@@ -624,7 +626,12 @@ for (const autoExpandReasoning of [false, true]) {
       await expectThinkingPresentation(page, autoExpandReasoning);
       await switchToCollapsedTurns(page);
       await expectComposerVisible(page);
-      const summary = page.getByTestId("turn-summary").last().getByRole("button");
+      const summary = page
+        .locator('[data-testid="agent-chat-scroll"]:visible')
+        .first()
+        .getByTestId("turn-summary")
+        .last()
+        .getByRole("button");
       await expect(summary).toBeVisible();
       await expect(summary).not.toContainText(/thought/i);
       await expect(reasoning).toHaveCount(0);
@@ -632,6 +639,7 @@ for (const autoExpandReasoning of [false, true]) {
       await expect(reasoning).toHaveCount(autoExpandReasoning ? 1 : 0);
       await expect.poll(() => groupedToolsInsideLatestTurn(page)).toEqual([]);
       await openOneToolOutput(page);
+      await scrollTimelineRowIntoView(page, summary);
       await summary.click();
       await expect(reasoning).toHaveCount(0);
     } finally {
@@ -644,6 +652,8 @@ async function openOneToolOutput(page: Page) {
   const output = page.getByText(/\[burst\] tick 1 userIsAtBottom=true/).filter({ visible: true });
   await expect(output).toHaveCount(0);
   const command = page
+    .locator('[data-testid="agent-chat-scroll"]:visible')
+    .first()
     .getByTestId("tool-call-badge")
     .filter({ has: page.getByRole("button", { name: "Run shell command", exact: true }) })
     .last();

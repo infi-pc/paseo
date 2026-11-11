@@ -1129,12 +1129,14 @@ export function NewWorkspaceScreen({
     [baseItem, effectiveIsolation, isPending, pluginProject],
   );
 
+  // FORK(project-pull-requests): hand the selected PR into the shared setup model.
   const initialRequestAttached = useRef(false);
   useEffect(() => {
     if (!initialChangeRequest || initialRequestAttached.current) return;
     initialRequestAttached.current = true;
+    setup.chooseIsolation("worktree");
     selectPickerItem({ kind: "github-pr", item: initialChangeRequest });
-  }, [initialChangeRequest, selectPickerItem]);
+  }, [initialChangeRequest, selectPickerItem, setup]);
 
   const handleSelectOption = useCallback(
     (id: string) => {

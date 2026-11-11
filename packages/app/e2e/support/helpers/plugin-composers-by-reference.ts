@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "./sidebar";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -103,7 +104,7 @@ export async function withComposerToolsExample(
         test.step(`type "${text}" and put the cursor after ${cursorAfter} characters`, async () => {
           const input = prompt(page);
           await input.fill(text);
-          await input.press("Home");
+          await input.press(process.platform === "darwin" ? "Meta+ArrowLeft" : "Home");
           for (let index = 0; index < cursorAfter; index += 1) await input.press("ArrowRight");
         }),
       insertChecklistFromPanel: () =>
@@ -221,6 +222,7 @@ export async function withPluginWritingToAnotherWorkspace(
         }),
       goToAnotherWorkspace: () =>
         test.step("go to another workspace, so the agent's composer is not on screen", async () => {
+          await selectSidebarProject(page, elsewhere.projectKey);
           await workspaceRow(elsewhere.workspaceId).click();
           // The app keeps the workspace it left mounted, out of sight.
           await expect(targetTab().first()).toBeHidden();
@@ -230,6 +232,7 @@ export async function withPluginWritingToAnotherWorkspace(
           runCommand(page, "Composer ref: add a note")),
       returnToTargetWorkspace: () =>
         test.step("return to the agent's workspace without reloading the app", async () => {
+          await selectSidebarProject(page, workspace.projectKey);
           await workspaceRow(workspace.workspaceId).click();
           await expect(targetTab().first()).toBeVisible({ timeout: 30_000 });
         }),
@@ -369,6 +372,7 @@ export default function contribute(client) {
         }),
       goToAnotherWorkspace: () =>
         test.step("go to another workspace", async () => {
+          await selectSidebarProject(page, elsewhere.projectKey);
           await workspaceRow(elsewhere.workspaceId).click();
           await expect(targetTab().first()).toBeHidden();
         }),

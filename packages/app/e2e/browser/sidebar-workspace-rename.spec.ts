@@ -133,7 +133,7 @@ test.describe("Sidebar workspace rename", () => {
 
     try {
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const row = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
       const input = page.getByTestId(workspaceRenameInputTestId(workspace.workspaceId));
 
@@ -168,7 +168,7 @@ test.describe("Sidebar workspace rename", () => {
     try {
       const gate = await installDaemonWebSocketGate(page);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const row = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
       const input = page.getByTestId(workspaceRenameInputTestId(workspace.workspaceId));
 
@@ -200,7 +200,7 @@ test.describe("Sidebar workspace rename", () => {
     try {
       const gate = await installDaemonWebSocketGate(page);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const row = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
       const input = page.getByTestId(workspaceRenameInputTestId(workspace.workspaceId));
 
@@ -227,7 +227,7 @@ test.describe("Sidebar workspace rename", () => {
     try {
       const gate = await installDaemonWebSocketGate(page);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const row = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
       const input = page.getByTestId(workspaceRenameInputTestId(workspace.workspaceId));
 
@@ -257,7 +257,7 @@ test.describe("Sidebar workspace rename", () => {
     try {
       const gate = await installDaemonWebSocketGate(page);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const row = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
       const input = page.getByTestId(workspaceRenameInputTestId(workspace.workspaceId));
 
@@ -285,7 +285,7 @@ test.describe("Sidebar workspace rename", () => {
     try {
       const gate = await installDaemonWebSocketGate(page);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const row = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
       const input = page.getByTestId(workspaceRenameInputTestId(workspace.workspaceId));
 
@@ -328,7 +328,7 @@ test.describe("Sidebar workspace rename", () => {
     try {
       const gate = await installDaemonWebSocketGate(page);
       await page.setViewportSize({ width: 1280, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       const row = page.getByTestId(workspaceRowTestId(workspace.workspaceId));
       const input = page.getByTestId(workspaceRenameInputTestId(workspace.workspaceId));
 
@@ -362,7 +362,7 @@ test.describe("Sidebar workspace rename", () => {
 
     try {
       await page.setViewportSize({ width: 800, height: 800 });
-      await gotoAppShell(page);
+      await gotoAppShell(page, workspace);
       await chooseRenameFromKebab(page, workspace.workspaceId);
 
       const input = page.getByTestId(workspaceRenameModalTestId(workspace.workspaceId, "input"));

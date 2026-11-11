@@ -170,12 +170,14 @@ async function holdNextPluginCatalogResponse(page: Page) {
 
 test.describe("Plugin sidebar items", () => {
   let workspaceId: string;
+  let projectKey: string;
   let cleanup: () => Promise<void>;
 
   test.beforeEach(async () => {
     const workspace = await seedWorkspace({ repoPrefix: "plugin-sidebar-items-" });
     const plugins = await installSidebarPlugins();
     workspaceId = workspace.workspaceId;
+    projectKey = workspace.projectKey;
     cleanup = async () => {
       await plugins.cleanup();
       await workspace.cleanup();
@@ -190,8 +192,7 @@ test.describe("Plugin sidebar items", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 600 });
-    await gotoAppShell(page);
-    await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
+    await gotoAppShell(page, { projectKey });
     await expect(botRow(page, "status")).toBeAttached();
     const workspace = visibleTestId(page, `sidebar-workspace-row-${getServerId()}:${workspaceId}`);
     await expect(workspace).toBeInViewport({ ratio: 1 });

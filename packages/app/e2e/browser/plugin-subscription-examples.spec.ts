@@ -33,7 +33,7 @@ async function withExample(
     await client.patchDaemonConfig({ pluginsEnabled: true });
     await client.installDirectoryPlugin(copy.directory);
     await page.setViewportSize({ width: 1280, height: 800 });
-    await gotoAppShell(page);
+    await gotoAppShell(page, workspace);
     const target = { serverId: getServerId(), workspaceId: workspace.workspaceId };
     await waitForWorkspaceInSidebar(page, target);
     await switchWorkspaceViaSidebar({ page, ...target });

@@ -1,3 +1,4 @@
+import { selectSidebarProject } from "../support/helpers/sidebar";
 import { execFileSync } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
@@ -91,9 +92,9 @@ test("a new user is walked through setup once", async ({ page }, testInfo) => {
       await skipSetup(page);
       await page.reload();
       await expect(
-        page.locator('[data-testid^="sidebar-project-row-"]').filter({
-          hasText: path.basename(repo.path),
-        }),
+        page
+          .getByTestId("sidebar-project-rail")
+          .getByRole("button", { name: path.basename(repo.path), exact: true }),
       ).toBeVisible({ timeout: 60_000 });
       await expect(setupModal(page)).toHaveCount(0);
     });
@@ -300,10 +301,14 @@ test("setup suggests the repos the user already ran agents in", async ({ page },
       await setupPrimaryButton(page, "Continue").click();
       await expectSetupStep(page, "Let agents use Paseo");
       await expect(
-        page.locator('[data-testid^="sidebar-project-row-"]').filter({ hasText: repoName }),
+        page
+          .getByTestId("sidebar-project-rail")
+          .getByRole("button", { name: repoName, exact: true }),
       ).toBeVisible({ timeout: 60_000 });
       await expect(
-        page.locator('[data-testid^="sidebar-project-row-"]').filter({ hasText: scratchName }),
+        page
+          .getByTestId("sidebar-project-rail")
+          .getByRole("button", { name: scratchName, exact: true }),
       ).toHaveCount(0);
     });
   } finally {
@@ -320,6 +325,7 @@ test("an existing user only sees setup when they ask for it", async ({ page }) =
 
   try {
     await openAppAsNewUser(page, host);
+    await selectSidebarProject(page, workspace.projectKey);
     await expect(
       page.getByTestId(`sidebar-workspace-row-${host.serverId}:${workspace.workspaceId}`),
     ).toBeVisible({ timeout: 60_000 });
