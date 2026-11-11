@@ -49,3 +49,13 @@ desktop jobs now share the kernel.org Ubuntu archive mirror, whose noble and
 noble-security signed release indexes were verified to be present. Ubuntu package
 signature verification remains enabled. The apt steps are bounded to five minutes.
 A new full GitHub Actions run is pending at submission.
+
+Run 43047449639 passed the Linux desktop lifecycle and renderer stages, then its
+browser journey stopped at a startup readiness check for an inactive Inbox row.
+The readiness check now waits for the project rail entry; the journey already
+selects that project before opening its workspace. The real-Electron startup and
+Settings-scroll scenario passed locally after the correction. The full local
+journey stops at macOS hidden-window visibility assertions. A temporary local
+copy excluding that theme assertion reached the main browser checks and stopped
+at the related hidden-browser animation-frame assertion. No assertion was removed
+from the maintained script; Linux CI remains the full desktop-browser verdict.
