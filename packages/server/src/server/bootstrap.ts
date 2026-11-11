@@ -6,8 +6,9 @@ import { ToolCallSummaryStore } from "./agent/tool-call-summaries/store.js";
 import type { AgentDefaults } from "@getpaseo/protocol/agent-defaults";
 import { ToolCallSummarizer } from "./agent/tool-call-summaries/service.js";
 import { AgentSummaryGenerator } from "./agent/tool-call-summaries/generation.js";
+import { unarchiveWorkspaceAgents } from "./workspace-archive-service.js";
 import { createRestartRecovery } from "./agent/restart-recovery/index.js";
-import { sendPromptToAgent } from "./agent/agent-prompt.js";
+import { sendPromptToAgent, unarchiveAgentState } from "./agent/agent-prompt.js";
 import { createIdleRuntimeCleanup } from "./agent/idle-runtime-cleanup/index.js";
 import {
   createFinishSubscriptions,
@@ -602,7 +603,7 @@ function resolveReloadEnv(config: PaseoDaemonConfig): NodeJS.ProcessEnv {
 
 function initialRestartRecoverySettings(config: ResolvedDaemonSettings) {
   return {
-    resumeOnStartup: config.resumeOnStartup !== false,
+    resumeOnStartup: config.resumeOnStartup === true,
     resumePrompt: config.resumePrompt ?? "Resume working.",
   };
 }
@@ -1000,7 +1001,7 @@ export async function createPaseoDaemon(
   workspaceRegistry.subscribeToMutations(async (mutation) => {
     if (mutation.kind === "remove" && mutation.workspace) {
       const cwd = path.resolve(mutation.workspace.cwd);
-      const workspaces = await workspaceRegistry.list();
+      const workspaces = await workspaceRegistry.listActive();
       const hasActiveWorkspace = workspaces.some(
         (workspace) => !workspace.archivedAt && path.resolve(workspace.cwd) === cwd,
       );
@@ -1013,6 +1014,13 @@ export async function createPaseoDaemon(
     }
   });
   const workspaceProvisioning = createWorkspaceProvisioningService({
+    unarchiveWorkspaceAgents: (request) =>
+      unarchiveWorkspaceAgents({
+        ...request,
+        agentStorage,
+        unarchiveAgent: (id) => unarchiveAgentState(agentStorage, agentManager, id),
+        sessionLogger: logger,
+      }),
     lifecycle: pluginRuntime,
     serverId,
     projectRegistry,
@@ -1110,7 +1118,7 @@ export async function createPaseoDaemon(
   const restartRecovery = createRestartRecovery({
     storage: agentStorage,
     settings: () => ({
-      enabled: daemonConfigStore.get().resumeOnStartup !== false,
+      enabled: daemonConfigStore.get().resumeOnStartup === true,
       prompt: daemonConfigStore.get().resumePrompt ?? "Resume working.",
     }),
     eligible: async (record) =>
@@ -1165,11 +1173,13 @@ export async function createPaseoDaemon(
   const archiveWorkspaceRecordExternal = async (
     workspaceId: string,
     context?: WorkspaceArchiveContext,
+    archivedAt?: string,
   ) => {
     const existingWorkspace = await archivePersistedWorkspaceRecord({
       workspaceId,
       workspaceRegistry,
       context,
+      archivedAt,
     });
     if (!existingWorkspace || existingWorkspace.archivedAt) return;
     teardownArchivedWorkspaceRuntime(workspaceId);
@@ -1177,12 +1187,13 @@ export async function createPaseoDaemon(
   // external path→workspace adapter, not ownership: archive-by-path requests that
   // arrive with a worktree path and no workspaceId (old clients / CLI).
   const findWorkspaceIdForCwdExternal = async (cwd: string): Promise<string | null> => {
-    return resolveWorkspaceIdForPath(cwd, await workspaceRegistry.list());
+    // Explicit archive administration must prefer an archived exact match to an active ancestor.
+    return resolveWorkspaceIdForPath(cwd, await workspaceRegistry.listAll());
   };
   const ensureWorkspaceForCreateExternal = async (
     cwd: string,
     firstAgentContext?: FirstAgentContext,
-    context?: { callerWorkspaceId?: string },
+    context?: { background?: boolean; callerWorkspaceId?: string },
   ): Promise<string> => {
     const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
       cwd,
@@ -1200,7 +1211,7 @@ export async function createPaseoDaemon(
     return workspace.workspaceId;
   };
   const listActiveWorkspacesExternal = async (): Promise<ActiveWorkspaceRef[]> => {
-    const workspaces = await workspaceRegistry.list();
+    const workspaces = await workspaceRegistry.listActive();
     return workspaces
       .filter((workspace) => !workspace.archivedAt)
       .map((workspace) => ({
@@ -1235,14 +1246,14 @@ export async function createPaseoDaemon(
   const ensureWorkspaceForCreateAndBroadcastExternal = async (
     cwd: string,
     firstAgentContext?: FirstAgentContext,
-    context?: { callerWorkspaceId?: string },
+    context?: { background?: boolean; callerWorkspaceId?: string },
   ): Promise<string> => {
     const workspaceId = await ensureWorkspaceForCreateExternal(cwd, firstAgentContext, context);
     await emitWorkspaceUpdatesExternal([workspaceId]);
     return workspaceId;
   };
   const emitWorkspaceUpdateForCwdExternal = async (cwd: string) => {
-    const workspaceIds = workspaceIdsOnCheckout(await workspaceRegistry.list(), cwd);
+    const workspaceIds = workspaceIdsOnCheckout(await workspaceRegistry.listActive(), cwd);
     await emitWorkspaceUpdatesExternal(workspaceIds);
   };
   const emitExternalSessionMessage = (message: SessionOutboundMessage) => {
@@ -1370,7 +1381,8 @@ export async function createPaseoDaemon(
         findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
         listActiveWorkspaces: listActiveWorkspacesExternal,
         getWorkspace: (workspaceIdToGet) => workspaceRegistry.get(workspaceIdToGet),
-        archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+        archiveWorkspaceRecord: (workspaceIdToArchive, archivedAt) =>
+          archiveWorkspaceRecordExternal(workspaceIdToArchive, undefined, archivedAt),
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
         clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
@@ -1395,7 +1407,7 @@ export async function createPaseoDaemon(
       archiveAgentCommand({ agentManager, agentStorage, logger }, agentId),
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
     listActiveWorkspaces: listActiveWorkspacesExternal,
-    archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+    archiveWorkspaceRecord: (workspaceId) => archiveWorkspaceRecordExternal(workspaceId),
     emit: emitExternalSessionMessage,
     emitAgentRemove: async () => undefined,
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
@@ -1491,7 +1503,8 @@ export async function createPaseoDaemon(
         findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
         listActiveWorkspaces: listActiveWorkspacesExternal,
         getWorkspace: (workspaceIdToGet) => workspaceRegistry.get(workspaceIdToGet),
-        archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+        archiveWorkspaceRecord: (workspaceIdToArchive, archivedAt) =>
+          archiveWorkspaceRecordExternal(workspaceIdToArchive, undefined, archivedAt),
         emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
         markWorkspaceArchiving: markWorkspaceArchivingExternal,
         clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
@@ -1556,7 +1569,8 @@ export async function createPaseoDaemon(
   });
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");
   logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
-  const persistedRecords = await agentStorage.list();
+  // Startup loads persisted agent history once before restoring the registry.
+  const persistedRecords = await agentStorage.listAll();
   logger.info(
     { elapsed: elapsed() },
     `Agent registry loaded (${persistedRecords.length} record${persistedRecords.length === 1 ? "" : "s"}); agents will initialize on demand`,
@@ -1633,7 +1647,8 @@ export async function createPaseoDaemon(
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
     listActiveWorkspaces: listActiveWorkspacesExternal,
-    archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
+    archiveWorkspaceRecord: (workspaceId, archivedAt) =>
+      archiveWorkspaceRecordExternal(workspaceId, undefined, archivedAt),
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
     workspaceRegistry,
     projectRegistry,

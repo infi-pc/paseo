@@ -1,3 +1,4 @@
+import { useOverlayRegistration } from "@/keyboard";
 import {
   useCallback,
   useEffect,
@@ -16,12 +17,7 @@ import { MessageSquarePlus, Quote } from "lucide-react-native";
 import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
 import { Button } from "@/components/ui/button";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import {
-  getOverlayRoot,
-  OverlayLayerProvider,
-  useOverlayLayer,
-  useWebOverlayRegistration,
-} from "@/lib/overlay-root";
+import { getOverlayRoot, OverlayLayerProvider, useOverlayLayer } from "@/lib/overlay-root";
 import { readAssistantSelection } from "./selection.web";
 import type { AssistantSelectionToolbarSurfaceProps, SelectedAssistantText } from "./types";
 
@@ -49,7 +45,8 @@ export function AssistantSelectionToolbarSurface({
   const busyRef = useRef(false);
   const layer = useOverlayLayer("floating");
   const dismiss = useCallback(() => setSelection(null), []);
-  const setScope = useWebOverlayRegistration({
+  const setScope = useOverlayRegistration({
+    keys: ["Escape"],
     active: enabled && selection !== null,
     layer,
     manageFocus: false,

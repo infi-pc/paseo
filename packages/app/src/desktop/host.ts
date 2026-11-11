@@ -2,7 +2,7 @@ import { Platform } from "react-native";
 // FORK(locator-compose): source links target the remembered worktree composer.
 import type { DesktopNavigationTarget } from "@getpaseo/protocol/compose-deep-link";
 import { getElectronHost } from "@/desktop/electron/host";
-import type { BrowserKeyboardPolicy } from "@/desktop/browser/shortcuts";
+import type { BrowserKeyboardPolicy } from "@/keyboard";
 import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<

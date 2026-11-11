@@ -53,6 +53,7 @@ function createFakeDiffSubscriber(initial: CheckoutDiffSnapshotPayload) {
   const subscriptions: FakeDiffSubscription[] = [];
   const refreshedCwds: string[] = [];
   const subscriber: CheckoutDiffSubscriber = {
+    readCommitFile: async () => null,
     read: async (params) => ({ ...initial, cwd: params.cwd }),
     subscribe: async (params, listener) => {
       let isSubscribed = true;
@@ -80,7 +81,7 @@ function createFakeDiffSubscriber(initial: CheckoutDiffSnapshotPayload) {
         unsubscribe,
       };
     },
-    scheduleRefreshForCwd: (cwd) => {
+    scheduleRefreshForCwd: async (cwd) => {
       refreshedCwds.push(cwd);
     },
   };

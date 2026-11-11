@@ -154,7 +154,7 @@ export class WorkspaceSnoozeService {
 
   async runDue(): Promise<void> {
     if (this.stopped) return;
-    const workspaces = await this.options.registry.list();
+    const workspaces = await this.options.registry.listActive();
     const due = workspaces.filter(
       (workspace) =>
         !workspace.archivedAt &&

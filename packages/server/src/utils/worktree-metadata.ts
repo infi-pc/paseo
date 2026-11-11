@@ -14,7 +14,7 @@ const ChangeRequestLookupTargetSchema = z.object({
   localBranchName: z.string().min(1).optional(),
 });
 
-// baseRefName is the display name; baseRef is the exact ref the worktree was cut from
+// baseRefName is the display name; baseRef is the checkout's current exact base
 // ("refs/remotes/upstream/main"). baseRef is optional because worktrees written before it
 // existed only have the name — there are no migrations, so readers fall back.
 const PaseoWorktreeMetadataV1Schema = z.object({
@@ -271,6 +271,21 @@ export async function writePaseoWorktreeBaseRef(
     const next: PaseoWorktreeMetadata = { ...rest, baseRefName };
     await writePaseoWorktreeMetadataFile(root, next);
     return next;
+  });
+}
+
+export async function setPaseoWorktreeBaseRef(input: {
+  worktreeRoot: string;
+  baseRef: string;
+}): Promise<void> {
+  return mutateMetadata(input.worktreeRoot, async (root) => {
+    const current = await readMetadataFile(root);
+    if (!current) throw new Error("Cannot change base: missing worktree metadata");
+    await writePaseoWorktreeMetadataFile(root, {
+      ...current,
+      baseRefName: branchNameFromRef(input.baseRef),
+      baseRef: input.baseRef,
+    });
   });
 }
 

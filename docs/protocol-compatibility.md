@@ -123,6 +123,14 @@ retain their legacy event delivery. A new app makes no setup event demand on old
 requires a host update to view details. Subscription-capable older hosts honor that absence of
 demand; broadcast-era hosts require an update before wire silence is guaranteed.
 
+## Diff file metadata
+
+The fork SDK opts in with optional `diff.subscribe.request.includeFileMetadata`. Only that request
+permits the extended `0x43` end frame, which commits change categories and code-intelligence content
+identities with their diff revision. Requests without the flag retain the original `0x42` encoding.
+Older daemons ignore the optional request field and continue sending ordinary end frames; the SDK
+accepts both. File metadata does not change body framing or revision ownership.
+
 ## Every shim is tagged and dated
 
 A shim that exists for old-app or old-daemon support carries a comment naming it, the version it arrived in, and when it can go:
