@@ -43,6 +43,6 @@ The canceled initial shard 7 also contained failures before cancellation. Its
 Total: 95 distinct affected browser cases verified locally. Formatting, lint, and
 workspace typecheck pass; workflow YAML parses and the apt shell block passes bash -n.
 
-Run 43043575729 repeated the Azure Ubuntu mirror DNS failure. The browser job now
-uses archive.ubuntu.com/security.ubuntu.com mirror lists while retaining package
+Run 43043575729 repeated the Azure Ubuntu mirror DNS failure. The browser and Linux desktop jobs now
+share archive.ubuntu.com/security.ubuntu.com mirror lists while retaining package
 signature verification. A new full GitHub Actions run is pending at submission.
