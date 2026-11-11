@@ -7,7 +7,6 @@ import { seedWorkspace } from "./seed-client";
 import { gotoWorkspace } from "./launcher";
 import { openSidebarNavSettings, leaveSettings } from "./sidebar-nav-settings";
 import { visibleTestId } from "./plugin-sidebar-items";
-import { selectSidebarProject } from "./sidebar";
 import { getServerId } from "./server-id";
 
 export async function withSidebarViews(
@@ -30,11 +29,22 @@ export async function withSidebarViews(
     title: "Sidebar view workspace",
   });
   try {
+    // Settings returns through browser history, which can restore Inbox. Give the default
+    // view real session activity so its row exists there as well as in the project view.
+    const agent = await workspace.client.createAgent({
+      provider: "mock",
+      cwd: workspace.repoPath,
+      workspaceId: workspace.workspaceId,
+      title: "Sidebar view agent",
+      model: "e2e-fast-stream",
+      modeId: "load-test",
+      initialPrompt: "Seed the sidebar view example",
+    });
+    await workspace.client.waitForFinish(agent.id, 15_000);
     await client.patchDaemonConfig({ pluginsEnabled: true });
     await client.installDirectoryPlugin(example.directory);
     await page.setViewportSize({ width: 1280, height: 900 });
     await gotoWorkspace(page, workspace.workspaceId);
-    await selectSidebarProject(page, workspace.projectKey);
     await run(sidebarViews(page, workspace.workspaceId, client));
   } finally {
     await client.removePlugin("sidebar-views");

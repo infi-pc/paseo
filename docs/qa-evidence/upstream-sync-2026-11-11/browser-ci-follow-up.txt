@@ -9,9 +9,13 @@ Local checks:
 - npm run format: passed.
 - npm run lint: passed, zero warnings/errors.
 - npm run typecheck: passed across all workspaces.
-- Focused Playwright run over 12 affected specs: running; completed cases include
-  PR handoff, project navigation/order, plugin subscriptions/footer placement,
-  sidebar appearance settings, and the mobile project picker.
+- Focused Playwright run over 12 affected specs: 70 passed initially; five failures
+  were corrected and each failing case passed its focused rerun. All 75 distinct
+  cases passed across those runs, including PR handoff, project navigation/order,
+  plugin subscriptions/footer placement, appearance settings, inline renaming,
+  sidebar views, onboarding, compact footer overflow, and the mobile project picker.
+- Together with the separate reading/disclosure and provider-removal checks below,
+  this verifies 78 distinct browser cases. No full local suite was run.
 - Corrected onboarding project-discovery case: passed.
 - Pinned-prompt reading-line case and Expand thinking=true disclosure: 2 passed.
 - Short compact plugin navigation after height adjustment: passed.
@@ -21,3 +25,10 @@ Local checks:
 
 Tests ran against ephemeral daemons and Metro instances. Port 6767 was untouched.
 Full-suite coverage remains owned by GitHub Actions.
+
+The sidebar-view example now seeds a mock agent with actual session activity. Its
+restored default view remains visible when browser history returns to Inbox.
+Local macOS cursor positioning and footer shortcuts use the platform modifier;
+the compact Settings shortcut asserts the compact Settings landing route.
+
+At submission, the new full GitHub Actions run is pending.
