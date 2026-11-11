@@ -165,7 +165,21 @@ jobs:
       - name: Run website tests
         run: npx vitest run packages/website/src --bail=1
 
+      - &ubuntu_package_mirrors
+        name: Use reachable Ubuntu archive mirror
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          # Ubuntu-hosted archive domains repeatedly fail DNS resolution on the runner.
+          # This mirror serves the same Ubuntu-signed release metadata.
+          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
+            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+          fi
+          if [[ -f /etc/apt/apt-security-mirrors.txt ]]; then
+            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-security-mirrors.txt > /dev/null
+          fi
+
       - name: Install website test browsers
+        timeout-minutes: 10
         run: npx playwright install --with-deps chromium webkit
 
       - name: Verify website mockups
@@ -332,18 +346,7 @@ jobs:
       - name: Run desktop tests
         run: npm run test --workspace=@getpaseo/desktop
 
-      - &ubuntu_package_mirrors
-        name: Use reachable Ubuntu archive mirror
-        if: ${{ runner.os == 'Linux' }}
-        run: |
-          # Ubuntu-hosted archive domains repeatedly fail DNS resolution on the runner.
-          # This mirror serves the same Ubuntu-signed release metadata.
-          if [[ -f /etc/apt/apt-mirrors.txt ]]; then
-            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
-          fi
-          if [[ -f /etc/apt/apt-security-mirrors.txt ]]; then
-            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-security-mirrors.txt > /dev/null
-          fi
+      - *ubuntu_package_mirrors
 
       - name: Install virtual display
         if: ${{ runner.os == 'Linux' }}
