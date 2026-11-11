@@ -122,6 +122,7 @@ async function completeTurnAndLeave(page: Page, { subject, other }: FinishedWork
 
 async function openWorkspaceOnCompact(page: Page, workspaceId: string) {
   await openWorkspace(page, workspaceId);
+  await expect(page.getByTestId("sidebar-close")).not.toBeInViewport();
   await openMobileAgentSidebar(page);
 }
 

@@ -40,7 +40,7 @@ The canceled initial shard 7 also contained failures before cancellation. Its
   host, and measure the column width when resizing beside the utility rail;
 - compact workspace-label picker navigation passes with the idempotent opener.
 
-Total: 95 distinct affected browser cases verified locally. Formatting, lint, and
+Total before the final compact-unread follow-up: 95 distinct affected browser cases verified locally. Formatting, lint, and
 workspace typecheck pass; workflow YAML parses and the apt shell block passes bash -n.
 
 Runs 43043575729 and 43045467865 stopped before browser tests: the runner could
@@ -59,3 +59,13 @@ journey stops at macOS hidden-window visibility assertions. A temporary local
 copy excluding that theme assertion reached the main browser checks and stopped
 at the related hidden-browser animation-frame assertion. No assertion was removed
 from the maintained script; Linux CI remains the full desktop-browser verdict.
+
+Run 43047449639 completed all jobs: seven app browser shards and every server,
+quality, typecheck (including website), app-unit, CLI, and Windows desktop job
+passed. Linux desktop failed at the startup fixture above. App shard 6 had one
+failure (132 passed): the compact unread journey reopened the sidebar while its
+previous close animation was still running. The shared close helper now waits
+until its close button leaves the viewport; compact workspace-switch helpers do
+the same before reopening. Both compact unread journeys passed locally (2/2).
+Total affected local browser cases: 97, plus the real-Electron startup/Settings
+scroll and plugin-links/workspace-browser journeys.

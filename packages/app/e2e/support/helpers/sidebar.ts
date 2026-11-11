@@ -343,6 +343,7 @@ export async function closeMobileAgentSidebar(page: Page): Promise<void> {
   const closeButton = page.getByTestId("sidebar-close");
   await expect(closeButton).toBeInViewport({ ratio: 1, timeout: 5_000 });
   await closeButton.click();
+  await expect(closeButton).not.toBeInViewport({ timeout: 5_000 });
 }
 
 // The mobile sidebar panel animates via translateX. Waiting for its header to be fully visible

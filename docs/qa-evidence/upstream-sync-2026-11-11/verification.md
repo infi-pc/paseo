@@ -99,8 +99,8 @@ fork's vertical rail contract.
 The second full CI run at `ce38a3825` stopped every Linux browser job during apt installation
 because `azure.archive.ubuntu.com` could not resolve. It therefore did not recheck the original
 browser failures. The provider-removal module-export error did not recur against a fresh local build. A total of
-95 distinct browser cases passed across the focused runs and corrected-case reruns, including
-all 75 cases in the 12-spec follow-up set and 17 cases from the canceled shard 7. The sidebar-view example seeds actual mock session
+97 distinct browser cases passed across the focused runs and corrected-case reruns, including
+all 75 cases in the 12-spec follow-up set, 17 cases from the canceled shard 7, and two compact unread journeys. The sidebar-view example seeds actual mock session
 activity so restoring Inbox through browser history still shows its workspace. The next CI run uses the kernel.org Ubuntu archive mirror after repeated full runs reproduced
 the runner's DNS failure for Azure and canonical Ubuntu archive domains. Full CI is pending at submission. Exact browser results are recorded in `browser-ci-follow-up.txt`.
 
