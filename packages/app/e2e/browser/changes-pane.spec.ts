@@ -360,11 +360,7 @@ async function holdDiffCompletion(page: Page) {
     const serverSocket = browserSocket.connectToServer();
     browserSocket.onMessage((message) => serverSocket.send(message));
     serverSocket.onMessage((message) => {
-      if (
-        typeof message !== "string" &&
-        message[0] >= DiffOpcode.Begin &&
-        message[0] <= DiffOpcode.End
-      ) {
+      if (typeof message !== "string" && message[0] >= DiffOpcode.Begin && message[0] <= 0x43) {
         const frame = decodeDiffFrame(message);
         if (frame.opcode === DiffOpcode.Begin) bodyCounts.set(frame.slot, 0);
         else if (frame.opcode === DiffOpcode.Bodies)
@@ -374,7 +370,11 @@ async function holdDiffCompletion(page: Page) {
           changedBodies.push(bodyCounts.get(frame.slot) ?? 0);
         }
       }
-      if (holding && typeof message !== "string" && message[0] === DiffOpcode.End) {
+      if (
+        holding &&
+        typeof message !== "string" &&
+        (message[0] === DiffOpcode.End || message[0] === 0x43)
+      ) {
         completions.push(() => browserSocket.send(message));
         return;
       }

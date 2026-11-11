@@ -427,7 +427,9 @@ function SidebarFooter({
   handleAddHost,
   handleOpenHostSettings,
   onBeforeNavigate,
+  showAddProject = true,
 }: {
+  showAddProject?: boolean;
   handleOpenProject: () => void;
   handleSettings: () => void;
   labels: {
@@ -454,9 +456,11 @@ function SidebarFooter({
         rowWidth,
         controlSize: TOOLBAR_CONTROL_SIZES[controlSizingForLayout(isCompactLayout)],
         rowPadding: FOOTER_ROW_PADDING,
-        actions: SIDEBAR_FOOTER_ACTIONS,
+        actions: showAddProject
+          ? SIDEBAR_FOOTER_ACTIONS
+          : SIDEBAR_FOOTER_ACTIONS.filter((action) => action !== "add-project"),
       }),
-    [rowWidth, isCompactLayout],
+    [rowWidth, isCompactLayout, showAddProject],
   );
   const isInline = (action: SidebarFooterAction) => inline.includes(action);
 
@@ -929,6 +933,7 @@ function DesktopSidebar({
           <SidebarCalloutSlot />
 
           <SidebarFooter
+            showAddProject={false}
             handleOpenProject={handleOpenProject}
             handleSettings={handleSettings}
             labels={labels}

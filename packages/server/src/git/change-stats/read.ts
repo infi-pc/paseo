@@ -63,9 +63,13 @@ async function readContent(input: Comparison, path: string, ref?: string): Promi
   }
 }
 
-export async function readFileBreakdown(
-  input: Comparison & { file: ParsedDiffFile; loadPatch?: boolean },
-): Promise<ChangeBreakdown> {
+interface FileBreakdownInput extends Comparison {
+  file: ParsedDiffFile;
+  loadPatch?: boolean;
+  contents?: { oldContent: string | null; newContent?: string | null };
+}
+
+export async function readFileBreakdown(input: FileBreakdownInput): Promise<ChangeBreakdown> {
   const { file } = input;
   const oldPath = file.oldPath ?? file.path;
   const oldCategory = classifyPath(oldPath);
@@ -78,10 +82,7 @@ export async function readFileBreakdown(
   ) {
     return classifyDiff({ file, oldContent: null, newContent: null });
   }
-  const [oldContent, newContent] = await Promise.all([
-    file.isNew ? Promise.resolve("") : readContent(input, oldPath, input.baseRef),
-    file.isDeleted ? Promise.resolve("") : readContent(input, file.path, input.targetRef),
-  ]);
+  const { oldContent, newContent } = await readBreakdownContents(input, oldPath);
   let hunks = file.hunks;
   if (input.loadPatch && file.hunks.length === 0 && (file.additions || file.deletions)) {
     const refs = input.targetRef ? [input.baseRef, input.targetRef] : [input.baseRef];
@@ -102,6 +103,17 @@ export async function readFileBreakdown(
     if (!patch.truncated) hunks = parseDiff(patch.stdout)[0]?.hunks ?? [];
   }
   return classifyDiff({ file: { ...file, hunks }, oldContent, newContent });
+}
+
+async function readBreakdownContents(input: FileBreakdownInput, oldPath: string) {
+  const { file } = input;
+  const suppliedOld = file.isNew ? "" : input.contents?.oldContent;
+  const suppliedNew = file.isDeleted ? "" : input.contents?.newContent;
+  const [oldContent, newContent] = await Promise.all([
+    suppliedOld !== undefined ? suppliedOld : readContent(input, oldPath, input.baseRef),
+    suppliedNew !== undefined ? suppliedNew : readContent(input, file.path, input.targetRef),
+  ]);
+  return { oldContent, newContent };
 }
 
 export async function addFileBreakdowns(

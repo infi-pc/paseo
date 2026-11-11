@@ -384,7 +384,7 @@ test.each([
   ).toThrow();
 });
 
-test("Fork chat stops at a restored pre-compaction reply on the active branch", async () => {
+test("Fork chat includes the current active branch when its latest reply was restored before compaction", async () => {
   const entries = [
     { type: "session", version: 3 },
     {
@@ -429,7 +429,8 @@ test("Fork chat stops at a restored pre-compaction reply on the active branch", 
   expect(fork.attachment.text).toContain("retained question");
   expect(fork.attachment.text).toContain("retained answer");
   expect(fork.attachment.text).not.toContain("abandoned branch");
-  expect(fork.attachment.text).not.toContain("later question");
+  // FORK(latest-response-context): the latest reply forks current context; abandoned branches stay excluded.
+  expect(fork.attachment.text).toContain("later question");
   expect(transcript.userEntries.map((entry) => entry.id)).toEqual(["u1", "later"]);
 });
 

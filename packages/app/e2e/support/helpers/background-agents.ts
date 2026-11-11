@@ -37,7 +37,7 @@ export async function finishAndArchiveAgent(
 
 export async function expectWorkspaceShownIdle(page: Page, workspaceName: string): Promise<void> {
   const row = page.getByRole("button", {
-    name: new RegExp(`^${escapeRegExp(workspaceName)}(?:,|$)`),
+    name: new RegExp(`(?:^|, )${escapeRegExp(workspaceName)}(?:,|$)`),
   });
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row.getByTestId("workspace-status-indicator-running")).toHaveCount(0);

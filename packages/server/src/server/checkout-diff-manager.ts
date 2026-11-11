@@ -107,6 +107,8 @@ export class CheckoutDiffManager {
           const file = materializeDiffFile(entry, body, omitted.has(entry.path));
           if (!entry.body && previous && entry.content === "text" && !omitted.has(entry.path))
             file.hunks = previous.hunks;
+          // FORK(diff-metadata): inherited hunks keep this revision's categories and content identity.
+          Object.assign(file, frame.fileMetadata?.[entry.path]);
           next.set(entry.path, file);
         }
         files = next;

@@ -1,5 +1,4 @@
 import { captureLanguageDiffs, identifyLanguageDiffs } from "../code-language/diff-snapshot.js";
-import { readGitFileContentAtRef } from "../../utils/git-file-contents.js";
 import type { ParsedDiffFile } from "../utils/diff-highlighter.js";
 import { readFileBreakdown } from "../../git/change-stats/read.js";
 import { parseGitRevParsePath } from "../../utils/git-rev-parse-path.js";
@@ -269,6 +268,7 @@ async function readComparisonList(
         deletions: file.entry.deletions,
         hunks: sections.flatMap((section) => section.hunks),
       };
+      const context = await sources.read(file);
       await identifyLanguageDiffs({
         cwd,
         files: [parsed],
@@ -276,12 +276,11 @@ async function readComparisonList(
         readTarget:
           compare.head.kind === "worktree"
             ? null
-            : (path) => readGitFileContentAtRef(cwd, headSha, path),
+            : () => Promise.resolve(context.newFileContent ?? null),
       });
       let highlighted = parsed;
       if (compare.highlight !== false) {
         metrics.highlightCalls++;
-        const context = await sources.read(file);
         highlighted = await highlightDiffWithFileContent(parsed, cwd, context);
       }
       const hunks = highlighted.hunks.map((hunk) => ({
@@ -306,6 +305,7 @@ async function readComparisonList(
         baseRef: comparisonBaseSha,
         ...(compare.head.kind === "worktree" ? {} : { targetRef: headSha }),
         file: parsed,
+        contents: { oldContent: context.oldFileContent, newContent: context.newFileContent },
       });
       return {
         kind: "ready",

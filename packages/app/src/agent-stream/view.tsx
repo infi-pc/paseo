@@ -1449,6 +1449,7 @@ function agentStreamViewPropsEqual(
   if (left.onOpenWorkspaceFile !== right.onOpenWorkspaceFile) reasons.push("onOpenWorkspaceFile");
   if (left.renderUserMessageHeader !== right.renderUserMessageHeader)
     reasons.push("renderUserMessageHeader");
+  if (left.onQuoteSelection !== right.onQuoteSelection) reasons.push("onQuoteSelection");
   if (left.readOnly !== right.readOnly) reasons.push("readOnly");
   if (!historyPaginationPropsEqual(left.historyPagination, right.historyPagination)) {
     reasons.push("historyPagination");

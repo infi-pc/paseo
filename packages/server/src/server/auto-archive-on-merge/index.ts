@@ -59,54 +59,60 @@ export function setupAutoArchiveOnMerge(
     if (inFlightCwds.has(snapshotCwd)) {
       return;
     }
-    const task = Promise.resolve()
-      .then(async () => {
-        let freshSnapshot: WorkspaceGitRuntimeSnapshot | null;
-        try {
-          freshSnapshot = await options.workspaceGitService.getSnapshot(snapshot.cwd, {
-            force: true,
-            afterInFlight: true,
-            reason: "auto-archive-on-merge",
-          });
-        } catch (error) {
-          log.warn(
-            { err: error, cwd: snapshot.cwd },
-            "Failed to read snapshot for auto-archive; skipping",
-          );
-          return;
-        }
-        const freshPullRequest = freshSnapshot?.forge.pullRequest;
-        if (
-          !freshPullRequest?.isMerged ||
-          freshPullRequest.url !== pullRequest.url ||
-          openPullRequestUrlsByCwd.get(snapshotCwd) !== pullRequest.url
-        ) {
-          if (openPullRequestUrlsByCwd.get(snapshotCwd) === pullRequest.url) {
-            openPullRequestUrlsByCwd.delete(snapshotCwd);
-          }
-          return;
-        }
-
-        const attachedWorkspaces = (await options.listActiveWorkspaces()).filter(
-          (workspace) => deps.resolvePath(workspace.cwd) === snapshotCwd,
+    // Register the joinable task before starting the read, but do not defer the read:
+    // it must queue behind the refresh currently delivering this merge notification.
+    let complete!: () => void;
+    const task = new Promise<void>((settle) => {
+      complete = settle;
+    });
+    inFlightCwds.set(snapshotCwd, task);
+    void (async () => {
+      let freshSnapshot: WorkspaceGitRuntimeSnapshot | null;
+      try {
+        freshSnapshot = await options.workspaceGitService.getSnapshot(snapshot.cwd, {
+          force: true,
+          afterInFlight: true,
+          reason: "auto-archive-on-merge",
+        });
+      } catch (error) {
+        log.warn(
+          { err: error, cwd: snapshot.cwd },
+          "Failed to read snapshot for auto-archive; skipping",
         );
-        for (const workspace of attachedWorkspaces) {
-          await deps.archiveIfSafe({
-            workspaceId: workspace.workspaceId,
-            snapshot: freshSnapshot,
-            options,
-            log,
-          });
+        return;
+      }
+      const freshPullRequest = freshSnapshot?.forge.pullRequest;
+      if (
+        !freshPullRequest?.isMerged ||
+        freshPullRequest.url !== pullRequest.url ||
+        openPullRequestUrlsByCwd.get(snapshotCwd) !== pullRequest.url
+      ) {
+        if (openPullRequestUrlsByCwd.get(snapshotCwd) === pullRequest.url) {
+          openPullRequestUrlsByCwd.delete(snapshotCwd);
         }
         return;
-      })
+      }
+
+      const attachedWorkspaces = (await options.listActiveWorkspaces()).filter(
+        (workspace) => deps.resolvePath(workspace.cwd) === snapshotCwd,
+      );
+      for (const workspace of attachedWorkspaces) {
+        await deps.archiveIfSafe({
+          workspaceId: workspace.workspaceId,
+          snapshot: freshSnapshot,
+          options,
+          log,
+        });
+      }
+      return;
+    })()
       .catch((error) => {
         log.warn({ err: error, cwd: snapshot.cwd }, "Failed to auto-archive attached workspaces");
       })
       .finally(() => {
         inFlightCwds.delete(snapshotCwd);
+        complete();
       });
-    inFlightCwds.set(snapshotCwd, task);
   });
   return {
     ...subscription,

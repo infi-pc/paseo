@@ -1,0 +1,2470 @@
+{
+  "conclusion": "",
+  "headSha": "1c3da6bd8f260817532ba4f5923554802703a69b",
+  "jobs": [
+    {
+      "completedAt": "2026-11-11T13:36:52Z",
+      "conclusion": "success",
+      "databaseId": 130556550874,
+      "name": "changes",
+      "startedAt": "2026-11-11T13:36:35Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:36Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:46Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:47Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:47Z",
+          "conclusion": "success",
+          "name": "Detect affected CI contracts",
+          "number": 4,
+          "startedAt": "2026-11-11T13:36:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:50Z",
+          "conclusion": "success",
+          "name": "Validate CI contracts",
+          "number": 5,
+          "startedAt": "2026-11-11T13:36:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:50Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 9,
+          "startedAt": "2026-11-11T13:36:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:50Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262",
+          "number": 10,
+          "startedAt": "2026-11-11T13:36:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:50Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 11,
+          "startedAt": "2026-11-11T13:36:50Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556550874"
+    },
+    {
+      "completedAt": "2026-11-11T13:53:26Z",
+      "conclusion": "failure",
+      "databaseId": 130556703725,
+      "name": "server-integration (windows-latest)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:57Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:11Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:57Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:18Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:19Z",
+          "conclusion": "success",
+          "name": "Fetch origin/main (worktree tests)",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:17Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 6,
+          "startedAt": "2026-11-11T13:37:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:30Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 7,
+          "startedAt": "2026-11-11T13:40:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:01Z",
+          "conclusion": "success",
+          "name": "Build server dependencies",
+          "number": 8,
+          "startedAt": "2026-11-11T13:40:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:53:22Z",
+          "conclusion": "failure",
+          "name": "Run server integration tests",
+          "number": 9,
+          "startedAt": "2026-11-11T13:41:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:53:22Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 17,
+          "startedAt": "2026-11-11T13:53:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:53:24Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 18,
+          "startedAt": "2026-11-11T13:53:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:53:24Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 19,
+          "startedAt": "2026-11-11T13:53:24Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556703725"
+    },
+    {
+      "completedAt": "2026-11-11T13:52:28Z",
+      "conclusion": "failure",
+      "databaseId": 130556703740,
+      "name": "server-tests (ubuntu-latest)",
+      "startedAt": "2026-11-11T13:36:59Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:37:01Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:01Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:37:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:15Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:37:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:16Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:16Z",
+          "conclusion": "success",
+          "name": "Fetch origin/main (worktree tests)",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:18Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 6,
+          "startedAt": "2026-11-11T13:37:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:27Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:09Z",
+          "conclusion": "success",
+          "name": "Build server dependencies",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:52:25Z",
+          "conclusion": "failure",
+          "name": "Run server tests",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:52:25Z",
+          "conclusion": "skipped",
+          "name": "Run built-in plugin tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:52:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:52:25Z",
+          "conclusion": "skipped",
+          "name": "Run Hub CLI/daemon contract",
+          "number": 11,
+          "startedAt": "2026-11-11T13:52:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:52:25Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 21,
+          "startedAt": "2026-11-11T13:52:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:52:26Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 22,
+          "startedAt": "2026-11-11T13:52:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:52:26Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "startedAt": "2026-11-11T13:52:26Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556703740"
+    },
+    {
+      "completedAt": "2026-11-11T13:51:53Z",
+      "conclusion": "cancelled",
+      "databaseId": 130556703761,
+      "name": "server-tests (macos-latest, file observation)",
+      "startedAt": "2026-11-11T13:36:52Z",
+      "status": "completed",
+      "steps": [],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556703761"
+    },
+    {
+      "completedAt": "2026-11-11T13:40:26Z",
+      "conclusion": "success",
+      "databaseId": 130556703849,
+      "name": "quality",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:11Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 4,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:18Z",
+          "conclusion": "success",
+          "name": "Check formatting",
+          "number": 5,
+          "startedAt": "2026-11-11T13:38:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:20Z",
+          "conclusion": "success",
+          "name": "Lint lockfile",
+          "number": 6,
+          "startedAt": "2026-11-11T13:38:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:41Z",
+          "conclusion": "success",
+          "name": "Verify dependency signatures",
+          "number": 7,
+          "startedAt": "2026-11-11T13:38:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:44Z",
+          "conclusion": "success",
+          "name": "Lint",
+          "number": 8,
+          "startedAt": "2026-11-11T13:38:41Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:46Z",
+          "conclusion": "success",
+          "name": "Test lint rules",
+          "number": 9,
+          "startedAt": "2026-11-11T13:38:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:48Z",
+          "conclusion": "success",
+          "name": "Build relay",
+          "number": 10,
+          "startedAt": "2026-11-11T13:38:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:50Z",
+          "conclusion": "success",
+          "name": "Run relay tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:38:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:12Z",
+          "conclusion": "success",
+          "name": "Build client dependencies",
+          "number": 12,
+          "startedAt": "2026-11-11T13:38:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:15Z",
+          "conclusion": "success",
+          "name": "Build plugin SDK",
+          "number": 13,
+          "startedAt": "2026-11-11T13:39:12Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:37Z",
+          "conclusion": "success",
+          "name": "Run plugin SDK tests",
+          "number": 14,
+          "startedAt": "2026-11-11T13:39:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:59Z",
+          "conclusion": "success",
+          "name": "Run protocol tests",
+          "number": 15,
+          "startedAt": "2026-11-11T13:39:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:10Z",
+          "conclusion": "success",
+          "name": "Run client tests",
+          "number": 16,
+          "startedAt": "2026-11-11T13:39:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:11Z",
+          "conclusion": "success",
+          "name": "Run highlight tests",
+          "number": 17,
+          "startedAt": "2026-11-11T13:40:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:14Z",
+          "conclusion": "success",
+          "name": "Typecheck client examples",
+          "number": 18,
+          "startedAt": "2026-11-11T13:40:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:24Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 35,
+          "startedAt": "2026-11-11T13:40:14Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:24Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 36,
+          "startedAt": "2026-11-11T13:40:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:24Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 37,
+          "startedAt": "2026-11-11T13:40:24Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556703849"
+    },
+    {
+      "completedAt": "2026-11-11T13:45:52Z",
+      "conclusion": "success",
+      "databaseId": 130556703851,
+      "name": "typecheck",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:59Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:01Z",
+          "conclusion": "success",
+          "name": "Verify dependency patch recovery",
+          "number": 5,
+          "startedAt": "2026-11-11T13:38:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:16Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 6,
+          "startedAt": "2026-11-11T13:39:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:19Z",
+          "conclusion": "success",
+          "name": "Verify built-in plugins from built output",
+          "number": 7,
+          "startedAt": "2026-11-11T13:40:16Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:03Z",
+          "conclusion": "success",
+          "name": "Typecheck all packages",
+          "number": 8,
+          "startedAt": "2026-11-11T13:40:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:08Z",
+          "conclusion": "success",
+          "name": "Run website tests",
+          "number": 9,
+          "startedAt": "2026-11-11T13:41:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:47Z",
+          "conclusion": "success",
+          "name": "Install website test browsers",
+          "number": 10,
+          "startedAt": "2026-11-11T13:41:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:45:40Z",
+          "conclusion": "success",
+          "name": "Verify website mockups",
+          "number": 11,
+          "startedAt": "2026-11-11T13:41:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:45:45Z",
+          "conclusion": "success",
+          "name": "Verify public package contents",
+          "number": 12,
+          "startedAt": "2026-11-11T13:45:40Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:45:51Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T13:45:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:45:51Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T13:45:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:45:51Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T13:45:51Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556703851"
+    },
+    {
+      "completedAt": "2026-11-11T13:58:47Z",
+      "conclusion": "failure",
+      "databaseId": 130556703864,
+      "name": "server-tests (windows-latest)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:58Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:13Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:58Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:19Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:20Z",
+          "conclusion": "success",
+          "name": "Fetch origin/main (worktree tests)",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:55Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 6,
+          "startedAt": "2026-11-11T13:37:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:09Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 7,
+          "startedAt": "2026-11-11T13:40:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:49Z",
+          "conclusion": "success",
+          "name": "Build server dependencies",
+          "number": 8,
+          "startedAt": "2026-11-11T13:41:09Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:58:43Z",
+          "conclusion": "failure",
+          "name": "Run server unit tests",
+          "number": 9,
+          "startedAt": "2026-11-11T13:41:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:58:43Z",
+          "conclusion": "skipped",
+          "name": "Run built-in plugin tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:58:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:58:43Z",
+          "conclusion": "skipped",
+          "name": "Run Hub CLI/daemon contract",
+          "number": 11,
+          "startedAt": "2026-11-11T13:58:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:58:43Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 21,
+          "startedAt": "2026-11-11T13:58:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:58:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 22,
+          "startedAt": "2026-11-11T13:58:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:58:45Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 23,
+          "startedAt": "2026-11-11T13:58:45Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556703864"
+    },
+    {
+      "completedAt": "0001-01-01T00:00:00Z",
+      "conclusion": "",
+      "databaseId": 130556704085,
+      "name": "playwright (shard 7/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "in_progress",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:06Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:17Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:39:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:24Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:44Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:46Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:58Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:40:58Z",
+          "status": "in_progress"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        },
+        {
+          "completedAt": "0001-01-01T00:00:00Z",
+          "conclusion": "",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "0001-01-01T00:00:00Z",
+          "status": "pending"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704085"
+    },
+    {
+      "completedAt": "2026-11-11T14:00:40Z",
+      "conclusion": "success",
+      "databaseId": 130556704134,
+      "name": "playwright (shard 3/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:01Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:44Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:54Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:38:44Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:00Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:38:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:03Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:04Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:13Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:00:28Z",
+          "conclusion": "success",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:40:13Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:00:28Z",
+          "conclusion": "skipped",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "2026-11-11T14:00:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:00:37Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T14:00:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:00:37Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T14:00:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:00:37Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T14:00:37Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704134"
+    },
+    {
+      "completedAt": "2026-11-11T13:44:27Z",
+      "conclusion": "success",
+      "databaseId": 130556704239,
+      "name": "cli-tests (shard 1/3)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:01Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:42Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:51Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 5,
+          "startedAt": "2026-11-11T13:38:42Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:21Z",
+          "conclusion": "success",
+          "name": "Run CLI E2E tests",
+          "number": 6,
+          "startedAt": "2026-11-11T13:38:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:21Z",
+          "conclusion": "skipped",
+          "name": "Run CLI source tests",
+          "number": 7,
+          "startedAt": "2026-11-11T13:44:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:24Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 13,
+          "startedAt": "2026-11-11T13:44:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:24Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 14,
+          "startedAt": "2026-11-11T13:44:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:24Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-11-11T13:44:24Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704239"
+    },
+    {
+      "completedAt": "2026-11-11T14:05:26Z",
+      "conclusion": "failure",
+      "databaseId": 130556704248,
+      "name": "playwright (shard 4/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:01Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:11Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:39:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:19Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:36Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:37Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:49Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:05:22Z",
+          "conclusion": "failure",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:40:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:05:23Z",
+          "conclusion": "success",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "2026-11-11T14:05:22Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:05:23Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T14:05:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:05:24Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T14:05:23Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:05:24Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T14:05:24Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704248"
+    },
+    {
+      "completedAt": "2026-11-11T13:44:53Z",
+      "conclusion": "success",
+      "databaseId": 130556704252,
+      "name": "app-tests",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:46Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:51Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 5,
+          "startedAt": "2026-11-11T13:38:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:25Z",
+          "conclusion": "success",
+          "name": "Build app dependencies",
+          "number": 6,
+          "startedAt": "2026-11-11T13:38:51Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:50Z",
+          "conclusion": "success",
+          "name": "Run app unit tests",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:52Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 13,
+          "startedAt": "2026-11-11T13:44:50Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:52Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 14,
+          "startedAt": "2026-11-11T13:44:52Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:52Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-11-11T13:44:52Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704252"
+    },
+    {
+      "completedAt": "2026-11-11T14:06:23Z",
+      "conclusion": "failure",
+      "databaseId": 130556704266,
+      "name": "playwright (shard 6/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:21Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:31Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:38:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:36Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:38:31Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:25Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:38:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:26Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:39:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:35Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:39:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:19Z",
+          "conclusion": "failure",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:39:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:21Z",
+          "conclusion": "success",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "2026-11-11T14:06:19Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:21Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T14:06:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:22Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T14:06:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:22Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T14:06:22Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704266"
+    },
+    {
+      "completedAt": "2026-11-11T14:01:28Z",
+      "conclusion": "failure",
+      "databaseId": 130556704343,
+      "name": "playwright (shard 1/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:03Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:02Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:15Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:39:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:21Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:15Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:35Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:36Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:46Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:01:25Z",
+          "conclusion": "failure",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:40:46Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:01:26Z",
+          "conclusion": "success",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "2026-11-11T14:01:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:01:26Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T14:01:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:01:26Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T14:01:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:01:26Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T14:01:26Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704343"
+    },
+    {
+      "completedAt": "2026-11-11T14:08:27Z",
+      "conclusion": "failure",
+      "databaseId": 130556704351,
+      "name": "playwright (shard 5/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:01Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:11Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:39:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:18Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:11Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:34Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:35Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:47Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:35Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:08:24Z",
+          "conclusion": "failure",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:40:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:08:25Z",
+          "conclusion": "success",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "2026-11-11T14:08:24Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:08:25Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T14:08:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:08:26Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T14:08:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:08:26Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T14:08:26Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704351"
+    },
+    {
+      "completedAt": "2026-11-11T13:44:49Z",
+      "conclusion": "success",
+      "databaseId": 130556704353,
+      "name": "cli-tests (shard 3/3)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:17Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:25Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 5,
+          "startedAt": "2026-11-11T13:38:17Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:01Z",
+          "conclusion": "success",
+          "name": "Run CLI E2E tests",
+          "number": 6,
+          "startedAt": "2026-11-11T13:38:25Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:45Z",
+          "conclusion": "success",
+          "name": "Run CLI source tests",
+          "number": 7,
+          "startedAt": "2026-11-11T13:41:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 13,
+          "startedAt": "2026-11-11T13:44:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:48Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 14,
+          "startedAt": "2026-11-11T13:44:47Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:44:48Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-11-11T13:44:48Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704353"
+    },
+    {
+      "completedAt": "2026-11-11T13:42:11Z",
+      "conclusion": "success",
+      "databaseId": 130556704363,
+      "name": "cli-tests (shard 2/3)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:21Z",
+          "conclusion": "success",
+          "name": "Install dependencies",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:30Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 5,
+          "startedAt": "2026-11-11T13:38:21Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:06Z",
+          "conclusion": "success",
+          "name": "Run CLI E2E tests",
+          "number": 6,
+          "startedAt": "2026-11-11T13:38:30Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:06Z",
+          "conclusion": "skipped",
+          "name": "Run CLI source tests",
+          "number": 7,
+          "startedAt": "2026-11-11T13:42:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:08Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 13,
+          "startedAt": "2026-11-11T13:42:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:08Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 14,
+          "startedAt": "2026-11-11T13:42:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:08Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 15,
+          "startedAt": "2026-11-11T13:42:08Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704363"
+    },
+    {
+      "completedAt": "2026-11-11T14:06:04Z",
+      "conclusion": "failure",
+      "databaseId": 130556704400,
+      "name": "playwright (shard 8/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:02Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:27Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:39:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:34Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:27Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:53Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:55Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:53Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:06Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:01Z",
+          "conclusion": "failure",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:41:06Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:03Z",
+          "conclusion": "success",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "2026-11-11T14:06:01Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:03Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T14:06:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:03Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T14:06:03Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:06:03Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T14:06:03Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704400"
+    },
+    {
+      "completedAt": "2026-11-11T13:54:22Z",
+      "conclusion": "failure",
+      "databaseId": 130556704433,
+      "name": "desktop-tests (ubuntu-latest)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:38:59Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:10Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 5,
+          "startedAt": "2026-11-11T13:38:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:18Z",
+          "conclusion": "success",
+          "name": "Run desktop tests",
+          "number": 6,
+          "startedAt": "2026-11-11T13:40:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:26Z",
+          "conclusion": "success",
+          "name": "Install virtual display",
+          "number": 7,
+          "startedAt": "2026-11-11T13:40:18Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:36Z",
+          "conclusion": "success",
+          "name": "Install Playwright browser",
+          "number": 8,
+          "startedAt": "2026-11-11T13:40:26Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:36Z",
+          "conclusion": "skipped",
+          "name": "Verify Windows daemon process control",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:33Z",
+          "conclusion": "success",
+          "name": "Run desktop lifecycle E2E (Linux)",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:34Z",
+          "conclusion": "success",
+          "name": "Upload desktop lifecycle screenshots",
+          "number": 11,
+          "startedAt": "2026-11-11T13:43:33Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:34Z",
+          "conclusion": "skipped",
+          "name": "Run desktop lifecycle E2E (Windows)",
+          "number": 12,
+          "startedAt": "2026-11-11T13:43:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:54:20Z",
+          "conclusion": "failure",
+          "name": "Run desktop renderer E2E",
+          "number": 13,
+          "startedAt": "2026-11-11T13:43:34Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:54:20Z",
+          "conclusion": "skipped",
+          "name": "Run desktop browser E2E",
+          "number": 14,
+          "startedAt": "2026-11-11T13:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:54:20Z",
+          "conclusion": "success",
+          "name": "Upload desktop browser diagnostics",
+          "number": 15,
+          "startedAt": "2026-11-11T13:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:54:20Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 29,
+          "startedAt": "2026-11-11T13:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:54:20Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 30,
+          "startedAt": "2026-11-11T13:54:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:54:20Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 31,
+          "startedAt": "2026-11-11T13:54:20Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704433"
+    },
+    {
+      "completedAt": "2026-11-11T14:04:41Z",
+      "conclusion": "failure",
+      "databaseId": 130556704479,
+      "name": "playwright (shard 2/8)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:56Z",
+          "conclusion": "success",
+          "name": "Log runner capacity",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:36:59Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:36:56Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:00Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 4,
+          "startedAt": "2026-11-11T13:36:59Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:08Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 5,
+          "startedAt": "2026-11-11T13:37:00Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:20Z",
+          "conclusion": "success",
+          "name": "Install shell integration test dependency",
+          "number": 6,
+          "startedAt": "2026-11-11T13:39:08Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:39:28Z",
+          "conclusion": "success",
+          "name": "Install Playwright browsers",
+          "number": 7,
+          "startedAt": "2026-11-11T13:39:20Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:48Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 8,
+          "startedAt": "2026-11-11T13:39:28Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:49Z",
+          "conclusion": "success",
+          "name": "Build native app dependency",
+          "number": 9,
+          "startedAt": "2026-11-11T13:40:48Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:02Z",
+          "conclusion": "success",
+          "name": "Install agent CLIs for provider tests",
+          "number": 10,
+          "startedAt": "2026-11-11T13:40:49Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:04:37Z",
+          "conclusion": "failure",
+          "name": "Run Playwright E2E tests",
+          "number": 11,
+          "startedAt": "2026-11-11T13:41:02Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:04:39Z",
+          "conclusion": "success",
+          "name": "Upload test artifacts",
+          "number": 12,
+          "startedAt": "2026-11-11T14:04:37Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:04:39Z",
+          "conclusion": "skipped",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 23,
+          "startedAt": "2026-11-11T14:04:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:04:40Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 24,
+          "startedAt": "2026-11-11T14:04:39Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T14:04:40Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 25,
+          "startedAt": "2026-11-11T14:04:40Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704479"
+    },
+    {
+      "completedAt": "2026-11-11T13:43:48Z",
+      "conclusion": "success",
+      "databaseId": 130556704523,
+      "name": "desktop-tests (windows-latest)",
+      "startedAt": "2026-11-11T13:36:54Z",
+      "status": "completed",
+      "steps": [
+        {
+          "completedAt": "2026-11-11T13:36:55Z",
+          "conclusion": "success",
+          "name": "Set up job",
+          "number": 1,
+          "startedAt": "2026-11-11T13:36:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:04Z",
+          "conclusion": "success",
+          "name": "Run actions/checkout@v4",
+          "number": 2,
+          "startedAt": "2026-11-11T13:36:55Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:37:10Z",
+          "conclusion": "success",
+          "name": "Run actions/setup-node@v4",
+          "number": 3,
+          "startedAt": "2026-11-11T13:37:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:40:43Z",
+          "conclusion": "success",
+          "name": "Install dependencies with retry",
+          "number": 4,
+          "startedAt": "2026-11-11T13:37:10Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:41:54Z",
+          "conclusion": "success",
+          "name": "Build server stack",
+          "number": 5,
+          "startedAt": "2026-11-11T13:40:43Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:05Z",
+          "conclusion": "success",
+          "name": "Run desktop tests",
+          "number": 6,
+          "startedAt": "2026-11-11T13:41:54Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:05Z",
+          "conclusion": "skipped",
+          "name": "Install virtual display",
+          "number": 7,
+          "startedAt": "2026-11-11T13:42:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:42:05Z",
+          "conclusion": "skipped",
+          "name": "Install Playwright browser",
+          "number": 8,
+          "startedAt": "2026-11-11T13:42:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:04Z",
+          "conclusion": "success",
+          "name": "Verify Windows daemon process control",
+          "number": 9,
+          "startedAt": "2026-11-11T13:42:05Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:04Z",
+          "conclusion": "skipped",
+          "name": "Run desktop lifecycle E2E (Linux)",
+          "number": 10,
+          "startedAt": "2026-11-11T13:43:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:04Z",
+          "conclusion": "skipped",
+          "name": "Upload desktop lifecycle screenshots",
+          "number": 11,
+          "startedAt": "2026-11-11T13:43:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:36Z",
+          "conclusion": "success",
+          "name": "Run desktop lifecycle E2E (Windows)",
+          "number": 12,
+          "startedAt": "2026-11-11T13:43:04Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:36Z",
+          "conclusion": "skipped",
+          "name": "Run desktop renderer E2E",
+          "number": 13,
+          "startedAt": "2026-11-11T13:43:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:36Z",
+          "conclusion": "skipped",
+          "name": "Run desktop browser E2E",
+          "number": 14,
+          "startedAt": "2026-11-11T13:43:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:36Z",
+          "conclusion": "skipped",
+          "name": "Upload desktop browser diagnostics",
+          "number": 15,
+          "startedAt": "2026-11-11T13:43:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:45Z",
+          "conclusion": "success",
+          "name": "Post Run actions/setup-node@v4",
+          "number": 29,
+          "startedAt": "2026-11-11T13:43:36Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:47Z",
+          "conclusion": "success",
+          "name": "Post Run actions/checkout@v4",
+          "number": 30,
+          "startedAt": "2026-11-11T13:43:45Z",
+          "status": "completed"
+        },
+        {
+          "completedAt": "2026-11-11T13:43:47Z",
+          "conclusion": "success",
+          "name": "Complete job",
+          "number": 31,
+          "startedAt": "2026-11-11T13:43:47Z",
+          "status": "completed"
+        }
+      ],
+      "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788/job/130556704523"
+    }
+  ],
+  "status": "in_progress",
+  "url": "https://github.com/infi-pc/paseo/actions/runs/43030661788"
+}
