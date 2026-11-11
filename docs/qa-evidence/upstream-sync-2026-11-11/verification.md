@@ -101,8 +101,8 @@ because `azure.archive.ubuntu.com` could not resolve. It therefore did not reche
 browser failures. The provider-removal module-export error did not recur against a fresh local build. A total of
 95 distinct browser cases passed across the focused runs and corrected-case reruns, including
 all 75 cases in the 12-spec follow-up set and 17 cases from the canceled shard 7. The sidebar-view example seeds actual mock session
-activity so restoring Inbox through browser history still shows its workspace. The next CI run uses canonical Ubuntu mirror lists after two full runs reproduced
-the runner's Azure mirror DNS failure. Full CI is pending at submission. Exact browser results are recorded in `browser-ci-follow-up.txt`.
+activity so restoring Inbox through browser history still shows its workspace. The next CI run uses the kernel.org Ubuntu archive mirror after repeated full runs reproduced
+the runner's DNS failure for Azure and canonical Ubuntu archive domains. Full CI is pending at submission. Exact browser results are recorded in `browser-ci-follow-up.txt`.
 
 No production daemon restart or release was performed. This pass does not establish native
 device behavior or packaged desktop startup. Native timeline and

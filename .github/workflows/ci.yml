@@ -333,16 +333,16 @@ jobs:
         run: npm run test --workspace=@getpaseo/desktop
 
       - &ubuntu_package_mirrors
-        name: Use canonical Ubuntu package mirrors
+        name: Use reachable Ubuntu archive mirror
         if: ${{ runner.os == 'Linux' }}
         run: |
-          # The runner's Azure Ubuntu mirror repeatedly fails DNS resolution.
-          # Keep Ubuntu signature checks and use the canonical package servers.
+          # Ubuntu-hosted archive domains repeatedly fail DNS resolution on the runner.
+          # This mirror serves the same Ubuntu-signed release metadata.
           if [[ -f /etc/apt/apt-mirrors.txt ]]; then
-            printf '%s\n' 'https://archive.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
+            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-mirrors.txt > /dev/null
           fi
           if [[ -f /etc/apt/apt-security-mirrors.txt ]]; then
-            printf '%s\n' 'https://security.ubuntu.com/ubuntu/' | sudo tee /etc/apt/apt-security-mirrors.txt > /dev/null
+            printf '%s\n' 'https://mirrors.edge.kernel.org/ubuntu/' | sudo tee /etc/apt/apt-security-mirrors.txt > /dev/null
           fi
 
       - name: Install virtual display
