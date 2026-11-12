@@ -2167,7 +2167,11 @@ export class VoiceAssistantWebSocketServer {
         workspacePinning: true,
         // FORK(workspace-snooze): advertise the scheduler capability.
         ...(this.workspaceSnoozeService
-          ? { workspaceSnoozing: true, workspaceStatusSnoozing: true }
+          ? {
+              workspaceSnoozing: true,
+              workspaceStatusSnoozing: true,
+              workspaceSnoozeDeadlines: true,
+            }
           : {}),
         // COMPAT(workspaceMarkUnread): added in v0.5.0, remove after 2027-08-20.
         workspaceMarkUnread: true,
@@ -2930,7 +2934,7 @@ export class VoiceAssistantWebSocketServer {
       pushEligible: true,
       nowMs: Date.now(),
     });
-    const title = `${name} is ready`;
+    const title = `${name}: snooze ended`;
     if (plan.shouldPush) {
       void this.pushNotificationSender
         .send({
@@ -2957,6 +2961,18 @@ export class VoiceAssistantWebSocketServer {
     }
   }
 
+  private async agentAttentionMuted(workspaceId: string, reason: string): Promise<boolean> {
+    // Persist before the permission alert, without a separate wake notification.
+    if (reason === "permission") {
+      await this.workspaceRegistry.update(workspaceId, (workspace) =>
+        workspace.snooze
+          ? { ...workspace, snooze: null, updatedAt: new Date().toISOString() }
+          : workspace,
+      );
+    }
+    return Boolean((await this.workspaceRegistry.get(workspaceId))?.snooze);
+  }
+
   private async broadcastAgentAttention(params: {
     agentId: string;
     provider: AgentProvider;
@@ -2966,6 +2982,8 @@ export class VoiceAssistantWebSocketServer {
     if (!agent?.workspaceId) {
       return;
     }
+    if (agent.internal) return;
+    const muted = await this.agentAttentionMuted(agent.workspaceId, params.reason);
     const clientEntries: Array<{
       ws: WebSocketLike;
       state: ClientPresenceState;
@@ -3006,7 +3024,7 @@ export class VoiceAssistantWebSocketServer {
       nowMs,
     });
 
-    if (plan.shouldPush) {
+    if (!muted && plan.shouldPush) {
       void this.pushNotificationSender.send(notification).catch((err) => {
         this.logger.warn({ err, agentId: params.agentId }, "Failed to send push notification");
       });
@@ -3014,6 +3032,7 @@ export class VoiceAssistantWebSocketServer {
 
     for (const { ws } of clientEntries) {
       const shouldNotify =
+        !muted &&
         plan.inAppRecipientIndex !== null &&
         notificationEntries[plan.inAppRecipientIndex]?.ws === ws;
       const timestamp = new Date().toISOString();
@@ -3082,6 +3101,9 @@ export class VoiceAssistantWebSocketServer {
     terminalName: string;
     reason: TerminalAttentionReason;
   }): Promise<void> {
+    const muted = Boolean(
+      params.workspaceId && (await this.workspaceRegistry.get(params.workspaceId))?.snooze,
+    );
     const clientEntries: Array<{
       ws: WebSocketLike;
       state: ClientPresenceState;
@@ -3123,7 +3145,7 @@ export class VoiceAssistantWebSocketServer {
 
     const { title, body } = this.terminalAttentionCopy(params, workspaceId);
 
-    if (plan.shouldPush) {
+    if (!muted && plan.shouldPush) {
       void this.pushNotificationSender
         .send({
           title,
@@ -3145,6 +3167,7 @@ export class VoiceAssistantWebSocketServer {
 
     for (const { ws } of clientEntries) {
       const shouldNotify =
+        !muted &&
         plan.inAppRecipientIndex !== null &&
         notificationEntries[plan.inAppRecipientIndex]?.ws === ws;
       const message = wrapSessionMessage({

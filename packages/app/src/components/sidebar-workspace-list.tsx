@@ -1,3 +1,4 @@
+import { WorkspaceSessionRows } from "@/components/sidebar/navigation/session-rows";
 import { groupMainFolderWorkspaces } from "@/components/sidebar/navigation/model";
 import { ProjectPullRequestsShortcut } from "@/screens/project-pull-requests/shortcut";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -1375,6 +1376,7 @@ function WorkspaceRowWithMenu({
         onTogglePin={onTogglePin}
         reserveIdleStatusIndicatorSpace={reserveIdleStatusIndicatorSpace}
       />
+      <WorkspaceSessionRows workspace={workspace} />
       <WorkspaceRenameModal
         visible={isRenameOpen}
         workspace={workspace}

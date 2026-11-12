@@ -2,8 +2,11 @@ import { visibleRailProjectCount } from "./navigation/project-order";
 import {
   buildSessionActivity,
   groupMainFolderWorkspaces,
-  inboxWorkspaceKeys,
-  retainInboxKeys,
+  buildWorkspaceSessions,
+  workspaceSections,
+  sessionIsVisible,
+  type NavigationAgent,
+  retainSessionKeys,
   sortBySessionActivity,
   INBOX_ACTIVITY_WINDOW_MS,
 } from "./navigation/model";
@@ -155,79 +158,145 @@ describe("Inbox navigation", () => {
   const now = Date.parse("2026-10-29T12:00:00Z");
   const old = now - INBOX_ACTIVITY_WINDOW_MS - 1;
 
-  it("includes the 48-hour boundary and older unread sessions, excluding old read and snoozed workspaces", () => {
-    const entries = ["recent", "boundary", "unread", "old", "snoozed"].map(
-      (id) => makeWorkspace(id).entry,
-    );
-    const snoozed = entries[4];
-    snoozed.snooze = {
-      id: "snooze",
-      createdAt: new Date(now).toISOString(),
-      config: { mode: "time", wakeAt: "2026-11-01T12:00:00Z", timezone: "UTC" },
-      nextCheckAt: "2026-11-01T12:00:00Z",
-      lastCheck: null,
+  it("keeps old read and empty workspaces in Inbox; only children use recency", () => {
+    const workspace = makeWorkspace("old").entry;
+    const session = {
+      id: "idle",
+      serverId: "srv",
+      title: "Old",
+      running: false,
+      blocked: false,
+      unread: false,
+      lastActivityAt: old,
     };
-    const workspaces = new Map(entries.map((entry) => [entry.workspaceKey, entry]));
-    const activity = new Map([
-      ["srv:recent", { lastActivityAt: now, unread: false }],
-      ["srv:boundary", { lastActivityAt: now - INBOX_ACTIVITY_WINDOW_MS, unread: false }],
-      ["srv:unread", { lastActivityAt: old, unread: true }],
-      ["srv:old", { lastActivityAt: old, unread: false }],
-      ["srv:snoozed", { lastActivityAt: now, unread: true }],
+    expect(workspaceSections(workspace, [session])).toEqual(["inbox"]);
+    expect(workspaceSections(workspace, [])).toEqual(["inbox"]);
+    expect(sessionIsVisible(session, now)).toBe(false);
+    expect(
+      sessionIsVisible({ ...session, lastActivityAt: now - INBOX_ACTIVITY_WINDOW_MS }, now),
+    ).toBe(true);
+    expect(sessionIsVisible({ ...session, unread: true }, now)).toBe(true);
+    expect(sessionIsVisible(session, now, session.id)).toBe(true);
+  });
+
+  it("splits mixed work without duplicating workspace keyboard targets", () => {
+    const workspace = makeWorkspace("mixed", "running").entry;
+    const roots = [navigationAgent("working", "mixed", true), navigationAgent("idle", "mixed")];
+    const sessions = buildWorkspaceSessions([
+      { serverId: "srv", agents: new Map(roots.map((agent) => [agent.id, agent])) },
+    ]).get("srv:mixed")!;
+    expect(workspaceSections(workspace, sessions)).toEqual(["running", "inbox"]);
+    const projection = buildSidebarProjection({
+      ...projectionInput(),
+      flatWorkspaces: [workspace, workspace],
+    });
+    expect(projection.shortcutModel.shortcutTargets).toEqual([
+      { serverId: "srv", workspaceId: "mixed" },
     ]);
-    expect([...inboxWorkspaceKeys({ workspaces, activity, now })]).toEqual([
-      "srv:recent",
-      "srv:boundary",
-      "srv:unread",
+    workspace.snooze = {
+      id: "s",
+      createdAt: new Date(now).toISOString(),
+      nextCheckAt: new Date(now).toISOString(),
+      lastCheck: null,
+      config: { mode: "time", wakeAt: new Date(now).toISOString(), timezone: "UTC" },
+    };
+    expect(workspaceSections(workspace, sessions)).toEqual(["running", "snoozed"]);
+  });
+
+  it("keeps same-workspace descendants in their parent track and exposes cross-workspace roots", () => {
+    const parent = navigationAgent("parent", "one");
+    const child = { ...navigationAgent("child", "one", true), parentAgentId: "parent" };
+    const cross = { ...navigationAgent("cross", "two"), parentAgentId: "parent" };
+    const archived = { ...navigationAgent("archived", "one"), archivedAt: new Date(now) };
+    const agents = new Map([parent, child, cross, archived].map((agent) => [agent.id, agent]));
+    const sessions = buildWorkspaceSessions([{ serverId: "srv", agents }]);
+    expect(sessions.get("srv:one")?.map((row) => [row.id, row.running])).toEqual([
+      ["parent", true],
     ]);
+    expect(sessions.get("srv:two")?.map((row) => row.id)).toEqual(["cross"]);
+    child.turn = { phase: "idle", cancellationRequestId: null };
+    child.requiresAttention = true;
+    const finished = buildWorkspaceSessions([{ serverId: "srv", agents }]);
+    expect(finished.get("srv:one")?.map((row) => [row.running, row.unread])).toEqual([
+      [false, false],
+    ]);
+  });
+
+  it("a root permission stays in Inbox even when its descendant is working", () => {
+    const parent = navigationAgent("parent", "one", true);
+    parent.pendingPermissions = [
+      { id: "permission", provider: "codex", name: "shell", kind: "tool", input: {} },
+    ];
+    const child = { ...navigationAgent("child", "one", true), parentAgentId: parent.id };
+    const agents = new Map([parent, child].map((agent) => [agent.id, agent]));
+    const rows = buildWorkspaceSessions([{ serverId: "srv", agents }]).get("srv:one")!;
+    expect(rows.map((row) => [row.id, row.running, row.blocked])).toEqual([
+      ["parent", false, true],
+    ]);
+    expect(workspaceSections(makeWorkspace("one", "needs_input").entry, rows)).toEqual(["inbox"]);
+    agents.set("other", navigationAgent("other", "one", true));
+    expect(
+      workspaceSections(
+        makeWorkspace("one", "needs_input").entry,
+        buildWorkspaceSessions([{ serverId: "srv", agents }]).get("srv:one")!,
+      ),
+    ).toEqual(["running", "inbox"]);
+  });
+
+  it("does not move running rows for streaming activity", () => {
+    const agent = navigationAgent("running", "one", true);
+    const sources = [{ serverId: "srv", agents: new Map([[agent.id, agent]]) }];
+    const before = buildSessionActivity(sources);
+    agent.lastActivityAt = new Date(now + 10_000);
+    expect(buildSessionActivity(sources)).toEqual(before);
   });
 
   it("uses the latest session activity while retaining unread from a different session in the workspace", () => {
-    const activity = buildSessionActivity(
-      [
-        {
-          serverId: "srv",
-          agents: new Map([
-            [
-              "older",
-              {
-                id: "older",
-                workspaceId: "one",
-                lastActivityAt: new Date(old),
-                requiresAttention: true,
-              },
-            ],
-            [
-              "newer",
-              {
-                id: "newer",
-                workspaceId: "one",
-                lastActivityAt: new Date(now - 100),
-                requiresAttention: false,
-              },
-            ],
-            [
-              "archived",
-              {
-                id: "archived",
-                workspaceId: "two",
-                lastActivityAt: new Date(now),
-                archivedAt: new Date(now),
-              },
-            ],
-          ]),
-        },
-      ],
-      new Map([["newer", new Date(now)]]),
-    );
-    expect(activity.get("srv:one")).toEqual({ lastActivityAt: now, unread: true });
+    const activity = buildSessionActivity([
+      {
+        serverId: "srv",
+        agents: new Map([
+          [
+            "older",
+            {
+              id: "older",
+              workspaceId: "one",
+              lastActivityAt: new Date(old),
+              requiresAttention: true,
+            },
+          ],
+          [
+            "newer",
+            {
+              id: "newer",
+              workspaceId: "one",
+              lastActivityAt: new Date(now - 100),
+              requiresAttention: false,
+            },
+          ],
+          [
+            "archived",
+            {
+              id: "archived",
+              workspaceId: "two",
+              lastActivityAt: new Date(now),
+              archivedAt: new Date(now),
+            },
+          ],
+        ]),
+      },
+    ]);
+    expect(activity.get("srv:one")).toEqual({ lastActivityAt: now - 100, unread: true });
     expect(activity.has("srv:two")).toBe(false);
   });
 
-  it("retains read workspaces through the Inbox visit, and adds incoming workspaces", () => {
+  it("retains read children during a visit and resets on project changes", () => {
     const held = new Set(["srv:old-unread"]);
-    expect(retainInboxKeys(held, new Set())).toBe(held);
-    expect([...retainInboxKeys(held, new Set(["srv:new"]))]).toEqual(["srv:old-unread", "srv:new"]);
+    expect(retainSessionKeys(held, new Set())).toBe(held);
+    expect([...retainSessionKeys(held, new Set(["srv:new"]))]).toEqual([
+      "srv:old-unread",
+      "srv:new",
+    ]);
     const before = useSidebarNavigationStore.getState().inboxVisit;
     useSidebarNavigationStore.getState().selectProject("another-project");
     expect(useSidebarNavigationStore.getState().inboxVisit).toBe(before + 1);
@@ -302,3 +371,21 @@ describe("project workspace grouping", () => {
     expect(groupMainFolderWorkspaces([main])).toEqual([main]);
   });
 });
+
+function navigationAgent(id: string, workspaceId: string, running = false): NavigationAgent {
+  const date = new Date("2026-10-29T10:00:00Z");
+  return {
+    id,
+    workspaceId,
+    title: id,
+    parentAgentId: null,
+    pendingPermissions: [],
+    requiresAttention: false,
+    turn: running
+      ? { phase: "open", turnId: id, startedAt: date, cancellationRequestId: null }
+      : { phase: "idle", cancellationRequestId: null },
+    lastActivityAt: date,
+    createdAt: date,
+    lastUserMessageAt: date,
+  };
+}

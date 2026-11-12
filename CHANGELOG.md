@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased — personal fork
+
+- Keep open workspaces accounted for in Running, Inbox, or Snoozed, with session shortcuts and independent read indicators.
+- Add reminder deadlines to conditional snoozes (two weeks by default). Existing conditional snoozes use creation time plus fourteen days; overdue ones wake after upgrade.
+- Mute completion/error alerts while snoozed, wake immediately for agent permissions, and offer a snooze choice when sending a message.
+
 ## 0.15.0-beta.1 - 2026-11-01
 
 Daemon restarts now keep terminal programs running and automatically resume interrupted agents in their existing conversations.

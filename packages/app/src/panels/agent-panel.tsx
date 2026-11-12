@@ -1,3 +1,4 @@
+import { useSnoozedSend } from "@/workspace-snooze/send-dialog";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -1183,6 +1184,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   const handleFocusInput = useCallback((focus: () => void) => {
     focusComposerRef.current = focus;
   }, []);
+  const snoozedSend = useSnoozedSend(serverId, workspaceId, toastApi.error);
   const recommendedPromptActions = useMemo<RecommendedPromptActions>(
     () => ({
       send: async (prompt) => {
@@ -1190,8 +1192,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
           toastApi.error(t("responseControl.recommendedPrompts.sendFailed"));
           return;
         }
-        handleMessageSent();
-        try {
+        await snoozedSend(async () => {
+          handleMessageSent();
           await dispatchComposerAgentMessage({
             client,
             agentId,
@@ -1203,10 +1205,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
             activeTurnBehavior: "interrupt",
           });
           onAttentionPromptSend();
-        } catch (error) {
-          console.error("[AgentPanel] Failed to send recommended prompt:", error);
-          toastApi.error(t("responseControl.recommendedPrompts.sendFailed"));
-        }
+        });
       },
       useEdited: (prompt) => {
         // The draft exposes a snapshot source rather than a rendered string, so read it at
@@ -1217,6 +1216,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       },
     }),
     [
+      snoozedSend,
       agentId,
       client,
       handleMessageSent,

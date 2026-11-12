@@ -1,3 +1,4 @@
+import { SidebarSessionsContext } from "@/components/sidebar/navigation/session-rows";
 import {
   SidebarProjectRail,
   SidebarProjectSelector,
@@ -241,21 +242,23 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
   if (isCompactLayout) {
     return (
       <>
-        <RetainedPanelActivity active={active}>
-          <MobileSidebar
-            {...sharedProps}
-            active={active}
-            insetsTop={insets.top}
-            insetsBottom={insets.bottom}
-            closeSidebar={showMobileAgent}
-            handleOpenProject={handleOpenProjectMobile}
-            handleImportSession={handleImportSessionMobile}
-            flatRows={!navigation.selectedProject ? navigation.rows : undefined}
-            handleSettings={handleSettingsMobile}
-            handleAddHost={handleAddHostMobile}
-            handleOpenHostSettings={handleOpenHostSettingsMobile}
-          />
-        </RetainedPanelActivity>
+        <SidebarSessionsContext.Provider value={navigation}>
+          <RetainedPanelActivity active={active}>
+            <MobileSidebar
+              {...sharedProps}
+              active={active}
+              insetsTop={insets.top}
+              insetsBottom={insets.bottom}
+              closeSidebar={showMobileAgent}
+              handleOpenProject={handleOpenProjectMobile}
+              handleImportSession={handleImportSessionMobile}
+              flatRows={!navigation.selectedProject ? navigation.rows : undefined}
+              handleSettings={handleSettingsMobile}
+              handleAddHost={handleAddHostMobile}
+              handleOpenHostSettings={handleOpenHostSettingsMobile}
+            />
+          </RetainedPanelActivity>
+        </SidebarSessionsContext.Provider>
         {importSessionSheet}
       </>
     );
@@ -263,19 +266,21 @@ export const LeftSidebar = memo(function LeftSidebar({ active }: { active: boole
 
   return (
     <>
-      <RetainedPanelActivity active={active}>
-        <DesktopSidebar
-          {...sharedProps}
-          insetsTop={insets.top}
-          active={active}
-          handleOpenProject={handleOpenProjectDesktop}
-          handleImportSession={openImportSession}
-          flatRows={!navigation.selectedProject ? navigation.rows : undefined}
-          handleSettings={handleSettingsDesktop}
-          handleAddHost={handleAddHostDesktop}
-          handleOpenHostSettings={handleOpenHostSettingsDesktop}
-        />
-      </RetainedPanelActivity>
+      <SidebarSessionsContext.Provider value={navigation}>
+        <RetainedPanelActivity active={active}>
+          <DesktopSidebar
+            {...sharedProps}
+            insetsTop={insets.top}
+            active={active}
+            handleOpenProject={handleOpenProjectDesktop}
+            handleImportSession={openImportSession}
+            flatRows={!navigation.selectedProject ? navigation.rows : undefined}
+            handleSettings={handleSettingsDesktop}
+            handleAddHost={handleAddHostDesktop}
+            handleOpenHostSettings={handleOpenHostSettingsDesktop}
+          />
+        </RetainedPanelActivity>
+      </SidebarSessionsContext.Provider>
       {importSessionSheet}
     </>
   );

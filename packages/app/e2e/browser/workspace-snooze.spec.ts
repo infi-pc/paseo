@@ -1,3 +1,5 @@
+import { seedMockAgentWorkspace, openAgentRoute } from "../support/helpers/mock-agent";
+import { composerLocator } from "../support/helpers/composer";
 import { createMockIdleAgent } from "../support/helpers/archive-tab";
 import { test, expect, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
@@ -34,12 +36,13 @@ async function openSnooze(page: Page, workspaceId: string) {
   await expect(page.getByTestId("workspace-snooze-dialog")).toBeVisible();
 }
 
-test("timed snoozes hide a workspace, survive reload, and can be revealed and unsnoozed", async ({
+test("timed snoozes move to Snoozed, survive reload, and stay visible in projects", async ({
   page,
 }, testInfo) => {
   const workspace = await seedWorkspace({ repoPrefix: "snooze-time-" });
   try {
     await gotoAppShell(page, workspace);
+    await selectSidebarInbox(page);
     await openSnooze(page, workspace.workspaceId);
     await page.screenshot({ path: testInfo.outputPath("snooze-time.png") });
     await page.getByTestId("workspace-snooze-submit").click();
@@ -47,8 +50,7 @@ test("timed snoozes hide a workspace, survive reload, and can be revealed and un
     await expect(row(page, workspace.workspaceId)).toHaveCount(0);
     await page.reload();
     await selectSidebarProject(page, workspace.projectKey);
-    await expect(page.getByText("Show all", { exact: true })).toBeVisible();
-    await page.getByText("Show all", { exact: true }).click();
+    await expect(row(page, workspace.workspaceId)).toBeVisible();
     await expect(row(page, workspace.workspaceId)).toContainText("Snoozed");
     await openWorkspaceContextMenu(page, workspace.workspaceId);
     await page
@@ -61,7 +63,7 @@ test("timed snoozes hide a workspace, survive reload, and can be revealed and un
   }
 });
 
-test("AI snooze keeps checks visible in the editor and project pins and Inbox respect hiding", async ({
+test("AI snooze keeps checks and deadlines visible and Inbox accounts for Snoozed", async ({
   page,
 }, testInfo) => {
   const workspace = await seedWorkspace({ repoPrefix: "snooze-ai-" });
@@ -80,10 +82,10 @@ test("AI snooze keeps checks visible in the editor and project pins and Inbox re
     await page.getByTestId("snooze-mode-ai").click();
     await page.getByTestId("snooze-condition").fill("The deployment is healthy");
     await page.getByTestId("workspace-snooze-submit").click();
-    await expect(row(page, workspace.workspaceId)).toHaveCount(0);
-    await page.getByText("Show all", { exact: true }).click();
+    await expect(row(page, workspace.workspaceId)).toBeVisible();
     await openSnooze(page, workspace.workspaceId);
     await expect(page.getByTestId("snooze-condition")).toHaveValue("The deployment is healthy");
+    await expect(page.getByTestId("snooze-deadline")).toBeVisible();
     await expect(page.getByTestId("workspace-snooze-dialog")).toContainText("Couldn’t determine");
     await page.screenshot({ path: testInfo.outputPath("snooze-ai.png") });
     await page.getByTestId("workspace-snooze-dialog").getByText("Cancel", { exact: true }).click();
@@ -91,7 +93,6 @@ test("AI snooze keeps checks visible in the editor and project pins and Inbox re
     await selectSidebarInbox(page);
     await expect(row(page, workspace.workspaceId)).toHaveCount(0);
     await selectSidebarProject(page, workspace.projectKey);
-    await page.getByText("Show all", { exact: true }).click();
     await expect(row(page, workspace.workspaceId)).toContainText("Snoozed");
   } finally {
     await workspace.cleanup();
@@ -160,6 +161,169 @@ test("status change explains missing links and does not hide a workspace without
     await expect(page.getByTestId("workspace-snooze-submit")).toBeInViewport();
     await page.screenshot({ path: testInfo.outputPath("snooze-status-compact.png") });
   } finally {
+    await workspace.cleanup();
+  }
+});
+
+test("session shortcuts open tabs and snooze-on-send cancel preserves the draft", async ({
+  page,
+}, testInfo) => {
+  const workspace = await seedWorkspace({ repoPrefix: "snooze-send-" });
+  try {
+    const agent = await createMockIdleAgent(workspace.client, {
+      cwd: workspace.repoPath,
+      workspaceId: workspace.workspaceId,
+      title: "Inbox session",
+    });
+    await gotoAppShell(page, workspace);
+    await selectSidebarInbox(page);
+    // Host-qualified session identities are independent of which tabs this device had open.
+    const sessionRow = page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`);
+    await expect(sessionRow).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("inbox-session-shortcut.png") });
+    await sessionRow.click();
+    await expect(composerLocator(page)).toBeVisible();
+    await workspace.client.setWorkspaceSnooze(workspace.workspaceId, {
+      mode: "time",
+      wakeAt: new Date(Date.now() + 86400000).toISOString(),
+      timezone: "UTC",
+    });
+    await expect(row(page, workspace.workspaceId)).toHaveCount(0);
+    await expect(page.getByTestId("sidebar-section-snoozed")).toContainText("1");
+    await composerLocator(page).fill("Keep this draft");
+    await composerLocator(page).press("Enter");
+    const dialog = page.getByTestId("snoozed-send-dialog");
+    await expect(dialog).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("snooze-on-send.png") });
+    await dialog.getByText("Cancel", { exact: true }).click();
+    await expect(composerLocator(page)).toHaveValue("Keep this draft");
+    await composerLocator(page).press("Enter");
+    await dialog.getByText("Unsnooze and send", { exact: true }).click();
+    await expect(dialog).toBeHidden();
+    await expect(composerLocator(page)).toHaveValue("");
+    await expect(row(page, workspace.workspaceId).first()).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          (await workspace.client.fetchWorkspaces({})).entries.find(
+            (entry) => entry.id === workspace.workspaceId,
+          )?.snooze,
+      )
+      .toBeNull();
+  } finally {
+    await workspace.cleanup();
+  }
+});
+
+test("unsnooze succeeds even when sending fails, and the draft remains retryable", async ({
+  page,
+}, testInfo) => {
+  const agent = await seedMockAgentWorkspace({
+    repoPrefix: "snooze-send-failure-",
+    title: "Send retry",
+    featureValues: { mockPromptRejections: 1 },
+  });
+  try {
+    await openAgentRoute(page, agent);
+    await expect(composerLocator(page)).toBeVisible();
+    await agent.client.setWorkspaceSnooze(agent.workspaceId, {
+      mode: "time",
+      wakeAt: new Date(Date.now() + 86400000).toISOString(),
+      timezone: "UTC",
+    });
+    await selectSidebarInbox(page);
+    await expect(page.getByTestId("sidebar-section-snoozed")).toBeVisible();
+    await composerLocator(page).fill("Retry this message");
+    await composerLocator(page).press("Enter");
+    await page
+      .getByTestId("snoozed-send-dialog")
+      .getByText("Unsnooze and send", { exact: true })
+      .click();
+    await expect(
+      page.getByRole("alert").filter({ hasText: "The workspace is now awake" }),
+    ).toBeVisible();
+    await expect(composerLocator(page)).toHaveValue("Retry this message");
+    await expect
+      .poll(
+        async () =>
+          (await agent.client.fetchWorkspaces({})).entries.find(
+            (entry) => entry.id === agent.workspaceId,
+          )?.snooze,
+      )
+      .toBeNull();
+    await page.screenshot({ path: testInfo.outputPath("snooze-send-failure.png") });
+    await composerLocator(page).press("Enter");
+    await expect(page.getByTestId("snoozed-send-dialog")).toHaveCount(0);
+    await expect(composerLocator(page)).toHaveValue("");
+  } finally {
+    await agent.cleanup();
+  }
+});
+
+test("a mixed workspace has distinct Running and Inbox sessions and snooze keeps work visible", async ({
+  page,
+}, testInfo) => {
+  const workspace = await seedWorkspace({ repoPrefix: "inbox-mixed-" });
+  let working: string | undefined;
+  try {
+    const idle = await createMockIdleAgent(workspace.client, {
+      cwd: workspace.repoPath,
+      workspaceId: workspace.workspaceId,
+      title: "Ready for review",
+    });
+    const agent = await workspace.client.createAgent({
+      provider: "mock",
+      model: "one-minute-stream",
+      modeId: "load-test",
+      cwd: workspace.repoPath,
+      workspaceId: workspace.workspaceId,
+      title: "Working session",
+      initialPrompt: "Run until canceled",
+    });
+    working = agent.id;
+    await workspace.client.waitForAgentUpsert(
+      agent.id,
+      (snapshot) => snapshot.status === "running",
+    );
+    await gotoAppShell(page, workspace);
+    await selectSidebarInbox(page);
+    await expect(row(page, workspace.workspaceId)).toHaveCount(2);
+    await expect(page.getByTestId(`sidebar-session-${getServerId()}-${idle.id}`)).toHaveCount(1);
+    await expect(page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`)).toHaveCount(1);
+    await page.screenshot({ path: testInfo.outputPath("inbox-mixed-running.png") });
+    await workspace.client.setWorkspaceSnooze(workspace.workspaceId, {
+      mode: "time",
+      wakeAt: new Date(Date.now() + 86400000).toISOString(),
+      timezone: "UTC",
+    });
+    await expect(row(page, workspace.workspaceId)).toHaveCount(1);
+    await expect(page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`)).toBeVisible();
+    await expect(page.getByTestId(`sidebar-session-${getServerId()}-${idle.id}`)).toHaveCount(0);
+    await expect(page.getByTestId("sidebar-section-snoozed")).toBeVisible();
+    await page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`).click();
+    await composerLocator(page).fill("Send after this turn ends");
+    await composerLocator(page).press("Enter");
+    await expect(page.getByTestId("snoozed-send-dialog")).toBeVisible();
+    await workspace.client.cancelAgent(agent.id);
+    await expect(row(page, workspace.workspaceId)).toHaveCount(0);
+    await page
+      .getByTestId("snoozed-send-dialog")
+      .getByText("Keep snoozed and send", { exact: true })
+      .click();
+    await expect(composerLocator(page)).toHaveValue("");
+    await expect(row(page, workspace.workspaceId)).toHaveCount(1);
+    await expect
+      .poll(
+        async () =>
+          (await workspace.client.fetchWorkspaces({})).entries.find(
+            (entry) => entry.id === workspace.workspaceId,
+          )?.snooze?.config.mode,
+      )
+      .toBe("time");
+    await workspace.client.cancelAgent(agent.id);
+    working = undefined;
+  } finally {
+    if (working) await workspace.client.cancelAgent(working);
     await workspace.cleanup();
   }
 });

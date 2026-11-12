@@ -1519,6 +1519,10 @@ export async function createPaseoDaemon(
     registry: workspaceRegistry,
     logger,
     check: createWorkspaceSnoozeChecker(agentManager, providerSnapshotManager),
+    hasPendingPermission: (workspaceId) =>
+      agentManager
+        .listAgents()
+        .some((agent) => agent.workspaceId === workspaceId && agent.pendingPermissions.size > 0),
     statusChecker: resolveWorkspaceStatusSnoozeChecker(dependencies, {
       github,
       linear: linearService,

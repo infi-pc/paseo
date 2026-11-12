@@ -4077,6 +4077,7 @@ export const ServerInfoStatusPayloadSchema = z
         workspacePinning: z.boolean().optional(),
         // FORK(workspace-snooze): one feature gate for clients.
         workspaceSnoozing: z.boolean().optional(),
+        workspaceSnoozeDeadlines: z.boolean().optional(),
         workspaceStatusSnoozing: z.boolean().optional(),
         // COMPAT(workspaceMarkUnread): added in v0.5.0, remove after 2027-08-20.
         workspaceMarkUnread: z.boolean().optional(),
