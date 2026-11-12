@@ -1,5 +1,5 @@
 import { seedMockAgentWorkspace, openAgentRoute } from "../support/helpers/mock-agent";
-import { composerLocator } from "../support/helpers/composer";
+import { composerLocator, configureComposerQueueSend } from "../support/helpers/composer";
 import { createMockIdleAgent } from "../support/helpers/archive-tab";
 import { test, expect, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
@@ -327,3 +327,56 @@ test("a mixed workspace has distinct Running and Inbox sessions and snooze keeps
     await workspace.cleanup();
   }
 });
+
+for (const scenario of ["cancel preserves draft", "finished turn sends immediately"] as const) {
+  test(`queued snoozed send: ${scenario}`, async ({ page }) => {
+    await configureComposerQueueSend(page);
+    const workspace = await seedWorkspace({ repoPrefix: "snooze-queue-" });
+    let working: string | undefined;
+    try {
+      const agent = await workspace.client.createAgent({
+        provider: "mock",
+        model: "one-minute-stream",
+        modeId: "load-test",
+        cwd: workspace.repoPath,
+        workspaceId: workspace.workspaceId,
+        title: "Queued session",
+        initialPrompt: "Run until canceled",
+      });
+      working = agent.id;
+      await workspace.client.waitForAgentUpsert(
+        agent.id,
+        (snapshot) => snapshot.status === "running",
+      );
+      await gotoAppShell(page, workspace);
+      await selectSidebarInbox(page);
+      await workspace.client.setWorkspaceSnooze(workspace.workspaceId, {
+        mode: "time",
+        wakeAt: new Date(Date.now() + 86400000).toISOString(),
+        timezone: "UTC",
+      });
+      await page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`).click();
+      const composer = composerLocator(page);
+      await composer.fill("Keep this queued draft");
+      await composer.press("Enter");
+      const dialog = page.getByTestId("snoozed-send-dialog");
+      await expect(dialog).toBeVisible();
+      if (scenario === "cancel preserves draft") {
+        await expect(composer).toHaveValue("Keep this queued draft");
+        await dialog.getByText("Cancel", { exact: true }).click();
+        await expect(composer).toHaveValue("Keep this queued draft");
+        await expect(page.getByRole("button", { name: "Send queued message now" })).toHaveCount(0);
+      } else {
+        await workspace.client.cancelAgent(agent.id);
+        await expect(row(page, workspace.workspaceId)).toHaveCount(0);
+        await dialog.getByText("Keep snoozed and send", { exact: true }).click();
+        await expect(composer).toHaveValue("");
+        await expect(row(page, workspace.workspaceId)).toHaveCount(1);
+        await expect(page.getByRole("button", { name: "Send queued message now" })).toHaveCount(0);
+      }
+    } finally {
+      if (working) await workspace.client.cancelAgent(working);
+      await workspace.cleanup();
+    }
+  });
+}

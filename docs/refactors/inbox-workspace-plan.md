@@ -2,7 +2,7 @@
 
 Status: implemented; validation is recorded with the change. This document preserves the agreed implementation scope. Current behavior is documented in [mobile panels](../mobile-panels.md#inbox-and-project-navigation) and [workspace snoozing](../agent-lifecycle.md#workspace-snoozing).
 Reviewed independently through Paseo by Gemini Argon and Claude Code Fable;
-concrete findings incorporated below. No implementation changes have been made.
+concrete findings incorporated below.
 
 Every unarchived workspace appears in Running, Inbox, or Snoozed. Reading a session,
 clearing its green dot, or crossing an age boundary must never hide its workspace.

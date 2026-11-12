@@ -9739,102 +9739,108 @@ test("turn_failed surfaces provider code and diagnostic in system error message"
   expect(systemError?.text).toContain("No preset version installed for command claude");
 });
 
-test("permission request notifies once without forcing unread attention state", async () => {
-  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-attention-permission-"));
-  const storagePath = join(workdir, "agents");
-  const storage = new AgentStorage(storagePath, logger);
+test.each([false, true])(
+  "permission request notifies once without forcing unread attention state (delegated: %s)",
+  async (delegated) => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-attention-permission-"));
+    const storagePath = join(workdir, "agents");
+    const storage = new AgentStorage(storagePath, logger);
 
-  const releasePermissionResolution = deferred<void>();
+    const releasePermissionResolution = deferred<void>();
 
-  class PermissionSession extends TestAgentSession {
-    override async startTurn(): Promise<{ turnId: string }> {
-      const turnId = "turn-perm-1";
-      setTimeout(async () => {
-        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
-        this.pushEvent({
-          type: "permission_requested",
-          provider: this.provider,
-          request: {
-            id: "perm-1",
+    class PermissionSession extends TestAgentSession {
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "turn-perm-1";
+        setTimeout(async () => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "permission_requested",
             provider: this.provider,
-            kind: "tool",
-            name: "Read file",
-          },
-          turnId,
+            request: {
+              id: "perm-1",
+              provider: this.provider,
+              kind: "tool",
+              name: "Read file",
+            },
+            turnId,
+          });
+          await releasePermissionResolution.promise;
+          this.pushEvent({
+            type: "permission_resolved",
+            provider: this.provider,
+            requestId: "perm-1",
+            resolution: { behavior: "allow" },
+            turnId,
+          });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
+      }
+    }
+
+    class PermissionClient implements AgentClient {
+      readonly provider = "codex" as const;
+      readonly capabilities = TEST_CAPABILITIES;
+
+      async isAvailable(): Promise<boolean> {
+        return true;
+      }
+
+      async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new PermissionSession(config);
+      }
+
+      async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
+        return new PermissionSession({
+          provider: "codex",
+          cwd: config?.cwd ?? process.cwd(),
         });
-        await releasePermissionResolution.promise;
-        this.pushEvent({
-          type: "permission_resolved",
-          provider: this.provider,
-          requestId: "perm-1",
-          resolution: { behavior: "allow" },
-          turnId,
-        });
-        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
-      }, 0);
-      return { turnId };
-    }
-  }
-
-  class PermissionClient implements AgentClient {
-    readonly provider = "codex" as const;
-    readonly capabilities = TEST_CAPABILITIES;
-
-    async isAvailable(): Promise<boolean> {
-      return true;
+      }
     }
 
-    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
-      return new PermissionSession(config);
-    }
+    const attentionReasons: Array<"finished" | "error" | "permission"> = [];
+    const manager = new AgentManager({
+      clients: {
+        codex: new PermissionClient(),
+      },
+      registry: storage,
+      logger,
+      idFactory: () => "00000000-0000-4000-8000-000000000131",
+      onAgentAttention: ({ reason }) => {
+        attentionReasons.push(reason);
+      },
+    });
 
-    async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
-      return new PermissionSession({
+    const agent = await manager.createAgent(
+      {
         provider: "codex",
-        cwd: config?.cwd ?? process.cwd(),
-      });
+        cwd: workdir,
+        title: "Permission transition test",
+      },
+      undefined,
+      {
+        workspaceId: undefined,
+        labels: delegated ? { [PARENT_AGENT_ID_LABEL]: "parent-agent" } : undefined,
+      },
+    );
+
+    const stream = manager.streamAgent(agent.id, "permission flow");
+    await stream.next(); // turn_started
+    await stream.next(); // permission_requested
+
+    const withPermissionPending = manager.getAgent(agent.id);
+    expect(withPermissionPending?.pendingPermissions.size).toBe(1);
+    expect(withPermissionPending?.attention).toEqual({ requiresAttention: false });
+
+    // Release permission resolution and drain the rest of the stream
+    releasePermissionResolution.resolve();
+    while (!(await stream.next()).done) {
+      // no-op
     }
-  }
 
-  const attentionReasons: Array<"finished" | "error" | "permission"> = [];
-  const manager = new AgentManager({
-    clients: {
-      codex: new PermissionClient(),
-    },
-    registry: storage,
-    logger,
-    idFactory: () => "00000000-0000-4000-8000-000000000131",
-    onAgentAttention: ({ reason }) => {
-      attentionReasons.push(reason);
-    },
-  });
-
-  const agent = await manager.createAgent(
-    {
-      provider: "codex",
-      cwd: workdir,
-      title: "Permission transition test",
-    },
-    undefined,
-    { workspaceId: undefined },
-  );
-
-  const stream = manager.streamAgent(agent.id, "permission flow");
-  await stream.next(); // turn_started
-  await stream.next(); // permission_requested
-
-  const withPermissionPending = manager.getAgent(agent.id);
-  expect(withPermissionPending?.pendingPermissions.size).toBe(1);
-  expect(withPermissionPending?.attention).toEqual({ requiresAttention: false });
-
-  // Release permission resolution and drain the rest of the stream
-  releasePermissionResolution.resolve();
-  while (!(await stream.next()).done) {
-    // no-op
-  }
-
-  expect(attentionReasons).toContain("permission");
-});
+    expect(attentionReasons.filter((reason) => reason === "permission")).toHaveLength(1);
+  },
+);
 
 test("respondToPermission updates currentModeId after plan approval", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));

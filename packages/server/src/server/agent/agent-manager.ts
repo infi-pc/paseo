@@ -5625,7 +5625,8 @@ export class AgentManager {
     agent: ManagedAgent,
     reason: "finished" | "error" | "permission",
   ): void {
-    if (isDelegatedAgent(agent)) {
+    // Permissions must reach the workspace snooze policy even for descendants.
+    if (isDelegatedAgent(agent) && reason !== "permission") {
       return;
     }
 

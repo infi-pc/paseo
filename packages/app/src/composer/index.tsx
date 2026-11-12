@@ -2001,14 +2001,13 @@ function ComposerContentImpl({
         commands: pluginClientSlashCommands,
       });
       if (pluginSlashCommand && runPluginClientSlashCommand(pluginSlashCommand)) return;
-      void snoozedSend(() => queueMessage(payload.text, outgoingAttachments));
+      void sendMessageWithContent(payload.text, outgoingAttachments);
     },
     [
       attachments,
       buildOutgoingAttachments,
       pluginClientSlashCommands,
-      queueMessage,
-      snoozedSend,
+      sendMessageWithContent,
       runClientSlashCommand,
       runPluginClientSlashCommand,
     ],
