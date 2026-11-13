@@ -120,7 +120,11 @@ async function openAgent(
 async function selectAgent(page: Page, title: string) {
   await page.mouse.move(1200, 600);
   await expect(page.getByTestId("workspace-hover-card")).not.toBeVisible();
-  await page.getByRole("button", { name: title, exact: true }).click();
+  await page
+    .getByTestId("workspace-tabs-row")
+    .filter({ visible: true })
+    .getByRole("button", { name: title, exact: true })
+    .click();
 }
 
 async function expectForkFailureWithoutOverlappingStatus(page: Page) {
@@ -211,7 +215,10 @@ async function startVisibleTurn(
 }
 
 async function expectAgentConsistentlyIdle(page: Page, title: string): Promise<void> {
-  const tab = page.getByRole("button", { name: title, exact: true });
+  const tab = page
+    .getByTestId("workspace-tabs-row")
+    .filter({ visible: true })
+    .getByRole("button", { name: title, exact: true });
   await expect(tab.locator('[data-status-bucket="running"]')).toHaveCount(0);
   await expectAgentIdle(page);
   await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
@@ -284,11 +291,18 @@ test.describe("Viewed agent timelines", () => {
       subscriptions.reset();
       await page.reload();
       await waitForWorkspaceTabsVisible(page);
-      await expect(page.getByRole("button", { name: restored.title, exact: true })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
-      await expect(page.getByRole("button", { name: sibling.title, exact: true })).toBeVisible();
+      await expect(
+        page
+          .getByTestId("workspace-tabs-row")
+          .filter({ visible: true })
+          .getByRole("button", { name: restored.title, exact: true }),
+      ).toHaveAttribute("aria-selected", "true");
+      await expect(
+        page
+          .getByTestId("workspace-tabs-row")
+          .filter({ visible: true })
+          .getByRole("button", { name: sibling.title, exact: true }),
+      ).toBeVisible();
       await subscriptions.waitForSubscribedAgents([restored.agentId]);
 
       // Opening the restored sibling is what adds it, and it adds only itself.
@@ -378,10 +392,16 @@ test.describe("Viewed agent timelines", () => {
       await selectAgent(page, "Second viewed chat");
       await moveActiveTabRight(page);
       await expect(
-        page.getByRole("button", { name: "First viewed chat", exact: true }),
+        page
+          .getByTestId("workspace-tabs-row")
+          .filter({ visible: true })
+          .getByRole("button", { name: "First viewed chat", exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "Second viewed chat", exact: true }),
+        page
+          .getByTestId("workspace-tabs-row")
+          .filter({ visible: true })
+          .getByRole("button", { name: "Second viewed chat", exact: true }),
       ).toBeVisible();
       await expect(page.getByRole("textbox", { name: "Message agent..." })).toHaveCount(2);
       await commitMessage(scenario, scenario.firstAgentId, "First visible pane update.");
@@ -389,7 +409,10 @@ test.describe("Viewed agent timelines", () => {
         page.getByTestId("user-message").getByText("First visible pane update.", { exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByRole("button", { name: "Second viewed chat", exact: true }),
+        page
+          .getByTestId("workspace-tabs-row")
+          .filter({ visible: true })
+          .getByRole("button", { name: "Second viewed chat", exact: true }),
       ).toBeVisible();
     } finally {
       await scenario.cleanup();
@@ -410,10 +433,12 @@ test.describe("Viewed agent timelines", () => {
           exact: true,
         });
       await expect(previousMessage).toBeVisible();
-      await expect(page.getByRole("button", { name: "First viewed chat" })).toHaveAttribute(
-        "aria-selected",
-        "true",
-      );
+      await expect(
+        page
+          .getByTestId("workspace-tabs-row")
+          .filter({ visible: true })
+          .getByRole("button", { name: "First viewed chat" }),
+      ).toHaveAttribute("aria-selected", "true");
       await gate.drop();
       await gate.waitForBlockedConnection();
       await expectReconnectingToastVisible(page);
