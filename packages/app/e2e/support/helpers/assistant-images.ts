@@ -217,7 +217,9 @@ export async function sendFollowUpAndExpectVisibleResponse(
 }
 
 async function selectSettledAgentTab(page: Page, agent: ArchiveTabAgent): Promise<void> {
-  const tab = page.getByRole("button", { name: agent.title, exact: true });
+  const tab = page
+    .getByTestId("workspace-tabs-row")
+    .getByRole("button", { name: agent.title, exact: true });
   await tab.click();
   await expect(page).toHaveTitle(agent.title);
   await expect(tab).toHaveAttribute("aria-selected", "true");

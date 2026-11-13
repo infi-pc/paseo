@@ -132,7 +132,10 @@ async function withSharedMarkdownFiles(page: Page, run: () => Promise<void>) {
 }
 
 async function returnToSharedMarkdownChat(page: Page) {
-  await page.getByRole("button", { name: "Shared Markdown", exact: true }).click();
+  await page
+    .getByTestId("workspace-tabs-row")
+    .getByRole("button", { name: "Shared Markdown", exact: true })
+    .click();
 }
 
 async function openSharedMarkdownFile(page: Page, name: string) {
@@ -274,7 +277,10 @@ test("inline-code paths preserve stable recognition and file navigation", async 
 });
 
 async function openInlineRegressionFile(page: Page, path: string) {
-  await page.getByRole("button", { name: "Inline path regression", exact: true }).click();
+  await page
+    .getByTestId("workspace-tabs-row")
+    .getByRole("button", { name: "Inline path regression", exact: true })
+    .click();
   await page
     .getByTestId("assistant-message")
     .getByRole("link", { name: path, exact: true })

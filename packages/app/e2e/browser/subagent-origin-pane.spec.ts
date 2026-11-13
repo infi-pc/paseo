@@ -320,7 +320,12 @@ test("a directly connected B opens and archives its MCP child from A's track", a
   try {
     await openFleetParentWithDirectB(page, fleet);
     await openFleetChild(page, fleet);
-    await expect(page.getByRole("button", { name: "MCP child on B", exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByTestId("workspace-tabs-row")
+        .filter({ visible: true })
+        .getByRole("button", { name: "MCP child on B", exact: true }),
+    ).toBeVisible();
     await submitMessage(page, "DIRECT_B_TARGET");
     await expect(page.getByText("DIRECT_B_TARGET", { exact: true })).toBeVisible();
     expect((await fleet.a.fetchAgent(fleet.remote.agentId))?.agent.lastUserMessageAt).toBeNull();
@@ -363,7 +368,12 @@ test("an unavailable B child opens its cached workspace with existing reconnecti
     await expect(page.getByTestId("workspace-header-title").filter({ visible: true })).toHaveText(
       "B workspace",
     );
-    await expect(page.getByRole("button", { name: "MCP child on B", exact: true })).toBeVisible();
+    await expect(
+      page
+        .getByTestId("workspace-tabs-row")
+        .filter({ visible: true })
+        .getByRole("button", { name: "MCP child on B", exact: true }),
+    ).toBeVisible();
     await expect(page.getByText(/already connected through another route/)).toHaveCount(0);
   } finally {
     await fleet.close();
