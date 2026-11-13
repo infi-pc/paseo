@@ -1,5 +1,11 @@
 # Changelog
 
+**Unreleased — personal fork**
+
+- Keep open workspaces accounted for in Running, Inbox, or Snoozed, with session shortcuts and independent read indicators.
+- Add reminder deadlines to conditional snoozes (two weeks by default). Existing conditional snoozes use creation time plus fourteen days; overdue ones wake after upgrade.
+- Mute completion/error alerts while snoozed, wake immediately for agent permissions, and offer a snooze choice when sending a message.
+
 ## 0.16.0-beta.1 - 2026-11-10
 
 - **Background tasks:** Paseo now shows the background tasks an agent is running, such as shells and monitors, above the composer, with a Stop button for each. Works with Claude Code, Codex and OpenCode v2. ([#6220](https://github.com/getpaseo/paseo/pull/6220), [#9162](https://github.com/getpaseo/paseo/pull/9162) by [@fxlelouarn](https://github.com/fxlelouarn))

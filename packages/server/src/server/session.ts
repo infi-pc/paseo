@@ -1521,14 +1521,16 @@ export class Session {
     serializedEvent: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
   ): void {
     const attention = serializedEvent.type === "attention_required";
-    if (attention) {
+    if (serializedEvent.type === "attention_required") {
+      // broadcastAgentAttention owns alerts after applying snooze and presence policy.
+      serializedEvent = { ...serializedEvent, shouldNotify: false };
       this.emit({
         type: "agent_attention_required",
         payload: {
           agentId: event.agentId,
           reason: serializedEvent.reason,
           timestamp: serializedEvent.timestamp,
-          shouldNotify: serializedEvent.shouldNotify,
+          shouldNotify: false,
           ...(serializedEvent.notification ? { notification: serializedEvent.notification } : {}),
         },
       });
@@ -4455,7 +4457,7 @@ export class Session {
       if (msg.type === "workspace.snooze.status.set.request")
         await this.workspaceSnoozeService.setStatus(msg.workspaceId, msg.snooze);
       else if (msg.type === "workspace.snooze.set.request")
-        await this.workspaceSnoozeService.set(msg.workspaceId, msg.snooze);
+        await this.workspaceSnoozeService.set(msg.workspaceId, msg.snooze, msg.expectedSnoozeId);
       else await this.workspaceSnoozeService.checkNow(msg.workspaceId);
     } catch (cause) {
       error = getErrorMessage(cause);

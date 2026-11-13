@@ -172,6 +172,26 @@ describe("dictation keyboard behavior", () => {
 });
 
 describe("dictation transcript behavior", () => {
+  it("keeps a queued transcript until the host accepts the send", () => {
+    let draft = "typed context";
+    const onQueue = vi.fn();
+    applyDictationTranscript("spoken prompt", {
+      value: draft,
+      defaultSendBehavior: "queue",
+      isAgentRunning: true,
+      onQueue,
+      onSubmit: vi.fn(),
+      replaceText: (text) => {
+        draft = text;
+      },
+      attachments: [],
+      cwd: "/repo",
+      autoSend: true,
+    });
+    expect(onQueue).toHaveBeenCalledOnce();
+    expect(draft).toBe("typed context spoken prompt");
+  });
+
   it("publishes an auto-sent transcript to the composer before submitting it", () => {
     const actions: string[] = [];
 

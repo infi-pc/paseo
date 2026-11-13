@@ -390,13 +390,26 @@ child's lifecycle, because the track is where a failed child stays visible.
 
 ## Workspace snoozing
 
-Snoozing controls sidebar visibility. It leaves agents, scripts, tabs, pinning, and workspace order
-intact. **Show all** reveals snoozed rows in each sidebar group; opening one does not unsnooze it.
-Archiving cancels the snooze.
+Snoozing moves a workspace to Snoozed and mutes completion/error alerts, including script and
+terminal attention. Attention/read updates still synchronize; wake does not replay muted alerts.
+Running work stays visible. Opening, reading, or typing does not unsnooze. An explicit user send
+or enqueue offers Unsnooze and send, Keep snoozed and send, or Cancel. Automatic queue drains
+keep the snooze. The choice applies to the displayed snooze revision and the whole workspace.
 
-The daemon owns the schedule so checking continues when the app closes. After host downtime, a
-timed snooze wakes immediately and a recurring snooze performs one overdue check, without replaying missed
-intervals. Calendar presets use the selecting device's timezone and persist a UTC instant.
+A new agent permission request clears snooze before notifying, including requests from descendants
+owned by that workspace. Internal helpers are excluded. An unresolved permission prevents saving
+a snooze. Manual unsnooze sends no additional wake notification. Archiving cancels the snooze.
+
+The daemon owns scheduling while apps are closed. Timed snoozes retain their chosen UTC wake time.
+Conditional snoozes have an absolute reminder deadline (default two weeks), independent of polling
+and in-flight checks. Editing a condition preserves that deadline; choosing a reminder preset replaces
+it. Calendar presets use the selecting device's timezone. A deadline wake says “Reminder due”,
+without asserting whether an unavailable condition check would have succeeded.
+
+On upgrade, old conditional snoozes acquire a deadline from creation plus fourteen days. Overdue
+ones wake once on the next scan. Wire/storage fields stay optional so old records load before this
+normalization. The deadline lives only in the existing snooze configuration; there is no Inbox
+membership, wake record, or new read state to synchronize.
 
 AI checks use GPT Luna through Codex in auto-review mode, in the workspace's exact directory.
 They retain normal CLI and MCP access. Read-only behavior is a prompt instruction, not a sandbox

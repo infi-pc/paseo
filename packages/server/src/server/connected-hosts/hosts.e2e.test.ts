@@ -2608,7 +2608,11 @@ test.each([false, true])(
     const finish = Promise.withResolvers<void>();
     const a = await daemon({
       agentClients: createTestAgentClients({
-        onStartTurn: (prompt) => parentPrompts.push(String(prompt)),
+        onStartTurn: (prompt) => {
+          // Internal description helpers share this provider; capture only delivered notifications.
+          const text = String(prompt);
+          if (text.startsWith("<paseo-system")) parentPrompts.push(text);
+        },
       }),
     });
     const b = await daemon({

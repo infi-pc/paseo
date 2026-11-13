@@ -3796,6 +3796,7 @@ export class DaemonClient {
   async setWorkspaceSnooze(
     workspaceId: string,
     snooze: WorkspaceSnoozeInput | StatusSnoozeInput | null,
+    expectedSnoozeId?: string,
   ): Promise<void> {
     if (snooze?.mode === "status") {
       const payload =
@@ -3808,7 +3809,7 @@ export class DaemonClient {
     }
     const payload =
       await this.sendNamespacedCorrelatedSessionRequest<"workspace.snooze.set.response">({
-        message: { type: "workspace.snooze.set.request", workspaceId, snooze },
+        message: { type: "workspace.snooze.set.request", workspaceId, snooze, expectedSnoozeId },
       });
     if (!payload.success) throw new Error(payload.error ?? "Could not save snooze");
   }

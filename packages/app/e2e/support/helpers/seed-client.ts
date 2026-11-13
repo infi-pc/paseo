@@ -1,3 +1,8 @@
+import type {
+  AnyWorkspaceSnooze,
+  StatusSnoozeInput,
+} from "@getpaseo/protocol/workspace-status-snooze";
+import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
 import path from "node:path";
 import { readFileSync } from "node:fs";
 import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
@@ -6,6 +11,7 @@ import { withProjectOwnership } from "./project-ownership";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
 
 export interface SeedWorkspaceDescriptor {
+  snooze?: AnyWorkspaceSnooze | null;
   pinnedAt?: string | null;
   id: string;
   name: string;
@@ -51,6 +57,11 @@ export interface SeedDaemonClient {
   }>;
   setWorkspaceTitle(workspaceId: string, title: string | null): Promise<{ title: string | null }>;
   setWorkspacePinned(workspaceId: string, pinned: boolean): Promise<{ pinnedAt: string | null }>;
+  setWorkspaceSnooze(
+    workspaceId: string,
+    snooze: WorkspaceSnoozeInput | StatusSnoozeInput | null,
+    expectedSnoozeId?: string,
+  ): Promise<void>;
   clearWorkspaceAttention(workspaceId: string): Promise<void>;
   setWorkspaceLabel(input: {
     workspaceId: string;

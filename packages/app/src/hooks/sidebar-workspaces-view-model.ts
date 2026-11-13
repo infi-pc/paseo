@@ -235,8 +235,8 @@ export function deriveProjectStatus(input: {
         workspaceId,
       });
       const workspace = workspaceKey ? session.workspaces.get(workspaceKey) : undefined;
-      // FORK(workspace-snooze): hidden workspaces do not drive project activity.
-      if (!workspace || workspace.snooze) continue;
+      // Snoozing never hides active work from the project summary.
+      if (!workspace || (workspace.snooze && workspace.status !== "running")) continue;
       statuses.push(
         deriveEffectiveWorkspaceStatus({
           serverId,
