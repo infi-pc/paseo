@@ -132,7 +132,12 @@ function SessionRow({
       <Text style={styles.title} numberOfLines={1}>
         {session.title || t("inboxSections.untitled")}
       </Text>
-      {session.unread ? <View style={styles.unread} /> : null}
+      {session.unread ? (
+        <View
+          style={styles.unread}
+          testID={`sidebar-session-unread-${workspace.workspaceKey}-${session.id}`}
+        />
+      ) : null}
     </PressHighlight>
   );
 }
