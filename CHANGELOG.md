@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — personal fork
+**Unreleased — personal fork**
 
 - Keep open workspaces accounted for in Running, Inbox, or Snoozed, with session shortcuts and independent read indicators.
 - Add reminder deadlines to conditional snoozes (two weeks by default). Existing conditional snoozes use creation time plus fourteen days; overdue ones wake after upgrade.
