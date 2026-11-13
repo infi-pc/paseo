@@ -266,14 +266,17 @@ export function isCompactSidebar(page: Page): boolean {
 }
 
 async function revealSidebarNavigation(page: Page): Promise<void> {
-  const viewport = page.viewportSize();
+  if (!isCompactSidebar(page)) return;
   const closeButton = page.getByTestId("sidebar-close");
-  if (isCompactSidebar(page) && (await closeButton.count()) > 0) {
+  const open = page.getByRole("button", { name: "Open menu", exact: true });
+  // Startup restore can close the retained drawer after it first mounts.
+  await expect(async () => {
+    const viewport = page.viewportSize();
     const close = await closeButton.boundingBox();
     if (close && viewport && close.x >= 0 && close.x + close.width <= viewport.width) return;
-  }
-  const open = page.getByRole("button", { name: "Open menu", exact: true });
-  if (await open.isVisible()) await open.click();
+    if (await open.isVisible()) await open.click();
+    await expect(closeButton).toBeInViewport({ ratio: 1, timeout: 1000 });
+  }).toPass({ timeout: 15000 });
 }
 
 export async function selectSidebarProject(page: Page, projectKey: string): Promise<void> {
