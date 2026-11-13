@@ -184,7 +184,9 @@ test("loads older history through prompt navigation and finds repeated rendered 
     }
     const jumps = await trackPromptJumpRequests(page, agent.agentId);
     await openAgentRoute(page, agent);
-    await expect(page.getByText("Prompt number 44", { exact: true })).toBeVisible();
+    await expect(
+      page.getByTestId("agent-chat-scroll").getByText("Prompt number 44", { exact: true }),
+    ).toBeVisible();
     await expect(page.getByText("Prompt number 0", { exact: true })).toHaveCount(0);
     await searchChat(page, "hello world");
     await expectHighlight(page, "hello world");
