@@ -1,0 +1,71 @@
+Browser CI follow-up, November 11, 2026
+Base: ce38a3825
+
+Full CI run 43036009269 did not execute browser tests: apt failed to resolve
+azure.archive.ubuntu.com in every browser job. Earlier behavioral failures came
+from run 43030661788.
+
+Local checks:
+- npm run format: passed.
+- npm run lint: passed, zero warnings/errors.
+- npm run typecheck: passed across all workspaces.
+- Focused Playwright run over 12 affected specs: 70 passed initially; five failures
+  were corrected and each failing case passed its focused rerun. All 75 distinct
+  cases passed across those runs, including PR handoff, project navigation/order,
+  plugin subscriptions/footer placement, appearance settings, inline renaming,
+  sidebar views, onboarding, compact footer overflow, and the mobile project picker.
+- Together with the separate reading/disclosure and provider-removal checks below,
+  this first verifies 78 distinct browser cases. No full local suite was run.
+- Corrected onboarding project-discovery case: passed.
+- Pinned-prompt reading-line case and Expand thinking=true disclosure: 2 passed.
+- Short compact plugin navigation after height adjustment: passed.
+- Provider-removal case with a fresh stack: passed; no module-export failure.
+- Compact footer overflow, nested Help/Usage, and shortcuts: passed.
+- Composer insertion at cursor on macOS after platform-specific Home key: passed.
+
+Tests ran against ephemeral daemons and Metro instances. Port 6767 was untouched.
+Full-suite coverage remains owned by GitHub Actions.
+
+The sidebar-view example now seeds a mock agent with actual session activity. Its
+restored default view remains visible when browser history returns to Inbox.
+Local macOS cursor positioning and footer shortcuts use the platform modifier;
+the compact Settings shortcut asserts the compact Settings landing route.
+
+The canceled initial shard 7 also contained failures before cancellation. Its
+17 affected cases now pass across targeted runs and corrected-case reruns:
+- multi-project hover scanning has real mock-agent session activity in Inbox;
+- compact sidebar opening is idempotent, and pin retention checks stored pin state;
+- phone terminals select their project and wait for the drawer to close before gestures;
+- archive/undo fixtures select their project, measure the toast's workspace-column
+  host, and measure the column width when resizing beside the utility rail;
+- compact workspace-label picker navigation passes with the idempotent opener.
+
+Total before the final compact-unread follow-up: 95 distinct affected browser cases verified locally. Formatting, lint, and
+workspace typecheck pass; workflow YAML parses and the apt shell block passes bash -n.
+
+Runs 43043575729 and 43045467865 stopped before browser tests: the runner could
+resolve neither azure.archive.ubuntu.com nor archive.ubuntu.com. Browser and Linux
+desktop jobs now share the kernel.org Ubuntu archive mirror, whose noble and
+noble-security signed release indexes were verified to be present. Ubuntu package
+signature verification remains enabled. The apt steps are bounded to five minutes.
+A new full GitHub Actions run is pending at submission.
+
+Run 43047449639 passed the Linux desktop lifecycle and renderer stages, then its
+browser journey stopped at a startup readiness check for an inactive Inbox row.
+The readiness check now waits for the project rail entry; the journey already
+selects that project before opening its workspace. The real-Electron startup and
+Settings-scroll scenario passed locally after the correction. The full local
+journey stops at macOS hidden-window visibility assertions. A temporary local
+copy excluding that theme assertion reached the main browser checks and stopped
+at the related hidden-browser animation-frame assertion. No assertion was removed
+from the maintained script; Linux CI remains the full desktop-browser verdict.
+
+Run 43047449639 completed all jobs: seven app browser shards and every server,
+quality, typecheck (including website), app-unit, CLI, and Windows desktop job
+passed. Linux desktop failed at the startup fixture above. App shard 6 had one
+failure (132 passed): the compact unread journey reopened the sidebar while its
+previous close animation was still running. The shared close helper now waits
+until its close button leaves the viewport; compact workspace-switch helpers do
+the same before reopening. Both compact unread journeys passed locally (2/2).
+Total affected local browser cases: 97, plus the real-Electron startup/Settings
+scroll and plugin-links/workspace-browser journeys.

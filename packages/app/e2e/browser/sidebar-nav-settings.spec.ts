@@ -98,6 +98,7 @@ test("desktop rail and mobile footer keep global utilities accessible", async ({
   await setFooterItemVisible(page, "usage", true);
   await leaveSettings(page);
   await page.setViewportSize({ width: 390, height: 844 });
+  await openCompactSidebar(page);
   await expectCompactSidebarOpen(page);
   await expectFooterSeparator(page, true);
   await expectFooterIconRow(page);

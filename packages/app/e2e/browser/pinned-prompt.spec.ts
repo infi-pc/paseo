@@ -64,6 +64,16 @@ test.describe("pinned current prompt", () => {
   test("pins nothing while the prompt's own bubble is on screen", async ({ page }) => {
     await scrollTimelinePromptIntoView(page, agent.prompts[READING_TURN]!);
 
+    // The shared scroll helper centers the prompt. Put this turn at the reading line;
+    // otherwise the visible pin correctly belongs to the older turn above it.
+    const row = timeline(page)
+      .getByTestId("user-message")
+      .filter({ hasText: agent.prompts[READING_TURN]! });
+    const [viewport, bubble] = await Promise.all([timeline(page).boundingBox(), row.boundingBox()]);
+    if (!viewport || !bubble) throw new Error("Expected the prompt and transcript to be rendered");
+    await timeline(page).hover();
+    await page.mouse.wheel(0, bubble.y - viewport.y + bubble.height / 2);
+    await expect(row).toBeInViewport();
     await expect(pinnedPrompt(page)).toHaveCount(0);
   });
 

@@ -181,7 +181,7 @@ export class WorkspaceSnoozeService {
   }
 
   private async expireDeadlines(): Promise<PersistedWorkspaceRecord[]> {
-    const workspaces = await this.options.registry.list();
+    const workspaces = await this.options.registry.listActive();
     const eligible: PersistedWorkspaceRecord[] = [];
     for (let workspace of workspaces) {
       if (workspace.archivedAt || !workspace.snooze) continue;

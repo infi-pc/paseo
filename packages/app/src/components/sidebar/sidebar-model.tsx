@@ -42,12 +42,15 @@ const SidebarModelContext = createContext<SidebarModel | null>(null);
 
 export function SidebarModelProvider({
   active,
+  keyboardNavigationActive = false,
   children,
 }: {
   active?: boolean;
+  keyboardNavigationActive?: boolean;
   children: ReactNode;
 }) {
-  const list = useSidebarWorkspacesList({ enabled: active });
+  const modelActive = active !== false || keyboardNavigationActive;
+  const list = useSidebarWorkspacesList({ enabled: modelActive });
   const showBackground = useSidebarViewStore((state) => state.showBackground);
 
   const labelFilter = useSidebarViewStore((state) => state.labelFilter);
@@ -72,7 +75,7 @@ export function SidebarModelProvider({
     reconcileLabelFilter(availableLabelNames);
   }, [availableLabelNames, hasAuthoritativeLabelCatalog, reconcileLabelFilter]);
   const hasActiveLabelFilter = hasActiveSidebarLabelFilter(labelFilter);
-  const workspaceEntriesByKey = useSidebarWorkspaceEntries(list.workspacePlacements, true);
+  const workspaceEntriesByKey = useSidebarWorkspaceEntries(list.workspacePlacements, modelActive);
   const filteredWorkspaceEntriesByKey = useMemo(() => {
     const filtered = filterWorkspacesByLabels({
       workspaces: [...workspaceEntriesByKey.values()].filter(

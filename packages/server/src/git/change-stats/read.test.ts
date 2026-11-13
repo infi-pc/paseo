@@ -1,3 +1,4 @@
+import { parseDiff } from "../../server/utils/diff-highlighter.js";
 import { mkdtemp, mkdir, writeFile, rm, rename } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -144,4 +145,21 @@ it("does not overcount concurrent immutable reads when evicting cached contents"
   const cached = await readFileBreakdown({ cwd, baseRef, file, runGit: concurrentGit });
   expect(cached).toEqual(results[0]);
   expect(completed).toBe(16);
+});
+
+it("classifies supplied snapshot contents without rereading Git", async () => {
+  const [file] = parseDiff(
+    "diff --git a/a.ts b/a.ts\n--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-const value = 1;\n+const value = 2;\n",
+  );
+  const breakdown = await readFileBreakdown({
+    cwd: "/unused",
+    baseRef: "base",
+    targetRef: "head",
+    file,
+    contents: { oldContent: "const value = 1;\n", newContent: "const value = 2;\n" },
+    runGit: async () => {
+      throw new Error("Snapshot contents must not be fetched twice");
+    },
+  });
+  expect(breakdown.code).toEqual({ additions: 1, deletions: 1 });
 });

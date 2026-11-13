@@ -4,10 +4,12 @@ import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { parseComposeDeepLink } from "@getpaseo/protocol/compose-deep-link";
+import { useQueryClient } from "@tanstack/react-query";
 import { useFetchQuery } from "@/data/query";
 import { Button } from "@/components/ui/button";
 import { useLocalDaemonServerIdState } from "@/hooks/use-is-local-daemon";
 import { useDirectoryDemand } from "@/hooks/use-directory-demand";
+import { isAgentArchiving } from "@/hooks/use-archive-agent";
 import { getHostRuntimeStore, useHosts, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import {
@@ -19,9 +21,10 @@ import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { selectActiveWorkspaceTabId } from "@/navigation/history/select-active-tab";
-import { formatComposeReference, matchComposeWorkspace } from "./location";
+import { canComposeIntoAgent, formatComposeReference, matchComposeWorkspace } from "./location";
 
 export function ComposeScreen() {
+  const queryClient = useQueryClient();
   const params = useLocalSearchParams<Record<string, string | string[]>>();
   const search = composeSearchParams(params);
   const target = parseComposeDeepLink(`paseo://compose?${search}`);
@@ -68,7 +71,12 @@ export function ComposeScreen() {
       let tabTarget: WorkspaceTabTarget = { kind: "draft", draftId: generateDraftId() };
       if (agentId) {
         const result = await runtime.client.fetchAgent({ agentId });
-        if (result?.agent?.workspaceId === workspace.id) tabTarget = { kind: "agent", agentId };
+        const canReuseAgent = canComposeIntoAgent({
+          agent: result?.agent ?? null,
+          workspaceId: workspace.id,
+          isArchiving: isAgentArchiving({ queryClient, serverId, agentId }),
+        });
+        if (canReuseAgent) tabTarget = { kind: "agent", agentId };
       }
       const draftKey =
         tabTarget.kind === "agent"

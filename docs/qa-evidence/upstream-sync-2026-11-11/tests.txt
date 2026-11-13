@@ -1,0 +1,309 @@
+packages/app/app.config.test.ts
+Test Files  1 passed (1)
+Tests  8 passed (8)
+Duration  670ms (transform 18ms, setup 18ms, import 12ms, tests 585ms, environment 0ms)
+
+packages/app/src/components/desktop-sidebar-layout.test.ts
+Test Files  1 passed (1)
+Tests  17 passed (17)
+Duration  552ms (transform 342ms, setup 18ms, import 481ms, tests 2ms, environment 0ms)
+
+packages/app/src/components/sidebar-workspace-list.test.tsx
+Test Files  1 passed (1)
+Tests  15 passed (15)
+Duration  6.10s (transform 4.90s, setup 16ms, import 5.80s, tests 21ms, environment 212ms)
+
+packages/app/src/composer/draft/input-draft.test.ts
+Test Files  1 passed (1)
+Tests  11 passed (11)
+Duration  268ms (transform 186ms, setup 18ms, import 195ms, tests 2ms, environment 0ms)
+
+packages/app/src/composer/draft/workspace-tab.test.ts
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Duration  266ms (transform 185ms, setup 19ms, import 195ms, tests 2ms, environment 0ms)
+
+packages/app/src/git/diff-tree.test.ts
+Test Files  1 passed (1)
+Tests  16 passed (16)
+Duration  94ms (transform 22ms, setup 16ms, import 24ms, tests 3ms, environment 0ms)
+
+packages/app/src/keyboard/keyboard-shortcuts.test.ts
+Test Files  1 passed (1)
+Tests  168 passed (168)
+Duration  135ms (transform 52ms, setup 18ms, import 47ms, tests 14ms, environment 0ms)
+
+packages/app/src/lib/overlay-root.browser.test.tsx
+Test Files  1 passed (1)
+Tests  7 passed (7)
+Duration  2.12s (transform 0ms, setup 0ms, import 260ms, tests 88ms, environment 0ms)
+
+packages/app/src/plugins/client-state/snapshots.test.ts
+Test Files  1 passed (1)
+Tests  9 passed (9)
+Duration  412ms (transform 296ms, setup 17ms, import 341ms, tests 4ms, environment 0ms)
+
+packages/app/src/screens/workspace/scripts/workspace-scripts-button.test.tsx
+Test Files  1 passed (1)
+Tests  12 passed (12)
+Duration  1.06s (transform 524ms, setup 17ms, import 715ms, tests 103ms, environment 178ms)
+
+packages/app/src/stores/panel-store/state.test.ts
+Test Files  1 passed (1)
+Tests  26 passed (26)
+Duration  419ms (transform 258ms, setup 21ms, import 340ms, tests 5ms, environment 0ms)
+
+packages/app/src/stores/workspace-layout-store.test.ts
+Test Files  1 passed (1)
+Tests  168 passed (168)
+Duration  5.18s (transform 4.22s, setup 19ms, import 5.06s, tests 47ms, environment 0ms)
+
+packages/app/src/utils/agent-snapshots.test.ts
+Test Files  1 passed (1)
+Tests  8 passed (8)
+Duration  91ms (transform 27ms, setup 19ms, import 15ms, tests 3ms, environment 0ms)
+
+packages/protocol/src/messages.test.ts
+Test Files  1 passed (1)
+Tests  30 passed (30)
+Duration  312ms (transform 139ms, setup 0ms, import 236ms, tests 15ms, environment 0ms)
+
+packages/server/src/server/agent/agent-manager.test.ts
+Test Files  1 passed (1)
+Tests  285 passed (285)
+Duration  7.80s (transform 760ms, setup 24ms, import 1.04s, tests 6.65s, environment 0ms)
+
+packages/server/src/server/agent/agent-projections.test.ts
+Test Files  1 passed (1)
+Tests  27 passed (27)
+Duration  573ms (transform 327ms, setup 22ms, import 469ms, tests 9ms, environment 0ms)
+
+packages/server/src/server/agent/agent-storage.test.ts
+Test Files  1 passed (1)
+Tests  19 passed (19)
+Duration  563ms (transform 147ms, setup 15ms, import 233ms, tests 262ms, environment 0ms)
+
+packages/server/src/server/agent/providers/claude/tool-call-mapper.test.ts
+Test Files  1 passed (1)
+Tests  25 passed (25)
+Duration  165ms (transform 61ms, setup 16ms, import 79ms, tests 15ms, environment 0ms)
+
+packages/server/src/server/agent/providers/codex-app-server-agent.test.ts
+Test Files  1 passed (1)
+Tests  227 passed (227)
+Duration  4.00s (transform 735ms, setup 17ms, import 1.04s, tests 2.88s, environment 0ms)
+
+packages/server/src/server/agent/providers/opencode/tool-call-mapper.test.ts
+Test Files  1 passed (1)
+Tests  26 passed (26)
+Duration  154ms (transform 56ms, setup 17ms, import 71ms, tests 10ms, environment 0ms)
+
+packages/server/src/server/auto-archive-on-merge/index.test.ts
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Duration  741ms (transform 300ms, setup 17ms, import 506ms, tests 159ms, environment 0ms)
+
+packages/server/src/server/bootstrap.test.ts
+Test Files  1 passed (1)
+Tests  7 passed (7)
+Duration  4.98s (transform 3.76s, setup 15ms, import 4.89s, tests 14ms, environment 0ms)
+
+packages/server/src/server/owned-subscriptions.e2e.test.ts
+Test Files  1 passed (1)
+Tests  55 passed (55)
+Duration  35.68s (transform 3.69s, setup 16ms, import 4.69s, tests 30.93s, environment 0ms)
+
+packages/server/src/server/session.test.ts
+Test Files  1 passed (1)
+Tests  163 passed (163)
+Duration  5.05s (transform 3.37s, setup 15ms, import 4.33s, tests 651ms, environment 0ms)
+
+packages/server/src/server/session/checkout/checkout-session.test.ts
+Test Files  1 passed (1)
+Tests  44 passed (44)
+Duration  2.38s (transform 334ms, setup 15ms, import 553ms, tests 1.76s, environment 0ms)
+
+packages/server/src/server/workspace-registry.test.ts
+Test Files  1 passed (1)
+Tests  21 passed (21)
+Duration  153ms (transform 45ms, setup 17ms, import 58ms, tests 25ms, environment 0ms)
+
+packages/server/src/server/workspace-script-runtime-store.test.ts
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Duration  77ms (transform 17ms, setup 15ms, import 10ms, tests 2ms, environment 0ms)
+
+packages/server/src/terminal/worker-terminal-manager.test.ts
+Test Files  1 passed (1)
+Tests  65 passed | 1 skipped (66)
+Duration  31.37s (transform 453ms, setup 15ms, import 733ms, tests 30.57s, environment 0ms)
+
+packages/server/src/utils/checkout-git.test.ts
+Test Files  1 passed (1)
+Tests  179 passed | 1 skipped (180)
+Duration  50.06s (transform 342ms, setup 18ms, import 540ms, tests 49.44s, environment 0ms)
+
+packages/app/src/i18n/resources.test.ts
+Test Files  1 passed (1)
+Tests  46 passed (46)
+Duration  739ms (transform 377ms, setup 19ms, import 416ms, tests 248ms, environment 0ms)
+
+packages/app/src/agent-stream/pinned-prompt/model.test.ts
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Duration  80ms (transform 18ms, setup 17ms, import 8ms, tests 2ms, environment 0ms)
+
+packages/app/src/agent-stream/render-strategy.test.ts
+Test Files  1 passed (1)
+Tests  32 passed (32)
+Duration  5.98s (transform 4.92s, setup 17ms, import 5.91s, tests 3ms, environment 0ms)
+
+packages/app/src/components/sidebar/sidebar-projection.test.ts
+Test Files  1 passed (1)
+Tests  10 passed (10)
+Duration  245ms (transform 141ms, setup 18ms, import 170ms, tests 3ms, environment 0ms)
+
+packages/app/src/components/split-container-pane-focus.test.ts
+Test Files  1 passed (1)
+Tests  3 passed (3)
+Duration  80ms (transform 18ms, setup 18ms, import 7ms, tests 1ms, environment 0ms)
+
+packages/app/src/composer/draft/input-draft.live.test.tsx
+Test Files  1 passed (1)
+Tests  9 passed (9)
+Duration  7.19s (transform 5.65s, setup 19ms, import 6.78s, tests 133ms, environment 202ms)
+
+packages/app/src/stores/draft-store/state.test.ts
+Test Files  1 passed (1)
+Tests  7 passed (7)
+Duration  128ms (transform 40ms, setup 20ms, import 46ms, tests 3ms, environment 0ms)
+
+packages/app/src/stores/draft-store/metadata.test.ts
+Test Files  1 passed (1)
+Tests  2 passed (2)
+Duration  574ms (transform 374ms, setup 18ms, import 495ms, tests 2ms, environment 0ms)
+
+packages/app/src/keyboard/route-shortcut.test.ts
+Test Files  1 passed (1)
+Tests  70 passed (70)
+Duration  101ms (transform 35ms, setup 17ms, import 28ms, tests 4ms, environment 0ms)
+
+packages/server/src/server/workspace-snooze/service.test.ts
+Test Files  1 passed (1)
+Tests  10 passed (10)
+Duration  271ms (transform 119ms, setup 17ms, import 155ms, tests 39ms, environment 0ms)
+
+packages/server/src/services/github-service.test.ts
+Test Files  1 passed (1)
+Tests  136 passed (136)
+Duration  2.20s (transform 225ms, setup 16ms, import 329ms, tests 1.79s, environment 0ms)
+
+packages/server/src/server/session/daemon/fork-npm.test.ts
+Test Files  1 passed (1)
+Tests  2 passed (2)
+Duration  2.37s (transform 30ms, setup 15ms, import 32ms, tests 2.27s, environment 0ms)
+
+packages/server/src/server/agent/activity-curator.test.ts
+Test Files  1 passed (1)
+Tests  25 passed (25)
+Duration  152ms (transform 66ms, setup 14ms, import 80ms, tests 6ms, environment 0ms)
+
+packages/server/src/server/agent/tool-call-summaries/service.test.ts
+Test Files  1 passed (1)
+Tests  15 passed (15)
+Duration  482ms (transform 259ms, setup 25ms, import 375ms, tests 19ms, environment 0ms)
+
+packages/server/src/server/agent/response-control/session.test.ts
+Test Files  1 passed (1)
+Tests  7 passed (7)
+Duration  89ms (transform 23ms, setup 15ms, import 17ms, tests 2ms, environment 0ms)
+
+packages/protocol/src/binary-frames/diff.test.ts
+Test Files  1 passed (1)
+Tests  9 passed (9)
+Duration  310ms (transform 153ms, setup 0ms, import 242ms, tests 8ms, environment 0ms)
+
+packages/client/src/diff/stream.test.ts
+Test Files  1 passed (1)
+Tests  4 passed (4)
+Duration  298ms (transform 148ms, setup 0ms, import 243ms, tests 3ms, environment 0ms)
+
+packages/client/src/diff/client.test.ts
+Test Files  1 passed (1)
+Tests  5 passed (5)
+Duration  2.65s (transform 2.20s, setup 0ms, import 2.58s, tests 18ms, environment 0ms)
+
+packages/server/src/server/diff/git.test.ts
+Test Files  1 passed (1)
+Tests  26 passed (26)
+Duration  5.59s (transform 395ms, setup 16ms, import 516ms, tests 5.00s, environment 0ms)
+
+packages/server/src/server/diff/session.test.ts
+Test Files  1 passed (1)
+Tests  1 passed (1)
+Duration  1.29s (transform 389ms, setup 17ms, import 653ms, tests 566ms, environment 0ms)
+
+packages/app/src/agent-stream/turn-footer.browser.test.tsx
+Test Files  1 passed (1)
+Tests  2 passed (2)
+Duration  2.54s (transform 0ms, setup 0ms, import 1.52s, tests 29ms, environment 0ms)
+
+packages/app/src/agent-stream/disclosure.browser.test.tsx
+Test Files  1 passed (1)
+Tests  4 passed (4)
+Duration  2.51s (transform 0ms, setup 0ms, import 1.51s, tests 264ms, environment 0ms)
+
+packages/server/src/server/diff/subscriptions.test.ts
+Test Files  1 passed (1)
+Tests  19 passed (19)
+Duration  21.30s (transform 398ms, setup 17ms, import 647ms, tests 20.59s, environment 0ms)
+
+packages/server/src/server/wire-compat.test.ts
+Test Files  1 passed (1)
+Tests  10 passed (10)
+Duration  4.24s (transform 3.17s, setup 17ms, import 4.13s, tests 20ms, environment 0ms)
+
+packages/server/src/server/code-language/diff-snapshot.test.ts
+Test Files  1 passed (1)
+Tests  4 passed (4)
+Duration  123ms (transform 27ms, setup 17ms, import 33ms, tests 9ms, environment 0ms)
+
+packages/app/src/hooks/sidebar-workspaces-view-model.test.ts
+Test Files  1 passed (1)
+Tests  43 passed (43)
+Duration  206ms (transform 113ms, setup 16ms, import 133ms, tests 5ms, environment 0ms)
+
+packages/app/src/components/sidebar/sidebar-project-filter.test.ts
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Duration  75ms (transform 19ms, setup 18ms, import 6ms, tests 2ms, environment 0ms)
+
+packages/app/src/navigation/history/replay.test.ts
+Test Files  1 passed (1)
+Tests  9 passed (9)
+Duration  5.25s (transform 4.35s, setup 18ms, import 5.18s, tests 2ms, environment 0ms)
+
+packages/app/src/navigation/history/recorder.test.tsx
+Test Files  1 passed (1)
+Tests  9 passed (9)
+Duration  5.54s (transform 4.33s, setup 16ms, import 5.23s, tests 19ms, environment 219ms)
+
+packages/app/src/compose/screen.test.tsx
+Test Files  1 passed (1)
+Tests  8 passed (8)
+Duration  5.66s (transform 4.16s, setup 16ms, import 5.01s, tests 485ms, environment 103ms)
+
+packages/app/src/transcript-picker/model.test.ts
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Duration  78ms (transform 19ms, setup 16ms, import 9ms, tests 2ms, environment 0ms)
+
+packages/app/src/provider-selection/resolve-agent-form.test.ts
+Test Files  1 passed (1)
+Tests  60 passed (60)
+Duration  180ms (transform 83ms, setup 19ms, import 104ms, tests 5ms, environment 0ms)
+
+packages/server/src/server/workspace-snooze/transport.test.ts
+Test Files  1 passed (1)
+Tests  3 passed (3)
+Duration  15.95s (transform 3.62s, setup 16ms, import 4.69s, tests 11.18s, environment 0ms)

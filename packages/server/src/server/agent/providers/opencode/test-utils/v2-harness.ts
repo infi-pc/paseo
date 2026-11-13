@@ -91,6 +91,7 @@ export class V2Harness {
   readonly api: V2Api = {
     server: { info: unexpected },
     shell: {
+      remove: unexpected,
       list: async () => ({ location: { directory: this.info.location.directory }, data: [] }),
     },
     plugin: {
@@ -152,7 +153,7 @@ export class V2Harness {
       environment: async (input) => {
         this.environments.push(input);
       },
-      instructions: { entry: { list: unexpected, put: unexpected, remove: unexpected } },
+      instructions: { entry: { list: unexpected, put: async () => undefined, remove: unexpected } },
       prompt: async (input, options) => {
         const before = this.executions.length;
         await this.prompt(input, options);

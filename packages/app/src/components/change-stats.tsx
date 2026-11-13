@@ -73,7 +73,7 @@ export function ChangeStats({
     <>
       <Button
         variant="ghost"
-        size="xs"
+        size="sm"
         onPress={show}
         accessibilityLabel={t("changeStats.title")}
         style={styles.trigger}

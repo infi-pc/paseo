@@ -1,0 +1,55 @@
+Initial CI: https://github.com/infi-pc/paseo/actions/runs/43030661788
+Initial SHA: 1c3da6bd8
+Local regression checks after CI findings:
+
+archive-test: PASS
+Test Files  1 passed (1)
+Tests  13 passed (13)
+Duration  5.50s (transform 342ms, setup 17ms, import 545ms, tests 4.88s, environment 0ms)
+
+archive-unit: PASS
+Test Files  1 passed (1)
+Tests  6 passed (6)
+Duration  1.14s (transform 568ms, setup 33ms, import 903ms, tests 110ms, environment 0ms)
+
+snooze-transport: PASS
+Test Files  1 passed (1)
+Tests  3 passed (3)
+Duration  17.86s (transform 5.08s, setup 25ms, import 6.41s, tests 11.35s, environment 0ms)
+
+pi-test: PASS
+Test Files  1 passed (1)
+Tests  17 passed (17)
+Duration  232ms (transform 114ms, setup 19ms, import 138ms, tests 11ms, environment 0ms)
+
+diff-test: PASS
+Test Files  1 passed (1)
+Tests  12 passed (12)
+Duration  25.03s (transform 3.50s, setup 21ms, import 4.58s, tests 20.36s, environment 0ms)
+
+diff-manager-test: PASS
+Test Files  1 passed (1)
+Tests  7 passed (7)
+Duration  8.02s (transform 475ms, setup 16ms, import 778ms, tests 7.15s, environment 0ms)
+
+diff-git-test: PASS
+Test Files  1 passed (1)
+Tests  26 passed (26)
+Duration  5.21s (transform 361ms, setup 16ms, import 451ms, tests 4.69s, environment 0ms)
+
+stats-test: PASS
+Test Files  1 passed (1)
+Tests  7 passed (7)
+Duration  1.26s (transform 180ms, setup 24ms, import 335ms, tests 828ms, environment 0ms)
+
+project-picker: PASS
+2 passed (33.5s)
+
+Additional local checks:
+change-stats/read.test.ts: 7 passed; supplied snapshot content avoids extra Git reads.
+diff/git.test.ts: 26 passed.
+checkout-diff-manager.test.ts: 7 passed; 1,000-file streamed read about 1.2 seconds, 16 patch commands.
+assistant-selection-copy.spec.ts (quote toolbar): passed.
+changes-pane.spec.ts (streamed tree and compact reopen): 2 passed.
+background-agents.spec.ts: 1 passed.
+Full initial CI remains non-green; see verification.md for unresolved browser failures.

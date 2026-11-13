@@ -1,4 +1,19 @@
 import type { ComposeDeepLinkTarget } from "@getpaseo/protocol/compose-deep-link";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+
+interface ComposeAgentInput {
+  agent: Pick<AgentSnapshotPayload, "workspaceId" | "archivedAt"> | null;
+  workspaceId: string;
+  isArchiving: boolean;
+}
+
+export function canComposeIntoAgent({
+  agent,
+  workspaceId,
+  isArchiving,
+}: ComposeAgentInput): boolean {
+  return agent?.workspaceId === workspaceId && !agent.archivedAt && !isArchiving;
+}
 
 export function normalizeComposeDirectory(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");

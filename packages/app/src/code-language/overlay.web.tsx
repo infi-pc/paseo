@@ -1,3 +1,4 @@
+import { useOverlayRegistration, type KeyboardInputEvent } from "@/keyboard";
 import {
   useCallback,
   useEffect,
@@ -16,11 +17,7 @@ import { useFetchQuery } from "@/data/query";
 import { useTranslation } from "react-i18next";
 import { UnistylesRuntime } from "react-native-unistyles";
 import { isWeb } from "@/constants/platform";
-import {
-  getOverlayRoot,
-  useGlobalWebOverlayLayer,
-  useWebOverlayRegistration,
-} from "@/lib/overlay-root";
+import { getOverlayRoot, useGlobalOverlayLayer } from "@/lib/overlay-root";
 import type { CodeLocation } from "@getpaseo/protocol/code-language";
 import type { LanguageActions } from "./actions";
 
@@ -29,9 +26,9 @@ export function LanguageOverlay({ actions }: { actions: LanguageActions }) {
   const { t } = useTranslation();
   const theme = UnistylesRuntime.getTheme();
   const ownsFocus = state.kind === "popup" || (state.kind === "hover" && state.interactive);
-  const layer = useGlobalWebOverlayLayer(state.kind === "popup" ? "modal" : "floating", ownsFocus);
+  const layer = useGlobalOverlayLayer(state.kind === "popup" ? "modal" : "floating", ownsFocus);
   const keyDown = useCallback(
-    (event: globalThis.KeyboardEvent) => {
+    (event: KeyboardInputEvent) => {
       if (event.key !== "Escape") return false;
       event.preventDefault();
       actions.close();
@@ -39,7 +36,8 @@ export function LanguageOverlay({ actions }: { actions: LanguageActions }) {
     },
     [actions],
   );
-  const setScope = useWebOverlayRegistration({
+  const setScope = useOverlayRegistration({
+    keys: ["Escape"],
     active: isWeb && ownsFocus,
     layer,
     onKeyDown: keyDown,
