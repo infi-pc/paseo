@@ -27,6 +27,7 @@ async function fixture(
     reason: "CI is running",
   }),
   statusChecker?: ConstructorParameters<typeof WorkspaceSnoozeService>[0]["statusChecker"],
+  hasPendingPermission?: (workspaceId: string) => boolean,
 ) {
   const dir = await mkdtemp(join(tmpdir(), "workspace-snooze-"));
   const logger = createTestLogger();
@@ -53,6 +54,7 @@ async function fixture(
     now: () => now,
     check,
     statusChecker,
+    hasPendingPermission,
     wake: async (workspace) => {
       wakes.push(workspace.workspaceId);
     },
@@ -385,7 +387,7 @@ test("failed GitHub reviews cannot become a baseline or wake evidence, while hea
 
   // Selecting only a healthy field permits capture even when a sibling fails.
   await f.service.setStatus("two", { ...config, targets: [stateTarget] });
-  expect((await f.registry.get("two"))?.snooze?.config).toEqual({
+  expect((await f.registry.get("two"))?.snooze?.config).toMatchObject({
     ...config,
     targets: [stateTarget],
   });
@@ -399,4 +401,94 @@ test("failed GitHub reviews cannot become a baseline or wake evidence, while hea
   await f.service.runDue();
   expect(f.wakes).toEqual(["one", "one"]);
   expect((await f.registry.get("one"))?.snooze).toBeNull();
+});
+
+test("conditional deadline wakes before the next check, without running the checker", async () => {
+  let checks = 0;
+  const f = await fixture(async () => {
+    checks++;
+    return { status: "blocked", reason: "Still waiting" };
+  });
+  await f.service.set("one", {
+    mode: "ai",
+    prompt: "Wait for CI",
+    intervalHours: 24,
+    deadlineAt: "2026-10-06T12:00:00.000Z",
+  });
+  await f.service.runDue();
+  expect(checks).toBe(1);
+  expect((await f.registry.get("one"))?.snooze?.nextCheckAt).toBe("2026-10-06T12:00:00.000Z");
+  f.advance(2 * 3_600_000);
+  await f.service.runDue();
+  expect(checks).toBe(1);
+  expect(f.wakes).toEqual(["one"]);
+  expect((await f.registry.get("one"))?.snooze).toBeNull();
+});
+
+test("an in-flight check cannot delay a deadline or restore an expired snooze", async () => {
+  let finish!: (result: WorkspaceSnoozeResult) => void;
+  let started!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const f = await fixture(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+        started();
+      }),
+  );
+  await f.service.set("one", {
+    mode: "ai",
+    prompt: "Wait",
+    intervalHours: 1,
+    deadlineAt: "2026-10-06T11:00:00.000Z",
+  });
+  const checking = f.service.runDue();
+  await ready;
+  f.advance(3_600_000);
+  await f.service.runDue();
+  expect(f.wakes).toEqual(["one"]);
+  finish({ status: "blocked", reason: "Late result" });
+  await checking;
+  expect((await f.registry.get("one"))?.snooze).toBeNull();
+  expect(f.wakes).toEqual(["one"]);
+});
+
+test("old conditional snoozes acquire a deadline from creation, including overdue ones", async () => {
+  const f = await fixture();
+  await f.registry.update("one", (workspace) => ({
+    ...workspace,
+    snooze: {
+      id: "old",
+      createdAt: "2026-09-01T00:00:00.000Z",
+      config: { mode: "ai", prompt: "Wait", intervalHours: 24 },
+      nextCheckAt: "2027-01-01T00:00:00.000Z",
+      lastCheck: null,
+    },
+  }));
+  await f.service.runDue();
+  expect(f.wakes).toEqual(["one"]);
+});
+
+test("conditional unsnooze cannot clear a replacement, and is idempotent after wake", async () => {
+  const f = await fixture();
+  await f.service.set("one", { mode: "ai", prompt: "Wait", intervalHours: 1 });
+  const first = (await f.registry.get("one"))!.snooze!.id;
+  await f.service.set("one", { mode: "ai", prompt: "Wait again", intervalHours: 1 });
+  await expect(f.service.set("one", null, first)).rejects.toThrow("Snooze changed");
+  expect((await f.registry.get("one"))?.snooze).not.toBeNull();
+  await f.service.set("one", null);
+  await f.service.set("one", null, first);
+  expect(f.wakes).toEqual([]);
+});
+
+test("a pending permission prevents saving a snooze", async () => {
+  const f = await fixture(undefined, undefined, (id) => id === "one");
+  await expect(
+    f.service.set("one", { mode: "ai", prompt: "Wait", intervalHours: 1 }),
+  ).rejects.toThrow("pending permission");
+  expect((await f.registry.get("one"))?.snooze).toBeUndefined();
+  await f.service.set("two", { mode: "ai", prompt: "Wait", intervalHours: 1 });
+  expect((await f.registry.get("two"))?.snooze?.config.mode).toBe("ai");
 });

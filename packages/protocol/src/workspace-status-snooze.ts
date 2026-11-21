@@ -18,6 +18,7 @@ export const StatusWatchSnapshotSchema = z.object({
 });
 export const StatusSnoozeInputSchema = z.object({
   mode: z.literal("status"),
+  deadlineAt: z.string().datetime().optional(),
   intervalMinutes: z.union([z.literal(5), z.literal(60)]),
   targets: z.array(StatusWatchTargetSchema).min(1).max(50),
 });

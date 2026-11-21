@@ -1,3 +1,12 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import {
+  FileBackedWorkspaceRegistry,
+  createPersistedWorkspaceRecord,
+  type WorkspaceRegistry,
+} from "./workspace-registry.js";
+import { createTestLogger } from "../test-utils/test-logger.js";
 import { createWorkspaceRuntimeStore } from "./workspace-runtime-store/index.js";
 import { SessionDelivery } from "./session/owned-subscriptions/index.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -83,7 +92,10 @@ class RecordingPushNotificationSender implements PushNotificationSender {
   }
 }
 
-function createServer(agentManagerOverrides?: Record<string, unknown>) {
+function createServer(
+  agentManagerOverrides?: Record<string, unknown>,
+  workspaceRegistry?: WorkspaceRegistry,
+) {
   const pushNotifications = new RecordingPushNotificationSender();
   const agentManager = {
     subscribe: vi.fn(() => () => {}),
@@ -126,7 +138,7 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     "1.2.3-test",
     undefined,
     undefined,
-    undefined,
+    workspaceRegistry,
     createStub<ScheduleService>({}),
     createStub<CheckoutDiffManager>({
       subscribe: vi.fn(),
@@ -386,4 +398,57 @@ it("uses the current turn summary for completion notifications", async () => {
     reason: "finished",
   });
   expect(pushNotifications.sent[0]?.body).toBe("Fixed the tab names.");
+});
+
+it("snooze mutes completion and error alerts, but a permission persists unsnooze before notifying", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "inbox-notifications-"));
+  try {
+    const registry = new FileBackedWorkspaceRegistry(
+      join(directory, "workspaces.json"),
+      createTestLogger(),
+    );
+    await registry.initialize();
+    const stamp = new Date().toISOString();
+    await registry.upsert({
+      ...createPersistedWorkspaceRecord({
+        workspaceId: WORKSPACE_ID,
+        projectId: "project",
+        cwd: directory,
+        kind: "directory",
+        displayName: "Inbox",
+        createdAt: stamp,
+        updatedAt: stamp,
+      }),
+      snooze: {
+        id: "s",
+        createdAt: stamp,
+        config: { mode: "time", wakeAt: "2027-01-01T00:00:00.000Z", timezone: "UTC" },
+        nextCheckAt: "2027-01-01T00:00:00.000Z",
+        lastCheck: null,
+      },
+    });
+    const { server, pushNotifications } = createServer(undefined, registry);
+    const ws = connectClient(server, {
+      deviceType: "web",
+      appVisible: true,
+      focusedAgentId: null,
+      lastActivityAt: new Date(),
+    });
+    const internals = asInternals<WebSocketServerInternals>(server);
+    for (const reason of ["finished", "error"]) {
+      ws.send.mockClear();
+      await internals.broadcastAgentAttention({ agentId: "agent-1", reason });
+      expect(readAttentionRequiredMessage(ws).shouldNotify).toBe(false);
+      expect((await registry.get(WORKSPACE_ID))?.snooze?.id).toBe("s");
+    }
+    expect(pushNotifications.sent).toEqual([]);
+    ws.send.mockClear();
+    await internals.broadcastAgentAttention({ agentId: "agent-1", reason: "permission" });
+    expect((await registry.get(WORKSPACE_ID))?.snooze).toBeNull();
+    expect(readAttentionRequiredMessage(ws).shouldNotify).toBe(true);
+    expect(ws.send).toHaveBeenCalledTimes(1);
+    expect(pushNotifications.sent).toEqual([]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 });

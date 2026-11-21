@@ -68,7 +68,8 @@ export function selectSidebarGroupVisibility<T extends SidebarGroupItem>(
 
   const awake = items.filter((item) => !policy.isSnoozed(item));
   const snoozed = items.filter((item) => policy.isSnoozed(item));
-  canToggle = snoozed.length > 0;
+  // Snoozed workspaces remain accounted for in project panels.
+  canToggle = false;
   awake.forEach((item, index) => {
     const inBaseline =
       index < limit || (policy.kind === "workspaces" && policy.getStatusBucket(item) !== "done");
@@ -87,7 +88,7 @@ export function selectSidebarGroupVisibility<T extends SidebarGroupItem>(
 
   return {
     leadingItem,
-    visibleItems: baseline,
+    visibleItems: [...baseline, ...snoozed],
     canToggle,
   };
 }

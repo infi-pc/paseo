@@ -7,6 +7,17 @@ export const en = {
   },
   workspaceSnooze: {
     title: "Snooze workspace",
+    remindAnyway: "Remind me anyway",
+    reminders: { "1d": "1 day", "3d": "3 days", "1w": "1 week", "2w": "2 weeks", "1m": "1 month" },
+    updateHost: "Update this host to use snooze reminders.",
+    sendTitle: "This workspace is snoozed",
+    sendBody:
+      '"{{name}}" is snoozed until {{condition}}. Unsnooze when sending? This also resumes Inbox updates and notifications for its other sessions.',
+    sendUnsnooze: "Unsnooze and send",
+    sendKeep: "Keep snoozed and send",
+    statusCondition: "a watched status changes",
+    sendFailedAwake:
+      "The workspace is now awake, but the message could not be sent. Your draft is preserved.",
     action: "Snooze…",
     edit: "Edit snooze…",
     unsnooze: "Unsnooze",
@@ -48,6 +59,14 @@ export const en = {
       unknown: "Couldn’t determine",
       pending: "Awaiting check",
     },
+  },
+  inboxSections: {
+    running: "Running",
+    inbox: "Inbox",
+    snoozed: "Snoozed",
+    sessions: "Sessions",
+    untitled: "Untitled session",
+    reminder: "Reminder: {{time}}",
   },
   codeLanguage: {
     definition: "Go to definition",
@@ -1422,7 +1441,7 @@ export const en = {
       reorderProject: "Reorder {{name}}",
       reorderHint: "Drag to change the project order.",
       select: "Inbox and projects",
-      empty: "No recent or unread workspaces",
+      empty: "No open workspaces",
     },
     view: {
       failed: "Sidebar view failed to load.",

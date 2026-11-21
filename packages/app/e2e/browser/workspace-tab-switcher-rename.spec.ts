@@ -93,7 +93,7 @@ test.describe("Workspace session rename (compact tab switcher)", () => {
       await renameModalSubmit(page, modalPrefix).click();
 
       await expect(input).toHaveCount(0, { timeout: 15_000 });
-      await expect(page.getByText(renamed, { exact: true })).toBeVisible({
+      await expect(page.getByText(renamed, { exact: true }).filter({ visible: true })).toBeVisible({
         timeout: 15_000,
       });
       await expect(page.getByRole("button", { name: /Switch tabs/ })).toHaveText("1");

@@ -1,5 +1,19 @@
+import { PressHighlight } from "@/components/ui/press-highlight";
+import type { InboxSection } from "./navigation/model";
+import { SidebarSessionsContext, WorkspaceSessionRows } from "./navigation/session-rows";
+import { sectionPreferenceKey } from "./navigation/use-navigation";
+import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
-import { memo, useCallback, useMemo, useState, type ReactNode, type Ref } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useState,
+  useContext,
+  useId,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, ScrollView, type GestureResponderEvent } from "react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
@@ -60,7 +74,6 @@ interface FlatWorkspaceListProps {
 }
 
 export function SidebarFlatWorkspaceList({
-  flatRows,
   projectIconByProjectViewKey,
   shortcutIndexByWorkspaceKey,
   onWorkspacePress,
@@ -71,27 +84,49 @@ export function SidebarFlatWorkspaceList({
 }: FlatWorkspaceListProps) {
   const { t } = useTranslation();
   const showShortcutBadges = useShowShortcutBadges();
+  const { sections } = useContext(SidebarSessionsContext);
   const content = (
     <>
       {listHeaderComponent}
       <View testID="sidebar-flat-workspaces">
-        {flatRows.map((workspace) => (
-          <StatusWorkspaceRow
-            key={workspace.workspaceKey}
-            workspace={workspace}
-            {...buildStatusRowProjectPresentation({
-              workspace,
-              projectIconByProjectViewKey,
-              hostBadgeByServerId,
-            })}
-            shortcutNumber={shortcutIndexByWorkspaceKey.get(workspace.workspaceKey) ?? null}
-            showShortcutBadge={showShortcutBadges}
-            canPin={supportsPinningByServerId.get(workspace.serverId) === true}
-            onToggleWorkspacePin={onToggleWorkspacePin}
-            onWorkspacePress={onWorkspacePress}
-          />
-        ))}
-        {flatRows.length === 0 ? (
+        {sections.map((section) =>
+          section.workspaces.length ? (
+            <View key={section.id}>
+              <InboxSectionHeader
+                id={section.id}
+                collapsed={section.collapsed}
+                count={section.workspaces.length}
+              />
+              {!section.collapsed
+                ? section.workspaces.map((workspace) => (
+                    <View key={workspace.workspaceKey}>
+                      <StatusWorkspaceRow
+                        workspace={workspace}
+                        {...buildStatusRowProjectPresentation({
+                          workspace,
+                          projectIconByProjectViewKey,
+                          hostBadgeByServerId,
+                        })}
+                        shortcutNumber={
+                          shortcutIndexByWorkspaceKey.get(workspace.workspaceKey) ?? null
+                        }
+                        showShortcutBadge={showShortcutBadges}
+                        canPin={supportsPinningByServerId.get(workspace.serverId) === true}
+                        onToggleWorkspacePin={onToggleWorkspacePin}
+                        onWorkspacePress={onWorkspacePress}
+                      />
+                      <WorkspaceSessionRows
+                        workspace={workspace}
+                        section={section.id}
+                        onPress={onWorkspacePress}
+                      />
+                    </View>
+                  ))
+                : null}
+            </View>
+          ) : null,
+        )}
+        {sections.every((section) => section.workspaces.length === 0) ? (
           <Text style={styles.emptyNavigation}>{t("sidebar.navigation.empty")}</Text>
         ) : null}
       </View>
@@ -119,6 +154,34 @@ export function SidebarFlatWorkspaceList({
         </ScrollView>
       )}
     </View>
+  );
+}
+
+function InboxSectionHeader({
+  id,
+  collapsed,
+  count,
+}: {
+  id: InboxSection;
+  collapsed: boolean;
+  count: number;
+}) {
+  const { t } = useTranslation();
+  const toggle = useSidebarCollapsedSectionsStore((state) => state.toggleProjectCollapsed);
+  const press = useCallback(() => toggle(sectionPreferenceKey(id)), [toggle, id]);
+  const state = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
+  return (
+    <PressHighlight
+      accessibilityRole="button"
+      accessibilityState={state}
+      onPress={press}
+      highlightStyle={styles.workspaceRowPressed}
+      testID={`sidebar-section-${id}`}
+    >
+      <Text style={styles.sectionTitle}>
+        {collapsed ? "›" : "⌄"} {t(`inboxSections.${id}`)} · {count}
+      </Text>
+    </PressHighlight>
   );
 }
 
@@ -300,8 +363,9 @@ function StatusWorkspaceRowWithMenu({
     });
   }, [markUnread, toast]);
 
+  const handlerInstance = useId();
   useKeyboardActionHandler({
-    handlerId: `workspace-archive-${workspace.workspaceKey}`,
+    handlerId: `workspace-archive-${workspace.workspaceKey}-${handlerInstance}`,
     actions: ["workspace.archive"],
     enabled: selected && !isArchiving,
     priority: 0,
@@ -685,6 +749,12 @@ function getStatusWorkspaceRowStyle({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  sectionTitle: {
+    padding: theme.spacing[2],
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    fontWeight: "600",
+  },
   emptyNavigation: {
     padding: theme.spacing[4],
     color: theme.colors.foregroundMuted,

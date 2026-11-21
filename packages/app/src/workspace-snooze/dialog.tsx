@@ -1,3 +1,5 @@
+import { SnoozedSendDialog } from "./send-dialog";
+import { SelectField } from "@/components/ui/select-field";
 import { StatusSnoozeFields } from "./status-fields";
 import { useSessionStore } from "@/stores/session-store";
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -13,19 +15,31 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { getDeviceTimeZone } from "@/utils/device-timezone";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
-import { calendarDays, dateText, openSnoozeForm, presetDate, type TimePreset } from "./form-model";
+import {
+  calendarDays,
+  dateText,
+  openSnoozeForm,
+  presetDate,
+  type TimePreset,
+  type ReminderPreset,
+} from "./form-model";
 import { useSnoozeDialog, type SnoozeTarget } from "./store";
 
 export function WorkspaceSnoozeHost() {
   const target = useSnoozeDialog((state) => state.target);
   const close = useSnoozeDialog((state) => state.close);
-  return target ? (
-    <SnoozeDialog
-      key={`${target.serverId}:${target.workspaceId}`}
-      target={target}
-      onClose={close}
-    />
-  ) : null;
+  return (
+    <>
+      <SnoozedSendDialog />
+      {target ? (
+        <SnoozeDialog
+          key={`${target.serverId}:${target.workspaceId}`}
+          target={target}
+          onClose={close}
+        />
+      ) : null}
+    </>
+  );
 }
 function useSnoozeForm(target: SnoozeTarget, onClose: () => void) {
   const [model] = useState(() =>
@@ -66,6 +80,10 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
     (store) =>
       store.sessions[target.serverId]?.serverInfo?.features?.workspaceStatusSnoozing === true,
   );
+  const deadlinesSupported = useSessionStore(
+    (store) =>
+      store.sessions[target.serverId]?.serverInfo?.features?.workspaceSnoozeDeadlines === true,
+  );
   const state = useSyncExternalStore(model.subscribe, model.getState);
   const latest = useWorkspaceFields(target.serverId, target.workspaceId, (workspace) => ({
     snooze: workspace.snooze,
@@ -105,7 +123,7 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
         </Button>
         <Button
           loading={state.pending}
-          disabled={state.pending}
+          disabled={state.pending || (!deadlinesSupported && state.mode !== "time")}
           onPress={submit}
           testID="workspace-snooze-submit"
         >
@@ -113,7 +131,7 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
         </Button>
       </View>
     ),
-    [target.snooze, state.pending, unsnooze, close, submit, t],
+    [target.snooze, state.pending, state.mode, deadlinesSupported, unsnooze, close, submit, t],
   );
   return (
     <AdaptiveModalSheet
@@ -258,6 +276,7 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
         ) : null}
         {state.mode !== "time" ? (
           <>
+            <ReminderField supported={deadlinesSupported} model={model} />
             {lastCheck ? (
               <>
                 <Text style={styles.muted}>
@@ -294,6 +313,50 @@ function SnoozeDialog({ target, onClose }: { target: SnoozeTarget; onClose: () =
     </AdaptiveModalSheet>
   );
 }
+function ReminderField({
+  supported,
+  model,
+}: {
+  supported: boolean;
+  model: ReturnType<typeof openSnoozeForm>;
+}) {
+  const { t } = useTranslation();
+  const state = useSyncExternalStore(model.subscribe, model.getState);
+  const display = useMemo(
+    () => ({
+      label: state.reminder
+        ? t(`workspaceSnooze.reminders.${state.reminder}`)
+        : new Date(state.deadlineAt).toLocaleString(),
+    }),
+    [state.deadlineAt, state.reminder, t],
+  );
+  const options = useMemo(
+    () =>
+      (["1d", "3d", "1w", "2w", "1m"] as const).map((value) => ({
+        id: value,
+        value,
+        label: t(`workspaceSnooze.reminders.${value}`),
+      })),
+    [t],
+  );
+  if (!supported) return <Text style={styles.muted}>{t("workspaceSnooze.updateHost")}</Text>;
+  return (
+    <SelectField<ReminderPreset>
+      size="sm"
+      label={t("workspaceSnooze.remindAnyway")}
+      value={state.reminder}
+      selectedDisplay={display}
+      hint={t("inboxSections.reminder", { time: new Date(state.deadlineAt).toLocaleString() })}
+      options={options}
+      onChange={model.setReminder}
+      placeholder={t("workspaceSnooze.remindAnyway")}
+      emptyText=""
+      searchable={false}
+      testID="snooze-deadline"
+    />
+  );
+}
+
 const styles = StyleSheet.create((theme) => ({
   body: { padding: theme.spacing[4], gap: theme.spacing[3] },
   footer: {

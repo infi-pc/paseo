@@ -22,7 +22,10 @@ async function openLinkedFile(page: Page): Promise<void> {
 }
 
 async function returnToAgent(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Tooltip regression", exact: true }).click();
+  await page
+    .getByTestId("workspace-tabs-row")
+    .getByRole("button", { name: "Tooltip regression", exact: true })
+    .click();
   await expect(page.getByRole("link", { name: "the guide", exact: true })).toBeVisible();
   await leaveFileLink(page);
 }
@@ -77,7 +80,10 @@ async function readLinkedGuide(page: Page, linkName: string, content: string): P
 }
 
 async function returnToNestedLinks(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Nested file links", exact: true }).click();
+  await page
+    .getByTestId("workspace-tabs-row")
+    .getByRole("button", { name: "Nested file links", exact: true })
+    .click();
   await expect(page.getByRole("link", { name: "nested guide", exact: true })).toBeVisible();
 }
 

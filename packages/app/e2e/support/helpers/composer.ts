@@ -536,7 +536,7 @@ export async function roundTripComposerTabBeforePaint(
   page: Page,
   activeChatTitle: string,
 ): Promise<void> {
-  const activeTab = page.getByRole("button", {
+  const activeTab = page.getByTestId("workspace-tabs-row").getByRole("button", {
     name: activeChatTitle,
     exact: true,
   });

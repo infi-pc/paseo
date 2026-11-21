@@ -1,3 +1,4 @@
+import { SidebarSessionsContext } from "@/components/sidebar/navigation/session-rows";
 import {
   SidebarProjectRail,
   SidebarProjectSelector,
@@ -269,28 +270,30 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   return (
     <>
-      <RetainedPanelActivity active={active}>
-        {isCompactLayout ? (
-          <MobileSidebar
-            {...sharedProps}
-            flatRows={!navigation.selectedProject ? navigation.rows : undefined}
-            {...handlers}
-            active={active}
-            insetsTop={insets.top}
-            insetsBottom={insets.bottom}
-            closeSidebar={showMobileAgent}
-          />
-        ) : (
-          <DesktopSidebar
-            {...sharedProps}
-            flatRows={!navigation.selectedProject ? navigation.rows : undefined}
-            {...handlers}
-            insetsTop={insets.top}
-            active={active}
-            overlay={desktopOverlay}
-          />
-        )}
-      </RetainedPanelActivity>
+      <SidebarSessionsContext.Provider value={navigation}>
+        <RetainedPanelActivity active={active}>
+          {isCompactLayout ? (
+            <MobileSidebar
+              {...sharedProps}
+              flatRows={!navigation.selectedProject ? navigation.rows : undefined}
+              {...handlers}
+              active={active}
+              insetsTop={insets.top}
+              insetsBottom={insets.bottom}
+              closeSidebar={showMobileAgent}
+            />
+          ) : (
+            <DesktopSidebar
+              {...sharedProps}
+              flatRows={!navigation.selectedProject ? navigation.rows : undefined}
+              {...handlers}
+              insetsTop={insets.top}
+              active={active}
+              overlay={desktopOverlay}
+            />
+          )}
+        </RetainedPanelActivity>
+      </SidebarSessionsContext.Provider>
       {importSessionSheet}
     </>
   );

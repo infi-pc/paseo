@@ -8,7 +8,10 @@ import {
 import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
 
 export type TimePreset = "hour" | "day" | "tomorrow" | "monday" | "custom";
+export type ReminderPreset = "1d" | "3d" | "1w" | "2w" | "1m";
 export interface SnoozeFormState {
+  reminder: ReminderPreset | null;
+  deadlineAt: string;
   mode: "time" | "ai" | "status";
   statusLoad: "idle" | "loading" | "ready" | "error";
   candidates: StatusWatchSnapshot[];
@@ -75,12 +78,36 @@ export function calendarDays(month: Date): Array<string | null> {
   });
 }
 
+export function reminderDate(preset: ReminderPreset, now: Date): Date {
+  const date = new Date(now);
+  if (preset === "1m") {
+    const day = date.getDate();
+    date.setDate(1);
+    date.setMonth(date.getMonth() + 1);
+    date.setDate(Math.min(day, new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()));
+  } else {
+    const days = { "1d": 1, "3d": 3, "1w": 7, "2w": 14 }[preset];
+    date.setDate(date.getDate() + days);
+  }
+  return date;
+}
+
+function initialDeadline(snooze: AnyWorkspaceSnooze | null, now: Date): string {
+  if (!snooze || snooze.config.mode === "time") return reminderDate("2w", now).toISOString();
+  return (
+    snooze.config.deadlineAt ??
+    new Date(Date.parse(snooze.createdAt) + 14 * 86_400_000).toISOString()
+  );
+}
+
 export function openSnoozeForm(options: Options) {
   const config = options.snooze?.config;
   const initialDate =
     config?.mode === "time" ? new Date(config.wakeAt) : presetDate("tomorrow", options.now());
   let state: SnoozeFormState = {
     mode: config?.mode ?? "time",
+    reminder: config && config.mode !== "time" ? null : "2w",
+    deadlineAt: initialDeadline(options.snooze, options.now()),
     statusLoad: "idle",
     candidates: isStatusSnooze(options.snooze) ? options.snooze.baseline : [],
     selected: config?.mode === "status" ? config.targets.map(statusWatchKey) : [],
@@ -161,6 +188,13 @@ export function openSnoozeForm(options: Options) {
         error: null,
       });
     },
+    setReminder(reminder: ReminderPreset) {
+      publish({
+        reminder,
+        deadlineAt: reminderDate(reminder, options.now()).toISOString(),
+        error: null,
+      });
+    },
     setStatusInterval(intervalMinutes: 5 | 60) {
       publish({ intervalMinutes });
     },
@@ -195,13 +229,19 @@ export function openSnoozeForm(options: Options) {
             .filter((s) => state.selected.includes(statusWatchKey(s.target)))
             .map((s) => s.target);
           if (!targets.length) throw new Error("Choose at least one status to watch");
-          await options.save({ mode: "status", targets, intervalMinutes: state.intervalMinutes });
+          await options.save({
+            mode: "status",
+            targets,
+            intervalMinutes: state.intervalMinutes,
+            deadlineAt: state.deadlineAt,
+          });
           return;
         }
         if (state.mode === "ai") {
           if (!state.prompt.trim()) throw new Error("Enter an unsnooze condition");
           await options.save({
             mode: "ai",
+            deadlineAt: state.deadlineAt,
             prompt: state.prompt.trim(),
             intervalHours: state.intervalHours,
           });

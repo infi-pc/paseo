@@ -2,7 +2,14 @@ import type { SidebarWorkspaceEntry } from "@/hooks/sidebar-workspaces-view-mode
 import type { StatusSnoozeInput } from "@getpaseo/protocol/workspace-status-snooze";
 import { expect, test } from "vitest";
 import type { WorkspaceSnoozeInput } from "@getpaseo/protocol/workspace-snooze";
-import { calendarDays, customDate, dateText, openSnoozeForm, presetDate } from "./form-model";
+import {
+  calendarDays,
+  customDate,
+  dateText,
+  openSnoozeForm,
+  presetDate,
+  reminderDate,
+} from "./form-model";
 import {
   selectSidebarGroupVisibility,
   createWorkspaceVisibilityPolicy,
@@ -54,7 +61,14 @@ test("failed save keeps edits and can be retried, and a fresh open seeds the sav
   expect(closed).toBe(0);
   fail = false;
   await model.submit();
-  expect(saved).toEqual([{ mode: "ai", prompt: "Wait until CI passes", intervalHours: 24 }]);
+  expect(saved).toEqual([
+    {
+      mode: "ai",
+      prompt: "Wait until CI passes",
+      intervalHours: 24,
+      deadlineAt: reminderDate("2w", now).toISOString(),
+    },
+  ]);
   expect(closed).toBe(1);
   const edit = openSnoozeForm({
     snooze: {
@@ -101,7 +115,7 @@ test("past custom dates produce a visible validation error without saving", asyn
   expect(model.getState().error).toBe("Choose a valid future date and time");
   expect(calls).toBe(0);
 });
-test("snoozed-only and pinned groups remain reachable through Show all without consuming normal slots", () => {
+test("snoozed workspaces stay visible in project and pinned groups", () => {
   const snooze = {
     id: "s",
     createdAt: now.toISOString(),
@@ -137,8 +151,8 @@ test("snoozed-only and pinned groups remain reachable through Show all without c
       selectSidebarGroupVisibility({ items: [hidden], expanded: false, policy, selection: null }),
     ).toEqual({
       leadingItem: null,
-      visibleItems: [],
-      canToggle: true,
+      visibleItems: [hidden],
+      canToggle: false,
     });
     expect(
       selectSidebarGroupVisibility({
@@ -147,7 +161,7 @@ test("snoozed-only and pinned groups remain reachable through Show all without c
         policy,
         selection: null,
       }).visibleItems,
-    ).toEqual([awake]);
+    ).toEqual([awake, hidden]);
     expect(
       selectSidebarGroupVisibility({
         items: [hidden, awake],
@@ -160,8 +174,8 @@ test("snoozed-only and pinned groups remain reachable through Show all without c
       selectSidebarGroupVisibility({ items: [hidden], expanded: false, policy, selection: null }),
     ).toEqual({
       leadingItem: null,
-      visibleItems: [],
-      canToggle: true,
+      visibleItems: [hidden],
+      canToggle: false,
     });
   }
 });
@@ -206,6 +220,41 @@ test("status discovery seeds selections, retry preserves choices, and save sends
   model.toggleTarget(key);
   model.setStatusInterval(60);
   await model.submit();
-  expect(saved).toEqual([{ mode: "status", targets: [target], intervalMinutes: 60 }]);
+  expect(saved).toEqual([
+    {
+      mode: "status",
+      targets: [target],
+      intervalMinutes: 60,
+      deadlineAt: reminderDate("2w", now).toISOString(),
+    },
+  ]);
   model.close();
+});
+
+test("editing a condition preserves its deadline until the reminder picker changes it", async () => {
+  const deadlineAt = new Date(2026, 9, 8, 9).toISOString();
+  const saved: Array<WorkspaceSnoozeInput | StatusSnoozeInput | null> = [];
+  const model = openSnoozeForm({
+    snooze: {
+      id: "existing",
+      createdAt: now.toISOString(),
+      nextCheckAt: now.toISOString(),
+      lastCheck: null,
+      config: { mode: "ai", prompt: "Original", intervalHours: 1, deadlineAt },
+    },
+    timezone: "UTC",
+    now: () => now,
+    save: async (input) => {
+      saved.push(input);
+    },
+    check: async () => {},
+    saved: () => {},
+  });
+  model.setPrompt("Revised condition");
+  await model.submit();
+  expect(saved[0]).toMatchObject({ deadlineAt, prompt: "Revised condition" });
+  model.setReminder("1m");
+  await model.submit();
+  expect(saved[1]).toMatchObject({ deadlineAt: new Date(2026, 10, 5, 12, 30).toISOString() });
+  expect(reminderDate("1m", new Date(2026, 0, 31, 9))).toEqual(new Date(2026, 1, 28, 9));
 });

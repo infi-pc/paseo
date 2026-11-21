@@ -1,3 +1,4 @@
+import { confirmSnoozedSend } from "@/workspace-snooze/confirm-send";
 import { describe, expect, it, vi } from "vitest";
 import { submitAgentInput } from "./submit";
 
@@ -249,5 +250,79 @@ describe("submitAgentInput", () => {
       attachments: [],
     });
     expect(clearDraft).toHaveBeenCalledWith("sent");
+  });
+});
+
+// FORK(inbox-workspaces): use the same decision boundary for submit, enqueue and recommended prompts.
+describe("snooze-on-send decisions", () => {
+  const snooze = {
+    id: "original",
+    createdAt: "2026-11-01T00:00:00.000Z",
+    nextCheckAt: "2026-12-01T00:00:00.000Z",
+    lastCheck: null,
+    config: { mode: "time" as const, wakeAt: "2026-12-01T00:00:00.000Z", timezone: "UTC" },
+  };
+
+  it("cancel and keep do not clear the snooze", async () => {
+    const unsnooze = vi.fn();
+    const read = () => ({ name: "Workspace", snooze });
+    expect(await confirmSnoozedSend({ read, ask: async () => "cancel", unsnooze })).toBe("cancel");
+    expect(await confirmSnoozedSend({ read, ask: async () => "keep", unsnooze })).toBe("send");
+    expect(unsnooze).not.toHaveBeenCalled();
+  });
+
+  it("asks again if the snooze changes while the dialog is open", async () => {
+    let current = snooze;
+    const unsnooze = vi.fn(async () => {});
+    const ask = vi.fn(async () => {
+      current = { ...snooze, id: "replacement" };
+      return "unsnooze" as const;
+    });
+    expect(
+      await confirmSnoozedSend({
+        read: () => ({ name: "Workspace", snooze: current }),
+        ask,
+        unsnooze,
+      }),
+    ).toBe("unsnoozed");
+    expect(ask).toHaveBeenCalledTimes(2);
+    expect(unsnooze).toHaveBeenCalledExactlyOnceWith("replacement");
+  });
+
+  it("proceeds when a deadline or permission already woke the workspace", async () => {
+    let current: typeof snooze | null = snooze;
+    const unsnooze = vi.fn();
+    expect(
+      await confirmSnoozedSend({
+        read: () => ({ name: "Workspace", snooze: current }),
+        ask: async () => {
+          current = null;
+          return "unsnooze";
+        },
+        unsnooze,
+      }),
+    ).toBe("send");
+    expect(unsnooze).not.toHaveBeenCalled();
+  });
+
+  it("does not send or clear a draft before unsnoozing succeeds", async () => {
+    const send = vi.fn();
+    const clear = vi.fn();
+    const attempt = async () => {
+      const decision = await confirmSnoozedSend({
+        read: () => ({ name: "Workspace", snooze }),
+        ask: async () => "unsnooze",
+        unsnooze: async () => {
+          throw new Error("Host disconnected");
+        },
+      });
+      if (decision !== "cancel") {
+        clear();
+        send();
+      }
+    };
+    await expect(attempt()).rejects.toThrow("Host disconnected");
+    expect(clear).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 });

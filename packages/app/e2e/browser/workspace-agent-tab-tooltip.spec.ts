@@ -29,7 +29,10 @@ async function openAgent(page: Page, agent: { id: string; workspaceId: string })
 }
 
 async function openAgentTabTooltip(page: Page, agentId: string, title: string): Promise<Locator> {
-  await page.getByRole("button", { name: normalizedTitle(title), exact: true }).hover();
+  await page
+    .getByTestId("workspace-tabs-row")
+    .getByRole("button", { name: normalizedTitle(title), exact: true })
+    .hover();
   const tooltip = page.getByTestId(`workspace-tab-tooltip-agent_${agentId}`);
   await expect(tooltip).toBeVisible({ timeout: 10_000 });
   return tooltip;

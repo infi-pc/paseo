@@ -130,10 +130,16 @@ test.describe("long user message preview", () => {
       await openAgentRoute(page, agent);
       await expectAgentIdle(page);
 
-      await page.getByRole("button", { name: "Preview second", exact: true }).click();
+      await page
+        .getByTestId("workspace-tabs-row")
+        .getByRole("button", { name: "Preview second", exact: true })
+        .click();
       await agent.client.sendAgentMessage(agent.agentId, longPrompt("Hidden prompt"));
       await agent.client.waitForFinish(agent.agentId, 30_000);
-      await page.getByRole("button", { name: "Preview first", exact: true }).click();
+      await page
+        .getByTestId("workspace-tabs-row")
+        .getByRole("button", { name: "Preview first", exact: true })
+        .click();
       await expectPaintedCollapsedFromFirstFrame(page, "Hidden prompt");
     } finally {
       await agent.cleanup();

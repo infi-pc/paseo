@@ -23,14 +23,22 @@ context recorded for that visit, even if you browsed other projects afterward. O
 navigation centrally so shortcuts, links, notifications, and browser history follow the same rule.
 In-place preview replacements count as tab navigation. Choosing a workspace still closes the compact drawer.
 
-Inbox includes workspaces with session activity in the last 48 hours or unread sessions of any age,
-ordered by latest session activity. Keep qualifying rows for the current Inbox visit so reading a
-session cannot remove the row under the user. Selecting a project ends that visit; returning to
-Inbox reevaluates membership. Snoozed and removed workspaces do not remain through this retention.
-Session activity has its own durable clock: access, metadata snapshots, history replay, and runtime
-reloads must not advance it. Git refreshes and metadata-only status snapshots must not advance it.
-Pins remain in activity order in Inbox; project views retain their pinned section. Both lists have a fixed presentation;
-there is no grouping preference or grouping command.
+Every unarchived user workspace in the selected host/filter scope remains in Running, Inbox,
+or Snoozed. Mixed workspaces appear in Running and Inbox with different session shortcuts.
+Reading or aging never removes a workspace; continuing work, snoozing, and archiving determine
+placement. Snoozed work remains visible in Running while it executes.
+
+Indented shortcuts identify host sessions, including sessions without a local tab. Recent (48-hour),
+unread, blocked, running, and selected sessions qualify. Keep qualifying children through the current
+view visit so reading does not move a row under the pointer. The workspace remains when no child
+qualifies. Root/subagent ownership follows [agent lifecycle](agent-lifecycle.md#workspace-activity).
+Session expansion is a per-device preference, separate from read state and workspace membership.
+
+Use turn start time while work runs and last session activity otherwise; streamed tokens and git
+refreshes must not shuffle rows. Pins remain in activity order in Inbox; projects retain their pinned
+section. Duplicate workspace rows share one keyboard-number target. Snoozed workspaces remain
+reachable in the collapsed global section and visible in projects; see
+[workspace snoozing](agent-lifecycle.md#workspace-snoozing) for wake and notification behavior.
 
 Desktop project icons use the persisted sidebar project order. Reserve space for Add project and
 show only the icons that fit between Inbox and the footer. The overflow button opens all projects;

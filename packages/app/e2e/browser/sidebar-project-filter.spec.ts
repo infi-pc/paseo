@@ -21,8 +21,8 @@ for (const compact of [false, true]) {
       try {
         await gotoAppShell(page);
         await selectSidebarInbox(page);
-        await expect(row(alpha.workspaceId)).toHaveCount(0);
-        await expect(row(beta.workspaceId)).toHaveCount(0);
+        await expect(row(alpha.workspaceId)).toBeVisible();
+        await expect(row(beta.workspaceId)).toBeVisible();
         const route = page.url();
         await selectSidebarProject(page, alpha.projectKey);
         await expect(row(alpha.workspaceId)).toBeVisible();
@@ -34,7 +34,7 @@ for (const compact of [false, true]) {
         await expect(page).toHaveURL(route);
         await page.reload();
         await selectSidebarInbox(page);
-        await expect(row(alpha.workspaceId)).toHaveCount(0);
+        await expect(row(alpha.workspaceId)).toBeVisible();
         await selectSidebarProject(page, alpha.projectKey);
         await expect(row(alpha.workspaceId)).toBeVisible();
       } finally {

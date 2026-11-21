@@ -46,13 +46,13 @@ function workspaceRow(page: Page, workspaceId: string) {
 }
 
 async function openWorkspace(page: Page, workspaceId: string) {
-  await workspaceRow(page, workspaceId).click();
+  await workspaceRow(page, workspaceId).first().click();
   await expect(page).toHaveURL(new RegExp(`/workspace/${workspaceId}`));
 }
 
 async function chooseReadAction(page: Page, workspaceId: string, action: "read" | "unread") {
-  await workspaceRow(page, workspaceId).hover();
-  await page.getByTestId(`sidebar-workspace-kebab-${getServerId()}:${workspaceId}`).click();
+  await workspaceRow(page, workspaceId).first().hover();
+  await page.getByTestId(`sidebar-workspace-kebab-${getServerId()}:${workspaceId}`).first().click();
   const item = page.getByRole("menuitem", { name: `Mark as ${action}`, exact: true });
   await expect(item).toBeVisible();
   await item.click();
@@ -69,16 +69,12 @@ async function markAsRead(page: Page, workspaceId: string) {
 }
 
 async function expectStatus(page: Page, workspaceId: string, status: "done" | "attention") {
-  const icon = workspaceRow(page, workspaceId).getByTestId(
-    `sidebar-row-project-icon-${getServerId()}:${workspaceId}`,
+  // Activity can keep a workspace in Running while another session is unread in Inbox.
+  const unread = page.getByTestId(
+    new RegExp(`^sidebar-session-unread-${getServerId()}:${workspaceId}-`),
   );
-  await expect(icon).toBeVisible();
-  const badge = icon.getByTestId("project-status-badge");
-  if (status === "attention") {
-    await expect(badge).toHaveAttribute("aria-label", "Ready to review");
-  } else {
-    await expect(badge).toHaveCount(0);
-  }
+  if (status === "attention") await expect(unread).not.toHaveCount(0);
+  else await expect(unread).toHaveCount(0);
 }
 
 async function markBackgroundWorkspaceAndReopen(page: Page, workspaceId: string) {

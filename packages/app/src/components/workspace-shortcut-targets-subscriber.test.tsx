@@ -155,7 +155,7 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
     ]);
   });
 
-  it("publishes no sessionless workspaces in Inbox, then updates when a project is selected", async () => {
+  it("keeps sessionless workspace shortcuts available in Inbox and projects", async () => {
     useSidebarNavigationStore.getState().selectProject(null);
     await act(async () => {
       root?.render(
@@ -164,7 +164,10 @@ describe("WorkspaceShortcutTargetsSubscriber", () => {
         </SidebarModelProvider>,
       );
     });
-    expect(useKeyboardShortcutsStore.getState().sidebarShortcutWorkspaceTargets).toEqual([]);
+    expect(useKeyboardShortcutsStore.getState().sidebarShortcutWorkspaceTargets).toEqual([
+      { serverId: "srv", workspaceId: "ws-1" },
+      { serverId: "srv", workspaceId: "ws-2" },
+    ]);
     await act(async () => {
       useSidebarNavigationStore.getState().selectProject("project-1");
     });

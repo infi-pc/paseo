@@ -113,6 +113,7 @@ function workspaceRecord(overrides?: Partial<PersistedWorkspaceRecord>): Persist
 function createWorkspaceRegistry(records: PersistedWorkspaceRecord[]): WorkspaceRegistry {
   return createStub<WorkspaceRegistry>({
     list: vi.fn(async () => records),
+    get: vi.fn(async (id: string) => records.find((record) => record.workspaceId === id) ?? null),
   });
 }
 
@@ -543,4 +544,32 @@ describe("VoiceAssistantWebSocketServer terminal attention notifications", () =>
       workspaceId: "ws-1",
     });
   });
+});
+
+it("keeps terminal attention updates but mutes pushes while its workspace is snoozed", async () => {
+  const { manager, emit } = createTerminalManager();
+  const registry = createWorkspaceRegistry([
+    workspaceRecord({
+      snooze: {
+        id: "s",
+        createdAt: "2026-11-01T00:00:00.000Z",
+        nextCheckAt: "2027-01-01T00:00:00.000Z",
+        lastCheck: null,
+        config: { mode: "time", wakeAt: "2027-01-01T00:00:00.000Z", timezone: "UTC" },
+      },
+    }),
+  ]);
+  const { server, pushNotifications } = createServer(manager, registry);
+  const ws = connectClient(server);
+  emit(
+    transition({
+      previousState: "working",
+      previousChangedAt: 1000,
+      state: "idle",
+      changedAt: 11001,
+    }),
+  );
+  await flushAsync();
+  expect(readTerminalAttentionMessage(ws).shouldNotify).toBe(false);
+  expect(pushNotifications.sent).toEqual([]);
 });

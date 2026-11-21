@@ -1,3 +1,4 @@
+import { useSnoozedSend } from "@/workspace-snooze/send-dialog";
 import {
   useComposerEditingSession,
   useComposerFullscreen,
@@ -1652,6 +1653,8 @@ function ComposerContentImpl({
     onFocusInput?.(focusInput);
   }, [focusInput, onFocusInput]);
 
+  const snoozedSend = useSnoozedSend(serverId, workspaceId, setSendError, setIsProcessing);
+
   const submitMessage = useCallback(
     async (text: string, submitAttachments: ComposerAttachment[]) => {
       onMessageSent?.();
@@ -1720,6 +1723,8 @@ function ComposerContentImpl({
     (state) => selectAgentTurnPresentation(state.sessions[serverId], agentId).isCancelling,
   );
   const isAgentRunning = hasActiveTurn;
+  const isAgentRunningRef = useRef(isAgentRunning);
+  isAgentRunningRef.current = isAgentRunning;
   // Queueing behind a permission prompt would strand the message: the turn is
   // parked until the request is answered.
   const hasPendingPermission = useSessionStore((state) => {
@@ -1775,50 +1780,63 @@ function ComposerContentImpl({
       outgoingAttachments: ComposerAttachment[],
       forceSend?: boolean,
     ) => {
-      const result = await submitAgentInput({
-        message: outgoingMessage,
-        attachments: outgoingAttachments,
-        hasExternalContent,
-        allowEmptySubmit,
-        forceSend,
-        submitBehavior,
-        isAgentRunning,
-        // Parent-managed submits are still valid submit paths even when the
-        // transport is disconnected, because the parent decides the failure mode.
-        canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
-        queueMessage: ({ message: queuedText, attachments: queuedAttachments }) => {
-          queueMessage(queuedText, queuedAttachments);
-        },
-        submitMessage: async ({ message: submitText, attachments: submitAttachments }) => {
-          if (submitBehavior !== "preserve-and-lock") {
-            beginSubmit(submitAttachments);
-          }
-          await submitMessage(submitText, submitAttachments);
-        },
-        clearDraft,
-        setUserInput: replaceUserInput,
-        setAttachments: (nextAttachments) => {
-          setSelectedAttachments(composerWorkspaceAttachment.userAttachmentsOnly(nextAttachments));
-        },
-        setSendError,
-        setIsProcessing,
-        onSubmitError: (error) => {
-          console.error("[AgentInput] Failed to send message:", error);
-        },
-        failedToSendMessage: t("composer.errors.failedToSend"),
-      });
-      completeSubmit({
-        result,
-        outgoingAttachments,
+      if (
+        !outgoingMessage.trim() &&
+        outgoingAttachments.length === 0 &&
+        !hasExternalContent &&
+        !allowEmptySubmit
+      )
+        return;
+      await snoozedSend(async (unsnoozed) => {
+        const result = await submitAgentInput({
+          message: outgoingMessage,
+          attachments: outgoingAttachments,
+          hasExternalContent,
+          allowEmptySubmit,
+          forceSend,
+          submitBehavior,
+          // The turn can finish while the snooze decision is open.
+          isAgentRunning: isAgentRunningRef.current,
+          // Parent-managed submits are still valid submit paths even when the
+          // transport is disconnected, because the parent decides the failure mode.
+          canSubmit: Boolean(sendAgentMessageRef.current || onSubmitMessageRef.current),
+          queueMessage: ({ message: queuedText, attachments: queuedAttachments }) => {
+            queueMessage(queuedText, queuedAttachments);
+          },
+          submitMessage: async ({ message: submitText, attachments: submitAttachments }) => {
+            if (submitBehavior !== "preserve-and-lock") {
+              beginSubmit(submitAttachments);
+            }
+            await submitMessage(submitText, submitAttachments);
+          },
+          clearDraft,
+          setUserInput: replaceUserInput,
+          setAttachments: (nextAttachments) => {
+            setSelectedAttachments(
+              composerWorkspaceAttachment.userAttachmentsOnly(nextAttachments),
+            );
+          },
+          setSendError,
+          setIsProcessing,
+          onSubmitError: (error) => {
+            console.error("[AgentInput] Failed to send message:", error);
+          },
+          failedToSendMessage: t("composer.errors.failedToSend"),
+        });
+        completeSubmit({
+          result,
+          outgoingAttachments,
+        });
+        if (result === "failed" && unsnoozed) setSendError(t("workspaceSnooze.sendFailedAwake"));
       });
     },
     [
+      snoozedSend,
       allowEmptySubmit,
       beginSubmit,
       clearDraft,
       completeSubmit,
       hasExternalContent,
-      isAgentRunning,
       queueMessage,
       setSelectedAttachments,
       replaceUserInput,
@@ -2066,19 +2084,21 @@ function ComposerContentImpl({
     async (id: string) => {
       if (!sendAgentMessageRef.current && !onSubmitMessageRef.current) return;
       // Reuse the regular send path; server-side send atomically interrupts any active run.
-      const result = await sendQueuedComposerMessageNow({
-        agentId,
-        messageId: id,
-        queue: queueWriter,
-        submitMessage: ({ text, attachments: queuedAttachments }) =>
-          submitMessage(text, queuedAttachments),
-        failedToSendMessage: t("composer.errors.failedToSend"),
+      await snoozedSend(async (unsnoozed) => {
+        const result = await sendQueuedComposerMessageNow({
+          agentId,
+          messageId: id,
+          queue: queueWriter,
+          submitMessage: ({ text, attachments: queuedAttachments }) =>
+            submitMessage(text, queuedAttachments),
+          failedToSendMessage: t("composer.errors.failedToSend"),
+        });
+        if (result.status === "failed") {
+          setSendError(unsnoozed ? t("workspaceSnooze.sendFailedAwake") : result.errorMessage);
+        }
       });
-      if (result.status === "failed") {
-        setSendError(result.errorMessage);
-      }
     },
-    [agentId, queueWriter, submitMessage, t],
+    [agentId, queueWriter, submitMessage, snoozedSend, t],
   );
 
   const handleQueue = useCallback(
@@ -2097,13 +2117,13 @@ function ComposerContentImpl({
         commands: pluginClientSlashCommands,
       });
       if (pluginSlashCommand && runPluginClientSlashCommand(pluginSlashCommand)) return;
-      queueMessage(payload.text, outgoingAttachments);
+      void sendMessageWithContent(payload.text, outgoingAttachments);
     },
     [
       attachments,
       buildOutgoingAttachments,
       pluginClientSlashCommands,
-      queueMessage,
+      sendMessageWithContent,
       runClientSlashCommand,
       runPluginClientSlashCommand,
     ],

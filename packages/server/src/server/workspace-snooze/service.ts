@@ -1,5 +1,6 @@
 import {
   StatusSnoozeInputSchema,
+  isStatusSnooze,
   type StatusSnoozeInput,
   type StatusSnooze,
 } from "@getpaseo/protocol/workspace-status-snooze";
@@ -23,6 +24,7 @@ interface Options {
   ) => Promise<WorkspaceSnoozeResult>;
   wake: (workspace: PersistedWorkspaceRecord, reason: string, snoozeId: string) => Promise<void>;
   now?: () => number;
+  hasPendingPermission?: (workspaceId: string) => boolean;
 }
 
 /** The registry is authoritative; helper sessions and timers are disposable. */
@@ -74,13 +76,23 @@ export class WorkspaceSnoozeService {
     );
   }
 
-  async set(workspaceId: string, input: WorkspaceSnoozeInput | null): Promise<void> {
+  async set(
+    workspaceId: string,
+    input: WorkspaceSnoozeInput | null,
+    expectedSnoozeId?: string,
+  ): Promise<void> {
     const config = input === null ? null : WorkspaceSnoozeInputSchema.parse(input);
     const now = this.now();
     if (config?.mode === "time" && Date.parse(config.wakeAt) <= now)
       throw new Error("Choose a future date and time");
     if (config?.mode === "ai" && !config.prompt.trim())
       throw new Error("Enter an unsnooze condition");
+    if (config?.mode === "ai") {
+      const previous = (await this.options.registry.get(workspaceId))?.snooze;
+      const previousDeadline =
+        previous && previous.config.mode !== "time" ? previous.config.deadlineAt : undefined;
+      config.deadlineAt = this.deadline(config.deadlineAt ?? previousDeadline);
+    }
     const stamp = new Date(now).toISOString();
     const snooze = config
       ? {
@@ -92,12 +104,22 @@ export class WorkspaceSnoozeService {
         }
       : null;
     const updated = await this.options.registry.update(workspaceId, (workspace) => {
+      if (expectedSnoozeId && workspace.snooze && workspace.snooze.id !== expectedSnoozeId)
+        throw new Error("Snooze changed; review it before sending");
+      if (config && this.options.hasPendingPermission?.(workspaceId))
+        throw new Error("Resolve the pending permission before snoozing");
       if (workspace.archivedAt) throw new Error("Archived workspaces cannot be snoozed");
       return { ...workspace, snooze, updatedAt: stamp };
     });
     if (!updated) throw new Error("Workspace not found");
     if (this.active?.workspaceId === workspaceId) this.active.controller.abort();
     this.runInBackground();
+  }
+
+  private deadline(value: string | undefined): string {
+    const deadline = value ?? new Date(this.now() + 14 * 86_400_000).toISOString();
+    if (Date.parse(deadline) <= this.now()) throw new Error("Choose a future reminder time");
+    return deadline;
   }
 
   async discoverStatus(workspaceId: string) {
@@ -111,6 +133,10 @@ export class WorkspaceSnoozeService {
     const config = StatusSnoozeInputSchema.parse(input);
     const workspace = await this.options.registry.get(workspaceId);
     if (!workspace || workspace.archivedAt) throw new Error("Workspace is unavailable");
+    const previous = workspace.snooze;
+    const previousDeadline =
+      previous && previous.config.mode !== "time" ? previous.config.deadlineAt : undefined;
+    config.deadlineAt = this.deadline(config.deadlineAt ?? previousDeadline);
     if (!this.options.statusChecker) throw new Error("Status snoozing unavailable");
     const baseline = await this.options.statusChecker.capture(workspace, config);
     const stamp = new Date(this.now()).toISOString();
@@ -123,6 +149,8 @@ export class WorkspaceSnoozeService {
       nextCheckAt: new Date(this.now() + config.intervalMinutes * 60_000).toISOString(),
     };
     const updated = await this.options.registry.update(workspaceId, (current) => {
+      if (this.options.hasPendingPermission?.(workspaceId))
+        throw new Error("Resolve the pending permission before snoozing");
       if (
         current.archivedAt ||
         current.cwd !== workspace.cwd ||
@@ -152,10 +180,50 @@ export class WorkspaceSnoozeService {
     this.runInBackground();
   }
 
+  private async expireDeadlines(): Promise<PersistedWorkspaceRecord[]> {
+    const workspaces = await this.options.registry.listActive();
+    const eligible: PersistedWorkspaceRecord[] = [];
+    for (let workspace of workspaces) {
+      if (workspace.archivedAt || !workspace.snooze) continue;
+      const snooze = workspace.snooze;
+      if (snooze.config.mode !== "time") {
+        // COMPAT(snoozeDeadlines): added in v0.11, remove normalization after 2027-05-12.
+        if (!snooze.config.deadlineAt) {
+          const deadlineAt = new Date(Date.parse(snooze.createdAt) + 14 * 86_400_000).toISOString();
+          const updated = await this.options.registry.update(workspace.workspaceId, (current) => {
+            if (current.snooze?.id !== snooze.id || current.snooze.config.mode === "time")
+              return current;
+            const saved = current.snooze;
+            if (isStatusSnooze(saved))
+              return { ...current, snooze: { ...saved, config: { ...saved.config, deadlineAt } } };
+            if (saved.config.mode !== "ai") return current;
+            return { ...current, snooze: { ...saved, config: { ...saved.config, deadlineAt } } };
+          });
+          if (!updated?.snooze || updated.archivedAt) continue;
+          workspace = updated;
+        }
+        const config = workspace.snooze?.config;
+        if (
+          config &&
+          config.mode !== "time" &&
+          config.deadlineAt &&
+          Date.parse(config.deadlineAt) <= this.now()
+        ) {
+          await this.finish(workspace, { status: "unblocked", reason: "Reminder due" });
+          if (this.active?.workspaceId === workspace.workspaceId) this.active.controller.abort();
+          this.statusChecks.get(workspace.workspaceId)?.controller.abort();
+          continue;
+        }
+      }
+      eligible.push(workspace);
+    }
+    return eligible;
+  }
+
   async runDue(): Promise<void> {
     if (this.stopped) return;
-    const workspaces = await this.options.registry.listActive();
-    const due = workspaces.filter(
+    const eligible = await this.expireDeadlines();
+    const due = eligible.filter(
       (workspace) =>
         !workspace.archivedAt &&
         workspace.snooze &&
@@ -266,7 +334,14 @@ export class WorkspaceSnoozeService {
         updatedAt: stamp,
         snooze: {
           ...current.snooze,
-          nextCheckAt: new Date(this.now() + delay).toISOString(),
+          nextCheckAt: new Date(
+            Math.min(
+              this.now() + delay,
+              current.snooze.config.mode !== "time" && current.snooze.config.deadlineAt
+                ? Date.parse(current.snooze.config.deadlineAt)
+                : Infinity,
+            ),
+          ).toISOString(),
           lastCheck: { ...result, reason: result.reason.slice(0, 2000), checkedAt: stamp },
         },
       };

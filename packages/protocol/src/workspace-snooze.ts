@@ -4,6 +4,7 @@ export const WorkspaceSnoozeInputSchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("time"), wakeAt: z.string().datetime(), timezone: z.string().min(1) }),
   z.object({
     mode: z.literal("ai"),
+    deadlineAt: z.string().datetime().optional(),
     prompt: z.string().min(1).max(8000),
     intervalHours: z.union([z.literal(1), z.literal(24)]),
   }),
@@ -28,6 +29,7 @@ export const WorkspaceSnoozeSetRequestSchema = z.object({
   requestId: z.string(),
   workspaceId: z.string(),
   snooze: WorkspaceSnoozeInputSchema.nullable(),
+  expectedSnoozeId: z.string().optional(),
 });
 export const WorkspaceSnoozeCheckRequestSchema = z.object({
   type: z.literal("workspace.snooze.check.request"),
