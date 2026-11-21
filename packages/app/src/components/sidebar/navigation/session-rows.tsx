@@ -1,9 +1,19 @@
+import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { DensityIcon } from "@/components/ui/density-icon";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isNative, isWeb } from "@/constants/platform";
+import { densityIconBox } from "@/styles/density";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { PressHighlight } from "@/components/ui/press-highlight";
 // FORK(inbox-workspaces): shared host-session shortcuts for Inbox and project panels.
-import { createContext, useContext, useCallback, useMemo } from "react";
-import { View, Text } from "react-native";
+import { createContext, useContext, useCallback, useMemo, type ReactNode } from "react";
+import {
+  View,
+  Text,
+  type GestureResponderEvent,
+  type PressableStateCallbackType,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
@@ -13,9 +23,112 @@ import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspac
 import type { InboxSection, SidebarSession } from "./model";
 import type { useSidebarNavigation } from "./use-navigation";
 
+const LEADING_SLOT_HEIGHT = 20;
+
 export const SidebarSessionsContext = createContext<
   Pick<ReturnType<typeof useSidebarNavigation>, "sessions" | "sections">
 >({ sessions: new Map(), sections: [] });
+
+export function useWorkspaceSessionDisclosure(workspaceKey: string, section?: InboxSection) {
+  const { sessions } = useContext(SidebarSessionsContext);
+  const preferenceKey = `sessions:${section ?? "project"}:${workspaceKey}`;
+  const preference = useSidebarCollapsedSectionsStore((state) =>
+    state.collapsedProjectKeys.has(preferenceKey),
+  );
+  const togglePreference = useSidebarCollapsedSectionsStore(
+    (state) => state.toggleProjectCollapsed,
+  );
+  const expanded = section === undefined ? preference : !preference;
+  const toggle = useCallback(
+    () => togglePreference(preferenceKey),
+    [togglePreference, preferenceKey],
+  );
+  const rows = useMemo(
+    () =>
+      (sessions.get(workspaceKey) ?? []).filter(
+        (session) =>
+          !section ||
+          section === "snoozed" ||
+          (section === "running" ? session.running : !session.running),
+      ),
+    [sessions, workspaceKey, section],
+  );
+  return { rows, hasSessions: rows.length > 0, expanded, toggle };
+}
+
+export function WorkspaceLeadingSessionToggle({
+  workspaceKey,
+  section,
+  isHovered,
+  disabled = false,
+  children,
+}: {
+  workspaceKey: string;
+  section?: InboxSection;
+  isHovered: boolean;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  const { hasSessions, expanded, toggle } = useWorkspaceSessionDisclosure(workspaceKey, section);
+  const showChevron = isHovered || isNative || isCompact;
+  const expansionState = useMemo(() => ({ expanded }), [expanded]);
+  const handlePressIn = useCallback((event: GestureResponderEvent) => {
+    event.stopPropagation();
+  }, []);
+  const handlePressOut = useCallback((event: GestureResponderEvent) => {
+    event.stopPropagation();
+  }, []);
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      event.stopPropagation();
+      toggle();
+    },
+    [toggle],
+  );
+  const buttonStyle = useCallback(
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.leadingToggle,
+      showChevron && (hovered || pressed) && styles.leadingToggleHovered,
+    ],
+    [showChevron],
+  );
+  const renderContent = useCallback(
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) =>
+      showChevron ? (
+        <DensityIcon
+          icon={expanded ? ChevronDown : ChevronRight}
+          size="sm"
+          color={hovered || pressed ? "foreground" : "foregroundMuted"}
+        />
+      ) : (
+        children
+      ),
+    [showChevron, expanded, children],
+  );
+
+  if (!hasSessions) return children;
+
+  return (
+    <PressHighlight
+      highlightStyle={styles.leadingToggleHovered}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      onPress={handlePress}
+      disabled={disabled}
+      hitSlop={4}
+      accessibilityRole={isWeb ? undefined : "button"}
+      accessibilityState={expansionState}
+      aria-expanded={expanded}
+      accessibilityLabel={t("inboxSections.sessions")}
+      style={buttonStyle}
+      testID={`sidebar-sessions-toggle-${workspaceKey}-${section ?? "project"}`}
+    >
+      {renderContent}
+    </PressHighlight>
+  );
+}
 
 export function WorkspaceSessionRows({
   workspace,
@@ -26,33 +139,17 @@ export function WorkspaceSessionRows({
   section?: InboxSection;
   onPress?: () => void;
 }) {
-  const { sessions } = useContext(SidebarSessionsContext);
   const { t } = useTranslation();
-  const preferenceKey = `sessions:${section ?? "project"}:${workspace.workspaceKey}`;
-  const preference = useSidebarCollapsedSectionsStore((state) =>
-    state.collapsedProjectKeys.has(preferenceKey),
-  );
-  const togglePreference = useSidebarCollapsedSectionsStore(
-    (state) => state.toggleProjectCollapsed,
-  );
-  const expanded = section === undefined ? preference : !preference;
-  const expansionState = useMemo(() => ({ expanded }), [expanded]);
-  const toggle = useCallback(
-    () => togglePreference(preferenceKey),
-    [togglePreference, preferenceKey],
-  );
-  const rows = (sessions.get(workspace.workspaceKey) ?? []).filter(
-    (session) =>
-      !section ||
-      section === "snoozed" ||
-      (section === "running" ? session.running : !session.running),
-  );
+  const { rows, expanded } = useWorkspaceSessionDisclosure(workspace.workspaceKey, section);
   const snooze = workspace.snooze;
   const deadline =
     snooze?.config.mode === "time" ? snooze.config.wakeAt : snooze?.config.deadlineAt;
+  const showSnooze = Boolean(snooze && section !== "running");
+  const showSessions = expanded && rows.length > 0;
+  if (!showSnooze && !showSessions) return null;
   return (
     <View style={styles.children}>
-      {snooze && section !== "running" ? (
+      {showSnooze ? (
         <Text style={styles.muted}>
           {t("workspaceSnooze.snoozed")}
           {deadline
@@ -60,33 +157,16 @@ export function WorkspaceSessionRows({
             : ""}
         </Text>
       ) : null}
-      {rows.length > 0 ? (
-        <>
-          <PressHighlight
-            highlightStyle={styles.selected}
-            onPress={toggle}
-            accessibilityRole="button"
-            accessibilityState={expansionState}
-            accessibilityLabel={t("inboxSections.sessions")}
-            style={styles.toggle}
-            testID={`sidebar-sessions-toggle-${workspace.workspaceKey}-${section ?? "project"}`}
-          >
-            <Text style={styles.muted}>
-              {expanded ? "⌄" : "›"} {t("inboxSections.sessions")} · {rows.length}
-            </Text>
-          </PressHighlight>
-          {expanded
-            ? rows.map((session) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  workspace={workspace}
-                  onPress={onPress}
-                />
-              ))
-            : null}
-        </>
-      ) : null}
+      {showSessions
+        ? rows.map((session) => (
+            <SessionRow
+              key={session.id}
+              session={session}
+              workspace={workspace}
+              onPress={onPress}
+            />
+          ))
+        : null}
     </View>
   );
 }
@@ -143,7 +223,17 @@ function SessionRow({
 }
 const styles = StyleSheet.create((theme) => ({
   children: { paddingLeft: theme.spacing[4] },
-  toggle: { paddingVertical: theme.spacing[1], paddingHorizontal: theme.spacing[2] },
+  leadingToggle: {
+    width: densityIconBox("md"),
+    height: LEADING_SLOT_HEIGHT,
+    borderRadius: theme.borderRadius.sm,
+    flexShrink: 0,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  leadingToggleHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
   row: {
     flexDirection: "row",
     alignItems: "center",

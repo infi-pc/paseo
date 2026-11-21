@@ -1,5 +1,8 @@
 // FORK(workspace-snooze): reveal snooze details under Show all.
 import { WorkspaceSnoozeIndicator } from "@/workspace-snooze/indicator";
+// FORK(inbox-workspaces): fold workspace sessions from the leading icon slot.
+import type { InboxSection } from "@/components/sidebar/navigation/model";
+import { WorkspaceLeadingSessionToggle } from "@/components/sidebar/navigation/session-rows";
 import { memo, useMemo, useCallback, useState, type ReactNode } from "react";
 import { Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -113,6 +116,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   onArchive,
   archiveStatus = "idle",
   titleEditor = null,
+  sessionSection,
   children,
 }: {
   workspace: SidebarWorkspaceEntry;
@@ -135,6 +139,8 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   archiveStatus?: "idle" | "pending" | "success";
   /** Takes the title's place, in a box exactly one title line tall, while renaming in place. */
   titleEditor?: ReactNode;
+  // FORK(inbox-workspaces): Inbox section scoping the leading session fold toggle.
+  sessionSection?: InboxSection;
   children?: ReactNode;
 }) {
   const {
@@ -156,26 +162,33 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   return (
     <View style={styles.workspaceRowContent}>
       <View style={styles.workspaceRowMain}>
-        {leadingProjectName ? (
-          <ProjectStatusIndicator
-            iconDataUri={leadingProjectIconDataUri}
-            displayName={leadingProjectName}
-            projectViewKey={workspace.projectViewKey}
-            statusBucket={workspace.statusBucket}
-            statusEnteredAt={workspace.statusEnteredAt?.getTime()}
-            backdrop={backdrop}
-            loading={isLoading}
-            testID={`sidebar-row-project-icon-${workspace.workspaceKey}`}
-          />
-        ) : (
-          <WorkspaceStatusIndicator
-            bucket={workspace.statusBucket}
-            statusEnteredAt={workspace.statusEnteredAt?.getTime()}
-            workspaceKind={workspace.workspaceKind}
-            loading={isLoading}
-            reserveIdleSpace={reserveIdleStatusIndicatorSpace}
-          />
-        )}
+        <WorkspaceLeadingSessionToggle
+          workspaceKey={workspace.workspaceKey}
+          section={sessionSection}
+          isHovered={isHovered}
+          disabled={isLoading || titleEditor !== null}
+        >
+          {leadingProjectName ? (
+            <ProjectStatusIndicator
+              iconDataUri={leadingProjectIconDataUri}
+              displayName={leadingProjectName}
+              projectViewKey={workspace.projectViewKey}
+              statusBucket={workspace.statusBucket}
+              statusEnteredAt={workspace.statusEnteredAt?.getTime()}
+              backdrop={backdrop}
+              loading={isLoading}
+              testID={`sidebar-row-project-icon-${workspace.workspaceKey}`}
+            />
+          ) : (
+            <WorkspaceStatusIndicator
+              bucket={workspace.statusBucket}
+              statusEnteredAt={workspace.statusEnteredAt?.getTime()}
+              workspaceKind={workspace.workspaceKind}
+              loading={isLoading}
+              reserveIdleSpace={reserveIdleStatusIndicatorSpace}
+            />
+          )}
+        </WorkspaceLeadingSessionToggle>
         <View style={styles.workspaceContentColumn}>
           <View style={styles.workspaceTitleRow}>
             {titleEditor ? (

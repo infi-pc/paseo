@@ -1,3 +1,5 @@
+import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { DensityIcon } from "@/components/ui/density-icon";
 import { PressHighlight } from "@/components/ui/press-highlight";
 import type { InboxSection } from "./navigation/model";
 import { SidebarSessionsContext, WorkspaceSessionRows } from "./navigation/session-rows";
@@ -93,6 +95,7 @@ export function SidebarFlatWorkspaceList({
                     <View key={workspace.workspaceKey}>
                       <StatusWorkspaceRow
                         workspace={workspace}
+                        section={section.id}
                         {...buildStatusRowProjectPresentation({
                           workspace,
                           projectIconByProjectViewKey,
@@ -166,12 +169,19 @@ function InboxSectionHeader({
     <PressHighlight
       accessibilityRole="button"
       accessibilityState={state}
+      aria-expanded={!collapsed}
       onPress={press}
+      style={styles.sectionHeader}
       highlightStyle={styles.workspaceRowPressed}
       testID={`sidebar-section-${id}`}
     >
+      <DensityIcon
+        icon={collapsed ? ChevronRight : ChevronDown}
+        size="xs"
+        color="foregroundMuted"
+      />
       <Text style={styles.sectionTitle}>
-        {collapsed ? "›" : "⌄"} {t(`inboxSections.${id}`)} · {count}
+        {t(`inboxSections.${id}`)} · {count}
       </Text>
     </PressHighlight>
   );
@@ -201,6 +211,7 @@ function buildStatusRowProjectPresentation({
 
 const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
   workspace,
+  section,
   hostBadge,
   projectName,
   projectIconDataUri,
@@ -214,6 +225,7 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
   dragHandleProps,
 }: {
   workspace: SidebarWorkspaceEntry;
+  section?: InboxSection;
   hostBadge: HostBadgeModel | null;
   projectName: string;
   projectIconDataUri: string | null;
@@ -240,6 +252,7 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
   return (
     <StatusWorkspaceRowWithMenu
       workspace={workspace}
+      section={section}
       hostBadge={hostBadge}
       projectName={projectName}
       projectIconDataUri={projectIconDataUri}
@@ -259,6 +272,7 @@ const StatusWorkspaceRow = memo(function StatusWorkspaceRow({
 
 function StatusWorkspaceRowWithMenu({
   workspace,
+  section,
   hostBadge,
   projectName,
   projectIconDataUri,
@@ -274,6 +288,7 @@ function StatusWorkspaceRowWithMenu({
   dragHandleProps,
 }: {
   workspace: SidebarWorkspaceEntry;
+  section?: InboxSection;
   hostBadge: HostBadgeModel | null;
   projectName: string;
   projectIconDataUri: string | null;
@@ -360,6 +375,7 @@ function StatusWorkspaceRowWithMenu({
     <>
       <StatusWorkspaceRowInner
         workspace={workspace}
+        section={section}
         hostBadge={hostBadge}
         projectName={projectName}
         projectIconDataUri={projectIconDataUri}
@@ -393,6 +409,7 @@ function StatusWorkspaceRowWithMenu({
 
 interface StatusWorkspaceRowInnerProps {
   workspace: SidebarWorkspaceEntry;
+  section?: InboxSection;
   hostBadge: HostBadgeModel | null;
   projectName: string;
   projectIconDataUri: string | null;
@@ -440,6 +457,7 @@ function DraggableStatusWorkspaceRowInner(
 
 function StatusWorkspaceRowInnerContent({
   workspace,
+  section,
   hostBadge,
   projectName,
   projectIconDataUri,
@@ -581,6 +599,7 @@ function StatusWorkspaceRowInnerContent({
                 onArchive={onArchive}
                 archiveStatus={archiveStatus}
                 titleEditor={titleEditor}
+                sessionSection={section}
               >
                 {renderSlot ? (
                   <StatusWorkspaceActionSlot
@@ -719,8 +738,14 @@ function getStatusWorkspaceRowStyle({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  sectionTitle: {
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
     padding: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
+  sectionTitle: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,
     fontWeight: "600",
