@@ -153,7 +153,10 @@ test("preserves inspection through multiple real parser turns of queued output",
   for (let i = 0; i < 150; i++) {
     runtime.write({ data: encodeTerminalOutput("\rprogress".repeat(1000)) });
   }
+  // xterm can parse the entire burst in one turn. Wait for that turn before adding new lines.
+  await expect.poll(() => samples.length).toBeGreaterThan(0);
   await write("\r\nnew output".repeat(100));
+  await expect.poll(() => samples.at(-1)?.base).toBeGreaterThan(inspected);
   await new Promise((resolve) => setTimeout(resolve, 350));
   subscription.dispose();
   expect(samples.length).toBeGreaterThan(1);
