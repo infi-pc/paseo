@@ -193,11 +193,12 @@ try {
     "Initial commit",
   ]);
 
+  // An explicit host resolves relative paths on the daemon. Use the fixture's absolute path.
   for (const args of [
     ["worktree", "ls", "--json"],
     ["worktree", "ls", "--cwd", repo, "--json"],
     ["worktree", "ls", "--cwd", "./repository", "--json"],
-    ["worktree", "ls", "--host", `127.0.0.1:${daemon.port}`, "--cwd", ".", "--json"],
+    ["worktree", "ls", "--host", `127.0.0.1:${daemon.port}`, "--cwd", repo, "--json"],
   ]) {
     const explicit = args.includes("--cwd");
     const result = await runPaseoCli(daemon, args, {
@@ -219,7 +220,7 @@ try {
       "--host",
       `127.0.0.1:${daemon.port}`,
       "--cwd",
-      ".",
+      repo,
       "--json",
     ],
   ]) {

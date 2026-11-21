@@ -51,7 +51,10 @@ export default function contribute(server) {
   );
   const client = await connectToDaemon({ target: { kind: "instance", home: context.paseoHome } });
   try {
-    await client.patchDaemonConfig({ pluginsEnabled: true });
+    await client.patchDaemonConfig({
+      pluginsEnabled: true,
+      providers: { antigravity: { enabled: false } },
+    });
     await client.installDirectoryPlugin(directory, "cli-usage");
   } finally {
     await client.close();
