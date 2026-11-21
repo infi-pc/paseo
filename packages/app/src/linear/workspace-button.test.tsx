@@ -26,7 +26,10 @@ vi.mock("@/stores/session-store", () => ({
 }));
 vi.mock("@/utils/open-external-url", () => ({ openExternalUrl: mocks.open }));
 vi.mock("@/contexts/toast-context", () => ({ useToast: () => ({ show: mocks.toast }) }));
-vi.mock("@/constants/layout", () => ({ useIsCompactFormFactor: () => false }));
+vi.mock(import("@/constants/layout"), async (importOriginal) => ({
+  ...(await importOriginal()),
+  useIsCompactFormFactor: () => false,
+}));
 vi.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }),
 }));
