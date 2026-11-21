@@ -226,15 +226,20 @@ export async function recordUsageCardPositionsAfterRelease(
     });
 }
 
-/** Each pinned window as it reads: its percent and short label, "31% 5h". */
-export async function expectPinnedUsage(page: Page, windows: string[]): Promise<void> {
+/** Fixed-width tests can require the labels to distinguish each layout. */
+export async function expectPinnedUsage(
+  page: Page,
+  windows: string[],
+  options?: { exact?: boolean },
+): Promise<void> {
   const pinned = usageItem(page).getByTestId("sidebar-usage-pinned-window");
-  await expect(pinned).toHaveText(
-    windows.map((window) => {
-      const [percent, label] = window.split(" ");
-      return new RegExp(`^${escapeRegex(percent!)}(?: ${escapeRegex(label!)})?$`);
-    }),
-  );
+  const expected = options?.exact
+    ? windows
+    : windows.map((window) => {
+        const percent = window.split(" ", 1)[0]!;
+        return new RegExp(`^(?:${escapeRegex(window)}|${escapeRegex(percent)})$`);
+      });
+  await expect(pinned).toHaveText(expected);
 }
 
 /** Without a summary window with data the footer has no Usage item, only the Usage icon. */

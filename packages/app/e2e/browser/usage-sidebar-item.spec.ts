@@ -626,14 +626,14 @@ test("sidebar usage falls back to period shorthands before dropping all labels",
               {
                 id: "gemini-weekly",
                 label: "Gemini Models · Weekly",
-                shortLabel: "Gemini wk",
+                shortLabel: "G wk",
                 summary: true,
                 usedPct: 6,
               },
               {
                 id: "gemini-5h",
                 label: "Gemini Models · 5h",
-                shortLabel: "Gemini 5h",
+                shortLabel: "G 5h",
                 summary: true,
                 usedPct: 20,
               },
@@ -644,11 +644,14 @@ test("sidebar usage falls back to period shorthands before dropping all labels",
     ],
   });
   await seedSidebarFooterPreferences(page, [{ key: "usage", visible: true }]);
-  await seedDockedSidebarWidth(page, 432);
+  // Include the project rail when sizing the Usage row.
+  await seedDockedSidebarWidth(page, 484);
   await page.setViewportSize(WIDE);
   await gotoAppShell(page);
 
-  await expectPinnedUsage(page, ["6% wk", "20% 5h", "100% 5h", "14% wk", "22% wk", "97% wk"]);
+  await expectPinnedUsage(page, ["6% wk", "20% 5h", "100% 5h", "14% wk", "22% wk", "97% wk"], {
+    exact: true,
+  });
 
   const handle = page.getByTestId("left-sidebar-resize-handle");
   const dragSidebarTo = async (targetX: number) => {
@@ -660,15 +663,12 @@ test("sidebar usage falls back to period shorthands before dropping all labels",
   };
 
   await dragSidebarTo(600);
-  await expectPinnedUsage(page, [
-    "6% Gemini wk",
-    "20% Gemini 5h",
-    "100% 5h",
-    "14% wk",
-    "22% wk Opus",
-    "97% wk",
-  ]);
+  await expectPinnedUsage(
+    page,
+    ["6% G wk", "20% G 5h", "100% 5h", "14% wk", "22% wk Opus", "97% wk"],
+    { exact: true },
+  );
 
   await dragSidebarTo(300);
-  await expectPinnedUsage(page, ["6%", "20%", "100%", "14%", "22%", "97%"]);
+  await expectPinnedUsage(page, ["6%", "20%", "100%", "14%", "22%", "97%"], { exact: true });
 });

@@ -222,9 +222,10 @@ test.describe("Plugin sidebar items", () => {
     page,
   }) => {
     const viewportHeight = 320;
-    await page.setViewportSize({ width: 1280, height: viewportHeight });
+    await page.setViewportSize({ width: 1280, height: 480 });
     await gotoAppShell(page, { projectKey });
     await expect(botRow(page, "status")).toBeAttached();
+    await page.setViewportSize({ width: 1280, height: viewportHeight });
     const navigation = visibleTestId(page, "sidebar-nav-scroll");
     const workspace = visibleTestId(page, `sidebar-workspace-row-${getServerId()}:${workspaceId}`);
     await expect(workspace).toBeInViewport({ ratio: 1 });
