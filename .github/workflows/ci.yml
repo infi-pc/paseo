@@ -2,16 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [paseo-customizations]
   # Every base branch, so stacked PRs and PRs into any base get the same checks.
   pull_request:
   merge_group:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Verification scope (use full after upstream merges and before releases)
+        type: choice
+        default: normal
+        options: [normal, full]
 
-# A newer push to the same ref cancels the run still in progress, main included.
-# A full run costs about 200 runner-minutes against the org's 20 concurrent
-# jobs, and a superseded main run only answers a question the newer commit
-# answers again.
+# FORK(ci): normal checks protect daily work; full integration is an explicit dispatch.
+# Superseded runs do not need to consume another set of runners.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -29,7 +33,8 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      full: ${{ github.event_name != 'pull_request' || steps.filter.outputs.routing != 'false' || steps.filter.outputs.workspace != 'false' || steps.filter.outputs.ci != 'false' }}
+      full: ${{ inputs.mode == 'full' }}
+      all: ${{ inputs.mode == 'full' || github.event_name == 'workflow_dispatch' || github.event_name == 'merge_group' || steps.filter.outputs.routing != 'false' || steps.filter.outputs.workspace != 'false' || steps.filter.outputs.ci != 'false' }}
       format: ${{ steps.filter.outputs.format }}
       quality: ${{ steps.filter.outputs.quality }}
       hub: ${{ steps.filter.outputs.hub }}
@@ -40,6 +45,11 @@ jobs:
       browser: ${{ steps.filter.outputs.browser }}
       relay: ${{ steps.filter.outputs.relay }}
       cli: ${{ steps.filter.outputs.cli }}
+      website: ${{ steps.filter.outputs.website }}
+      file_observation: ${{ steps.filter.outputs.file_observation }}
+      integration: ${{ inputs.mode == 'full' || (github.event_name != 'workflow_dispatch' && steps.filter.outputs.server == 'true') }}
+      cli_e2e: ${{ inputs.mode == 'full' || (github.event_name != 'workflow_dispatch' && steps.filter.outputs.cli == 'true') }}
+      desktop_e2e: ${{ inputs.mode == 'full' || (github.event_name != 'workflow_dispatch' && steps.filter.outputs.desktop == 'true') }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -54,6 +64,7 @@ jobs:
         uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
         with:
           filters: .github/ci-paths.yml
+          base: ${{ github.event_name == 'push' && github.event.before || 'paseo-customizations' }}
 
       - name: Validate CI contracts
         run: node --test scripts/ci-workflow.test.mjs scripts/daemon-launch-contract.test.mjs scripts/changelog-utils.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/sync-release-notes-from-changelog.test.mjs scripts/upload-release-assets.test.mjs
@@ -61,7 +72,7 @@ jobs:
   quality:
     name: quality
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false' || needs.changes.outputs.quality != 'false' || needs.changes.outputs.relay != 'false' || needs.changes.outputs.sdk != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.outputs.all != 'false' || needs.changes.outputs.format != 'false' || needs.changes.outputs.quality != 'false' || needs.changes.outputs.relay != 'false' || needs.changes.outputs.sdk != 'false') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -78,66 +89,65 @@ jobs:
       # Explicit status checks keep independent domains running after a failure.
       # A failed step still fails quality; no continue-on-error or success shim.
       - name: Check formatting
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.format != 'false') }}
         run: npm run format:check
 
       - name: Lint lockfile
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npx --yes lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https --validate-integrity
 
       - name: Verify dependency signatures
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm audit signatures
 
       - name: Lint
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm run lint
 
       - name: Test lint rules
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.quality != 'false') }}
         run: node --test scripts/oxlint/paseo-plugin.test.mjs
 
       - name: Build relay
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.relay != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.relay != 'false') }}
         run: npm run build:relay
 
       - name: Run relay tests
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.relay != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.relay != 'false') }}
         run: npm run test --workspace=@getpaseo/relay
 
       - name: Build client dependencies
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run build:relay && npm run build:client
 
       - name: Build plugin SDK
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run build:plugin
 
       - name: Run plugin SDK tests
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run test --workspace=@getpaseo/plugin
 
       - name: Run protocol tests
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run test --workspace=@getpaseo/protocol
 
       - name: Run client tests
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run test --workspace=@getpaseo/client
 
       - name: Run highlight tests
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run test --workspace=@getpaseo/highlight
 
       - name: Typecheck client examples
-        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.sdk != 'false') }}
         run: npm run typecheck:examples --workspace=@getpaseo/client
 
-  # The locked Playwright installers do not support ubuntu-latest's Ubuntu 26.04.
   typecheck:
     name: typecheck
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.outputs.all != 'false' || needs.changes.outputs.quality != 'false') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -162,6 +172,29 @@ jobs:
       - name: Typecheck all packages
         run: npm run typecheck
 
+      - name: Verify public package contents
+        run: |
+          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/protocol
+          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/client
+          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/server
+
+  # The locked Playwright installers do not support ubuntu-latest's Ubuntu 26.04.
+  website-tests:
+    name: website-tests
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full == 'true' || needs.changes.outputs.website != 'false') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+      - name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+      - name: Build protocol
+        run: npm run build:protocol
+
       - name: Run website tests
         run: npx vitest run packages/website/src --bail=1
 
@@ -185,119 +218,68 @@ jobs:
       - name: Verify website mockups
         run: npm run test:e2e --workspace=@getpaseo/website
 
-      - name: Verify public package contents
-        run: |
-          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/protocol
-          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/client
-          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/server
-
   server-tests-ubuntu:
     name: server-tests (ubuntu-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.outputs.all != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
     runs-on: ubuntu-latest
     steps:
-      - &server_capacity
-        name: Log runner capacity
+      - name: Log runner capacity
         run: |
           node -e "const os = require('node:os'); console.log(JSON.stringify({cpus: os.cpus().length, model: os.cpus()[0].model, ramGiB: os.totalmem() / 2 ** 30}))"
 
-      - &server_checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - &server_node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: "npm"
 
-      - &server_fetch
-        name: Fetch origin/main (worktree tests)
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+      - name: Fetch origin/main (worktree tests)
+        if: ${{ needs.changes.outputs.all != 'false' || needs.changes.outputs.server != 'false' }}
         run: git fetch --no-tags origin main:refs/remotes/origin/main
 
-      - &server_install
-        name: Install dependencies
+      - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
 
-      - &server_agent_clis
-        name: Install agent CLIs for provider tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+      - name: Install agent CLIs for provider tests
+        if: ${{ needs.changes.outputs.all != 'false' || needs.changes.outputs.server != 'false' }}
         run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code opencode-ai
 
-      - &server_build
-        name: Build server dependencies
+      - name: Build server dependencies
         run: npm run build:server-deps
 
-      - name: Run server tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: npm run test --workspace=@getpaseo/server
-        env: &server_test_env
+      - name: Run server unit tests
+        if: ${{ needs.changes.outputs.all != 'false' || needs.changes.outputs.server != 'false' }}
+        run: npm run test:unit --workspace=@getpaseo/server
+        env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
-      - &server_plugin_tests
-        name: Run built-in plugin tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+      - name: Run server integration tests
+        if: ${{ needs.changes.outputs.integration == 'true' }}
+        run: npm run test:integration --workspace=@getpaseo/server
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - name: Run built-in plugin tests
+        if: ${{ needs.changes.outputs.all != 'false' || needs.changes.outputs.server != 'false' }}
         run: npm run test --workspace=@getpaseo/builtin-plugins
 
-      - &server_hub_contract
-        name: Run Hub CLI/daemon contract
-        if: ${{ needs.changes.outputs.full == 'false' && needs.changes.outputs.server == 'false' && needs.changes.outputs.hub != 'false' }}
+      - name: Run Hub CLI/daemon contract
+        if: ${{ needs.changes.outputs.all == 'false' && needs.changes.outputs.server == 'false' && needs.changes.outputs.hub != 'false' }}
         run: npm run test:hub-cli-contract --workspace=@getpaseo/server
 
-  server-tests-windows:
-    name: server-tests (windows-latest)
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
-    runs-on: windows-latest
-    steps:
-      - *server_capacity
-      - *server_checkout
-      - *server_node
-      - *server_fetch
-      - *server_install
-      - *server_agent_clis
-      - *server_build
-
-      - name: Run server unit tests
-        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
-        run: npm run test:unit --workspace=@getpaseo/server
-        env: *server_test_env
-
-      - *server_plugin_tests
-      - *server_hub_contract
-
-  # Keep the serial integration chain off the Windows unit critical path.
-  server-integration-windows:
-    name: server-integration (windows-latest)
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
-    runs-on: windows-latest
-    steps:
-      - *server_capacity
-      - *server_checkout
-      - *server_node
-      - *server_fetch
-      - *server_install
-      - *server_agent_clis
-      - *server_build
-
-      - name: Run server integration tests
-        run: npm run test:integration --workspace=@getpaseo/server
-        env: *server_test_env
-
-  # native-recursive.ts serves darwin and win32, but windows-latest above is the only
-  # runner that exercises it. macOS — the platform the reported watcher bug was on —
-  # otherwise has no server-test coverage. Scoped to the observer/watcher suites to
-  # bound runtime.
+  # macOS covers the native watcher used on Michael's development hosts.
   server-tests-macos:
     name: server-tests (macos-latest, file observation)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.outputs.full == 'true' || needs.changes.outputs.file_observation != 'false') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -324,12 +306,12 @@ jobs:
   desktop-tests-ubuntu:
     name: desktop-tests (ubuntu-latest)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.outputs.all != 'false' || needs.changes.outputs.desktop != 'false') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
-    steps: &desktop_test_steps
+    steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -357,10 +339,6 @@ jobs:
         if: ${{ runner.os == 'Linux' }}
         run: npx playwright install chromium
 
-      - name: Verify Windows daemon process control
-        if: ${{ runner.os == 'Windows' }}
-        run: npx vitest run packages/cli/src/commands/daemon/lifecycle.e2e.test.ts --bail=1 --maxWorkers=1 -t "Windows unbound|managed two-home"
-
       - name: Run desktop lifecycle E2E (Linux)
         if: ${{ runner.os == 'Linux' }}
         run: xvfb-run -a --server-args="-screen 0 1280x800x24" npm run test:e2e:lifecycle --workspace=@getpaseo/desktop
@@ -376,16 +354,12 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Run desktop lifecycle E2E (Windows)
-        if: ${{ runner.os == 'Windows' }}
-        run: npm run test:e2e:lifecycle --workspace=@getpaseo/desktop
-
       - name: Run desktop renderer E2E
-        if: ${{ runner.os == 'Linux' }}
+        if: ${{ needs.changes.outputs.desktop_e2e == 'true' }}
         run: npm run test:e2e:renderer --workspace=@getpaseo/desktop
 
       - name: Run desktop browser E2E
-        if: ${{ runner.os == 'Linux' }}
+        if: ${{ needs.changes.outputs.desktop_e2e == 'true' }}
         run: npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
         env:
           PASEO_DESKTOP_BROWSER_E2E_ARTIFACT_DIR: ${{ runner.temp }}/desktop-browser-e2e
@@ -399,20 +373,10 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  desktop-tests-windows:
-    name: desktop-tests (windows-latest)
-    needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
-    runs-on: windows-latest
-    timeout-minutes: 30
-    permissions:
-      contents: read
-    steps: *desktop_test_steps
-
   app-tests:
     name: app-tests
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.outputs.all != 'false' || needs.changes.outputs.app != 'false') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -435,14 +399,14 @@ jobs:
       - name: Run app unit tests
         run: npm run test --workspace=@getpaseo/app
 
-  playwright-1:
-    name: playwright (shard 1/8)
+  playwright-smoke:
+    name: playwright (smoke)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full != 'true' && (needs.changes.outputs.all != 'false' || needs.changes.outputs.browser != 'false') }}
     runs-on: ubuntu-24.04
     env:
-      PLAYWRIGHT_SHARD: "1/8"
-      PLAYWRIGHT_ARTIFACT: "1"
+      PLAYWRIGHT_SHARD: "1/1"
+      PLAYWRIGHT_ARTIFACT: "smoke"
     steps: &playwright_test_steps
       - name: Log runner capacity
         run: |
@@ -477,7 +441,14 @@ jobs:
       - name: Install agent CLIs for provider tests
         run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
+      - name: Run browser smoke tests
+        if: ${{ needs.changes.outputs.full != 'true' }}
+        run: npm run test:e2e:smoke --workspace=@getpaseo/app
+        env:
+          E2E_WORKERS: "2"
+
       - name: Run Playwright E2E tests
+        if: ${{ needs.changes.outputs.full == 'true' }}
         run: npm run test:e2e --workspace=@getpaseo/app -- --shard=${{ env.PLAYWRIGHT_SHARD }}
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -497,10 +468,20 @@ jobs:
             packages/app/playwright-report/
           retention-days: 7
 
+  playwright-1:
+    name: playwright (shard 1/8)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "1/8"
+      PLAYWRIGHT_ARTIFACT: "1"
+    steps: *playwright_test_steps
+
   playwright-2:
     name: playwright (shard 2/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "2/8"
@@ -510,7 +491,7 @@ jobs:
   playwright-3:
     name: playwright (shard 3/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "3/8"
@@ -520,7 +501,7 @@ jobs:
   playwright-4:
     name: playwright (shard 4/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "4/8"
@@ -530,7 +511,7 @@ jobs:
   playwright-5:
     name: playwright (shard 5/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "5/8"
@@ -540,7 +521,7 @@ jobs:
   playwright-6:
     name: playwright (shard 6/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "6/8"
@@ -550,7 +531,7 @@ jobs:
   playwright-7:
     name: playwright (shard 7/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "7/8"
@@ -560,7 +541,7 @@ jobs:
   playwright-8:
     name: playwright (shard 8/8)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.full == 'true' }}
     runs-on: ubuntu-24.04
     env:
       PLAYWRIGHT_SHARD: "8/8"
@@ -570,7 +551,7 @@ jobs:
   cli-tests-1:
     name: cli-tests (shard 1/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.cli_e2e == 'true' }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
@@ -590,14 +571,19 @@ jobs:
         run: node scripts/npm-retry.mjs ci
 
       - name: Install agent CLIs for provider tests
+        if: ${{ needs.changes.outputs.cli_e2e == 'true' }}
         run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
       # The local runner builds its dependencies and shards its own E2E files.
       - name: Run CLI E2E tests
+        if: ${{ needs.changes.outputs.cli_e2e == 'true' }}
         run: npm run test:local --workspace=@getpaseo/cli
 
-      # Source tests do not read PASEO_CLI_TEST_SHARD. Run them once, on the
-      # shortest E2E shard, after its runner has built the server stack.
+      # E2E builds its own stack; normal unit-only runs need to build it here.
+      - name: Build CLI unit dependencies
+        if: ${{ env.PASEO_CLI_TEST_SHARD == '3' && needs.changes.outputs.cli_e2e != 'true' }}
+        run: npm run build:server
+
       - name: Run CLI source tests
         if: ${{ env.PASEO_CLI_TEST_SHARD == '3' }}
         run: npm run test:unit --workspace=@getpaseo/cli
@@ -605,7 +591,7 @@ jobs:
   cli-tests-2:
     name: cli-tests (shard 2/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ !cancelled() && needs.changes.outputs.cli_e2e == 'true' }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
@@ -618,7 +604,7 @@ jobs:
   cli-tests-3:
     name: cli-tests (shard 3/3)
     needs: changes
-    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    if: ${{ !cancelled() && (needs.changes.outputs.all != 'false' || needs.changes.outputs.cli != 'false') }}
     runs-on: ubuntu-latest
     env:
       PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"

@@ -1,6 +1,4 @@
-# Pull-request checks are routed by the behavior they prove. Package consumers
-# do not inherit their dependencies' test suites; main and manual runs execute
-# every contract regardless of these paths.
+# FORK(ci): normal mode routes by behavior. Full mode selects every suite.
 routing:
   - ".github/ci-paths.yml"
 
@@ -86,3 +84,18 @@ relay:
 
 cli:
   - "packages/cli/**"
+
+website:
+  - "packages/website/**"
+  - "public-docs/**"
+  - "packages/protocol/**"
+  - "package.json"
+  - "package-lock.json"
+  - "patches/**"
+  - ".github/workflows/ci.yml"
+
+file_observation:
+  - "packages/server/src/server/file-observer/**"
+  - "packages/server/src/server/workspace-git-service*"
+  - "packages/server/src/server/watcher-liveness-canary*"
+  - "packages/server/vitest.config.ts"

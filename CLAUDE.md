@@ -142,12 +142,7 @@ release builds in a short-lived release workspace from `origin/main` or a releas
 - **NEVER assume a timeout means the service needs restarting** — timeouts can be transient.
 - **NEVER add auth checks to tests** — agent providers handle their own auth.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**
-- **NEVER run the full test suite locally.** The test suites are heavy and will freeze the machine, especially if multiple agents run them in parallel. Rules:
-  - Run only the specific test file you changed: `npx vitest run <file> --bail=1`
-  - Never run `npm run test` for an entire workspace unless explicitly asked.
-  - If you must run a broad suite, pipe output to a file and read it afterward: `npx vitest run <file> --bail=1 > /tmp/test-output.txt 2>&1` then read the file.
-  - Never re-run a test suite that another agent already ran and reported green — trust the result.
-  - For full suite verification, push to CI and check GitHub Actions instead.
+- **Use bounded local verification for this fork.** During ordinary edits, run only the affected test files. Run `npm run verify:local` before and after an upstream merge and before release, installer, APK, or TestFlight builds. Do not use the unbounded root `npm test`, run suites in parallel, or launch another full run from a different agent/worktree. The runner owns a machine-wide lock and logs. See [local verification policy](docs/testing.md#running-tests-locally) for prerequisites, evidence reuse, baseline failures, and scope.
 - Add tests to existing suites and reuse their npm scripts and CI jobs instead of creating feature-specific ones.
 - **Always run typecheck and lint after every change.**
 - **Build workspace packages before diagnosing cross-package type errors.** This repo consumes generated declarations across workspaces. If typecheck fails in a package that depends on another workspace, rebuild the owning stack first so `dist` declarations are current:

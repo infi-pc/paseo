@@ -14,13 +14,14 @@ describe("paseo logs JSON output", () => {
     daemon = await startTestDaemon({
       paseoHome: await mkdtemp(resolve(".artifacts/logs-json-home-")),
       workDir: await mkdtemp(resolve(".artifacts/logs-json-work-")),
+      env: { PASEO_NODE_ENV: "development" },
     });
     host = `127.0.0.1:${daemon.port}`;
     const client = await connectToDaemon({ target: { kind: "endpoint", host } });
     try {
-      // Creating an idle agent needs no inference or external provider connection.
+      // The built-in mock provider keeps the CLI test independent of installed agent binaries.
       const agent = await client.createAgent({
-        provider: "claude",
+        provider: "mock",
         cwd: daemon.workDir,
         title: "JSON logs",
       });
