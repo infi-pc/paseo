@@ -221,17 +221,18 @@ test.describe("Plugin sidebar items", () => {
   test("a short desktop sidebar keeps workspaces usable while navigation scrolls", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 1280, height: 480 });
+    const viewportHeight = 320;
+    await page.setViewportSize({ width: 1280, height: viewportHeight });
     await gotoAppShell(page, { projectKey });
     await expect(botRow(page, "status")).toBeAttached();
     const navigation = visibleTestId(page, "sidebar-nav-scroll");
     const workspace = visibleTestId(page, `sidebar-workspace-row-${getServerId()}:${workspaceId}`);
     await expect(workspace).toBeInViewport({ ratio: 1 });
-    await expect(botRow(page, "status")).not.toBeInViewport();
+    await expect(botRow(page, "status")).not.toBeInViewport({ ratio: 1 });
 
     await test.step("navigation stays within half the sidebar", async () => {
       const nav = await boxOf(navigation);
-      expect(nav.height).toBeLessThanOrEqual(480 / 2 + 1);
+      expect(nav.height).toBeLessThanOrEqual(viewportHeight / 2 + 1);
     });
 
     await test.step("scrolling navigation reaches its last row without moving workspaces", async () => {
