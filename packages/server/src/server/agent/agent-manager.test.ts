@@ -1879,9 +1879,8 @@ class ControlledInterruptSession extends TestAgentSession {
   }
 
   override async startTurn(): Promise<{ turnId: string }> {
-    setTimeout(() => {
-      this.pushEvent({ type: "turn_started", provider: this.provider, turnId: this.turnId });
-    }, 0);
+    // The interrupt tests require the provider's start to precede its terminal event.
+    this.pushEvent({ type: "turn_started", provider: this.provider, turnId: this.turnId });
     return { turnId: this.turnId };
   }
 
