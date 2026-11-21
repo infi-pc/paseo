@@ -181,14 +181,36 @@ Codex MultiAgentV2 real tests use local Codex authentication rather than the Ope
 
 ## Running tests locally
 
-Test suites in this repo are heavy. Running them in bulk freezes the machine, especially with multiple agents in parallel.
+Use targeted tests during ordinary edits. Run the full local verification at these checkpoints:
 
-- Run only the file you changed: `npx vitest run <path> --bail=1`
-- Never run `npm run test` for a whole workspace unless asked.
-- For a broad sweep, redirect to a file and read it after: `npx vitest run <path> --bail=1 > /tmp/test-output.txt 2>&1`
-- Never re-run a suite another agent already reported green.
-- For full-suite confidence, push to CI and check GitHub Actions.
-- Never run the full Playwright E2E suite locally — defer whole-suite verification to CI. Targeted Playwright specs are allowed when you changed or need to prove that specific flow.
+| When                                                  | Agent action                                                                                                           |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Before an upstream merge                              | Verify the current fork first. Save the result as the baseline.                                                        |
+| After resolving the merge                             | Verify the merged tree and compare failures with the baseline. Fix new failures before treating the merge as verified. |
+| Before a release, installer, APK, or TestFlight build | Verify the source you are about to package, then run that build's platform smoke checks.                               |
+| Routine edits and dev builds                          | Run affected test files, typecheck, and lint. Use the normal CI checks on push.                                        |
+
+```bash
+npm run verify:local                 # Full local verification
+npm run verify:local -- --list       # Preview the stages without running them
+```
+
+Full local verification runs the fork's automated regression suites on the current macOS/Linux host: builds, static checks, script contracts, workspace units, server/CLI integration, website/browser tests, and Electron lifecycle/renderer/browser journeys. It uses one test worker and runs stages sequentially. A lock in the system temporary directory prevents full runs from overlapping across agents and worktrees. It stops at the first failed stage and stores per-stage logs and a `summary.json` with the commit and working-tree status under `artifacts/local-verification/`.
+
+Agents must:
+
+- Use this command for full runs; do not use root `npm test` or launch suites in parallel. Keep targeted tests separate from an active full run too.
+- Keep the tested checkout unchanged while verification runs. Never restart the main daemon to make a test pass; the harnesses own isolated test daemons.
+- Report the evidence directory and failing stage. A failed baseline is pre-existing evidence, not a pass; compare the corresponding post-merge check before attributing it to the merge.
+- Reuse a reported green run for the same unchanged source. Do not rerun it because a different agent took over. After changes, rerun affected tests; complete full verification again at the next checkpoint.
+- If another full run holds the lock, inspect its `owner.json` and coordinate with its agent. After a crash or forced termination, remove a stale lock only after confirming its owner and test processes are gone.
+
+Prepare the checkout with Node 22, `npm ci`, and `npx playwright install chromium webkit`. Linux also needs the browser system libraries, Xvfb, xauth, xdotool, and zsh used by CI. Keep the provider CLIs needed by the existing integration tests installed; providers handle their own authentication. The runner does not install tools or change credentials.
+
+Full here means the automated fork regression suite on your host. Live-provider tests, opt-in performance runs, native-device checks, and package-format/install smokes remain separate. macOS Electron visibility/focus behavior can differ from Linux; record a platform failure rather than weakening the assertion. A local pass does not prove the other platform or a packaged app.
+
+For a targeted check, use `npx vitest run <path> --bail=1` in the owning workspace, or select the relevant Playwright spec. Save broad output to a file rather than flooding the agent context. Do not rerun an unchanged suite another agent already reported green.
+
 - App Playwright shares one warmed Metro server per run and gives every Playwright worker its own isolated daemon and `PASEO_HOME`. Spec files run concurrently without exposing one file's projects, agents, terminals, history, or provider configuration to another worker; tests within a file remain together so file-level setup is not repeated.
 - Playwright specs that exercise only the daemon import `daemonTest` from the shared fixtures so they do not create a browser context or page.
 - Helpers that create projects or workspaces own those records until cleanup. Their clients remove the daemon project on close, and an automatic fixture fails any test that still leaks a project record. Deleting only the temporary directory is not cleanup. Agent helpers pass the intended `workspaceId` through to agent creation; they never infer ownership from `cwd`.
@@ -198,13 +220,36 @@ Test suites in this repo are heavy. Running them in bulk freezes the machine, es
 - Teardown kills the process tree, because a Windows signal reaches only the direct child and leaves forked workers holding the listening port.
 - The `asdf`-backed local Elixir relay stays POSIX-only, so the `relay-deployment` Playwright project is unavailable on Windows.
 
-## Pull-request test routing
+## Fork CI modes and routing
 
-PR checks are routed by the behavior each suite proves, using `.github/ci-paths.yml`. A package does not inherit every test suite of its runtime consumers: app changes do not run CLI or Electron-wrapper tests, and protocol changes do not run every package that imports the protocol. Cross-package static compatibility belongs to `typecheck`; full integration coverage runs after merge on main and in manual CI runs.
+CI runs on pushes to `paseo-customizations`, pull requests into any branch, merge groups, and manual dispatches. It does not run on pushes to the upstream `main` mirror. Windows jobs are removed from this fork's CI.
 
-Required matrix legs are declared as statically named jobs. Their shared steps use YAML anchors, while job-level `if` conditions let GitHub report an unaffected leg as genuinely skipped without allocating a runner or losing the exact required-check name.
+Normal mode is the default. Automatic runs select suites by behavior using `.github/ci-paths.yml`; package consumers do not inherit every dependency's suites. Shared toolchain or CI changes select all normal checks. A normal manual run selects all normal checks without requiring a diff.
 
-The smallest meaningful contract wins over package ownership. Tiny structural invariants such as daemon launch supervision run unconditionally in the always-running routing job instead of maintaining a transitive file list; this check reads source entrypoints and builds no product. Routed integration contracts use stable domain directories. Browser changes select the required Playwright shards; desktop changes select the existing required desktop jobs, with renderer and real-Electron coverage together in the Ubuntu leg. Packaging runs on main in the Desktop Packages, Docker, and Nix workflows. CLI-side Hub changes select one focused test inside the existing required server jobs. The CLI source suite runs once in the third required CLI job; only the separate local E2E runner is sharded, and that runner owns its dependency build. Repository scripts and the shared Vitest configuration run every PR contract because they are cross-cutting toolchain inputs.
+| Coverage                                              | Normal                                                                                                     | Full                                |
+| ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Formatting, lint, typecheck, SDK/protocol/relay tests | Affected suites; all on manual runs                                                                        | All                                 |
+| App, server and built-in plugin unit tests            | Affected suites; all on manual runs                                                                        | All                                 |
+| App browser journeys                                  | One smoke job using `test:e2e:smoke`                                                                       | All eight shards; smoke job skipped |
+| Server integration                                    | Direct server changes on automatic runs                                                                    | Always                              |
+| CLI                                                   | Units when affected; E2E shards for direct CLI changes on automatic runs                                   | Units and all E2E shards            |
+| Electron                                              | Units and lifecycle smoke when affected; renderer/browser E2E for direct desktop changes on automatic runs | All                                 |
+| macOS file observation                                | Watcher-related changes                                                                                    | Always                              |
+| Website unit and browser tests                        | Website, public docs, protocol, dependency or workflow changes                                             | Always                              |
+
+The browser smoke command selects existing deterministic specs for streamed Markdown, plan approval, project navigation, drafts, diffs, snoozing, reconnect, pinned prompts, and selection actions. Full mode retains the remaining regression coverage. Neither mode includes live-provider browser specs (`*.real.spec.ts`).
+
+Full local verification is the default at the checkpoints above. Full CI remains available when you need independent Linux coverage or cannot use the local machine:
+
+```bash
+gh workflow run ci.yml --repo infi-pc/paseo --ref paseo-customizations -f mode=full
+```
+
+Use `-f mode=normal` for a manual normal run. Automatic events always use normal mode. Full verification is an explicit step, not a release-workflow dependency.
+
+Jobs keep static names and use job-level conditions so unaffected suites skip without allocating runners. Shared steps use YAML anchors. The third CLI job owns source tests and builds their dependencies when its E2E runner is skipped. Cross-package static compatibility belongs to `typecheck`; website browser installation lives in its own routed job.
+
+Packaging remains in the separate Desktop Packages, Docker, Nix, and release workflows. Removing Windows from CI does not change release artifacts. Tests for workflow routing live in `scripts/ci-workflow.test.mjs`; update their mode and path scenarios when changing the workflow.
 
 ## Agent authentication in tests
 

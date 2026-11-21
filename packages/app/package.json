@@ -21,6 +21,7 @@
     "typecheck": "tsgo --noEmit",
     "test": "vitest run",
     "test:browser": "vitest run --project browser",
+    "test:e2e:smoke": "playwright test --project=browser e2e/browser/streaming-markdown.spec.ts e2e/browser/codex-plan-approval.spec.ts e2e/browser/sidebar-project-filter.spec.ts e2e/browser/new-workspace-composer-draft.spec.ts e2e/browser/offline-draft.spec.ts e2e/browser/commit-diff-panel.spec.ts e2e/browser/workspace-snooze.spec.ts e2e/browser/background-reconnect.spec.ts e2e/browser/pinned-prompt.spec.ts e2e/browser/assistant-selection-copy.spec.ts",
     "test:e2e": "playwright test --project=browser",
     "test:e2e:diff-performance": "cross-env PASEO_DIFF_PERF_E2E=1 playwright test --project=browser e2e/browser/diff-performance.spec.ts",
     "test:e2e:stream-smoothness": "cross-env PASEO_AGENT_STREAM_PERF_E2E=1 playwright test --project=browser e2e/browser/agent-stream-smoothness.spec.ts",

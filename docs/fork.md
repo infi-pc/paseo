@@ -61,7 +61,7 @@ npm run fork:status
 
 It fetches upstream and prints the lag of both branches, the fork-only commits, the fork footprint by package, upstream churn inside files the fork also modifies, and the result of an in-memory dry-run merge with the files that would conflict. Nothing is written. `--json` gives the same data for scripts.
 
-Then sync:
+Run [full local verification](testing.md#running-tests-locally) on the current fork and save the baseline, then sync:
 
 ```bash
 git checkout main && git merge --ff-only upstream/main && git push origin main
@@ -78,7 +78,7 @@ Conflict rules:
 - Keep both sides. Upstream's change never gets dropped to make a fork feature fit; the fork feature gets re-applied on top of upstream's new shape.
 - Non-English locale files: keep upstream's text and whatever fork blocks are already there. The fork does not maintain translations, so a fork key missing from `es.ts` is expected. That is why `TranslationResources` in `en.ts` has optional leaves and the locale files use a trailing `satisfies TranslationResources` instead of an annotation; keep that shape when upstream's header conflicts with it.
 - A file upstream deleted and the fork edited: accept the deletion unless the fork edit was the only coverage of a fork feature.
-- Finish with the repo checks in the task's package, then the targeted tests for every file that conflicted. Never run the full suite locally.
+- Finish with the repo checks in the task's package, then the targeted tests for every file that conflicted. Run [full local verification](testing.md#running-tests-locally) on the merged tree and compare it with the saved baseline.
 
 After the merge, run `npm run fork:status` again. The conflict list should be empty and the merge base should be the new upstream head.
 
@@ -111,6 +111,11 @@ Each upstream file the fork modifies is a future conflict. Fork-owned files neve
 One entry per fork feature: the commits that built it, the files that own it, and the upstream files it wires into. Update it when you add or remove a feature. The hotspot lists are the files to read first when `fork:status` reports conflicts.
 
 Commits are the fork commits that built the feature (`git show --stat <sha>` for the full file list). "Owns" lists the fork-owned entry points. "Wires into" lists the upstream files the feature edits, largest first.
+
+### Fork CI scope
+
+- Owns: the normal/full mode policy in `.github/workflows/ci.yml`, its path filters and workflow contract tests, the app browser smoke command, and `scripts/verify-local.mjs`.
+- Keeps routine verification scoped to this fork's workflows. See [CI modes and routing](testing.md#fork-ci-modes-and-routing).
 
 ### Personal iOS TestFlight builds
 

@@ -15,32 +15,33 @@ const filtersPath = new URL(".github/ci-paths.yml", repoRoot);
 const serverTsconfigPath = new URL("packages/server/tsconfig.server.json", repoRoot);
 const desktopPackagePath = new URL("packages/desktop/package.json", repoRoot);
 
+// FORK(ci): required checks follow this fork's normal/full coverage policy.
 const gatedCiJobs = new Map([
   ["quality", { name: "quality", contracts: ["format", "quality", "relay", "sdk"] }],
   ["typecheck", { name: "typecheck", contract: "quality" }],
   ["server-tests-ubuntu", { name: "server-tests (ubuntu-latest)", contracts: ["server", "hub"] }],
-  ["server-tests-windows", { name: "server-tests (windows-latest)", contracts: ["server", "hub"] }],
-  [
-    "server-integration-windows",
-    { name: "server-integration (windows-latest)", contract: "server" },
-  ],
   [
     "server-tests-macos",
-    { name: "server-tests (macos-latest, file observation)", contract: "server" },
+    {
+      name: "server-tests (macos-latest, file observation)",
+      contract: "file_observation",
+      fullOnly: true,
+    },
   ],
   ["desktop-tests-ubuntu", { name: "desktop-tests (ubuntu-latest)", contract: "desktop" }],
-  ["desktop-tests-windows", { name: "desktop-tests (windows-latest)", contract: "desktop" }],
+  ["website-tests", { name: "website-tests", contract: "website", fullOnly: true }],
+  ["playwright-smoke", { name: "playwright (smoke)", contract: "browser" }],
   ["app-tests", { name: "app-tests", contract: "app" }],
-  ["playwright-1", { name: "playwright (shard 1/8)", contract: "browser" }],
-  ["playwright-2", { name: "playwright (shard 2/8)", contract: "browser" }],
-  ["playwright-3", { name: "playwright (shard 3/8)", contract: "browser" }],
-  ["playwright-4", { name: "playwright (shard 4/8)", contract: "browser" }],
-  ["playwright-5", { name: "playwright (shard 5/8)", contract: "browser" }],
-  ["playwright-6", { name: "playwright (shard 6/8)", contract: "browser" }],
-  ["playwright-7", { name: "playwright (shard 7/8)", contract: "browser" }],
-  ["playwright-8", { name: "playwright (shard 8/8)", contract: "browser" }],
-  ["cli-tests-1", { name: "cli-tests (shard 1/3)", contract: "cli" }],
-  ["cli-tests-2", { name: "cli-tests (shard 2/3)", contract: "cli" }],
+  ["playwright-1", { name: "playwright (shard 1/8)", contracts: [], fullOnly: true }],
+  ["playwright-2", { name: "playwright (shard 2/8)", contracts: [], fullOnly: true }],
+  ["playwright-3", { name: "playwright (shard 3/8)", contracts: [], fullOnly: true }],
+  ["playwright-4", { name: "playwright (shard 4/8)", contracts: [], fullOnly: true }],
+  ["playwright-5", { name: "playwright (shard 5/8)", contracts: [], fullOnly: true }],
+  ["playwright-6", { name: "playwright (shard 6/8)", contracts: [], fullOnly: true }],
+  ["playwright-7", { name: "playwright (shard 7/8)", contracts: [], fullOnly: true }],
+  ["playwright-8", { name: "playwright (shard 8/8)", contracts: [], fullOnly: true }],
+  ["cli-tests-1", { name: "cli-tests (shard 1/3)", contract: "cli_e2e", noAll: true }],
+  ["cli-tests-2", { name: "cli-tests (shard 2/3)", contract: "cli_e2e", noAll: true }],
   ["cli-tests-3", { name: "cli-tests (shard 3/3)", contract: "cli" }],
 ]);
 
@@ -104,9 +105,21 @@ test("gated checks are statically named jobs with real job-level gating", () => 
     const job = jobs.get(jobId)?.join("\n");
     assert.ok(job, `missing static job ${jobId}`);
     assert.match(job, new RegExp(`^    name: ${expected.name.replace(/[()]/g, "\\$&")}$`, "m"));
-    assert.match(job, /needs\.changes\.outputs\.full != 'false'/);
+    if (!expected.noAll) {
+      assert.match(
+        job,
+        expected.fullOnly
+          ? /needs\.changes\.outputs\.full == 'true'/
+          : /needs\.changes\.outputs\.all != 'false'/,
+      );
+    }
     for (const contract of expected.contracts ?? [expected.contract]) {
-      assert.match(job, new RegExp(`needs\\.changes\\.outputs\\.${contract} != 'false'`));
+      assert.match(
+        job,
+        new RegExp(
+          `needs\\.changes\\.outputs\\.${contract} ${expected.noAll ? "== 'true'" : "!= 'false'"}`,
+        ),
+      );
     }
   }
 });
@@ -187,7 +200,7 @@ test("focused contracts stay inside existing required checks", () => {
   assert.doesNotMatch(changes, /Install dependencies|npm run build/);
 
   assert.match(server, /test:hub-cli-contract/);
-  assert.match(server, /npm run test --workspace=@getpaseo\/server/);
+  assert.match(server, /npm run test:unit --workspace=@getpaseo\/server/);
   assert.ok(!jobs.has("hub-cli-contract"));
 
   assert.match(desktop, /test:e2e:renderer/);
@@ -278,6 +291,21 @@ test("PR routing declares stable behavior ownership", () => {
     ],
     relay: ["packages/relay/**"],
     cli: ["packages/cli/**"],
+    website: [
+      "packages/website/**",
+      "public-docs/**",
+      "packages/protocol/**",
+      "package.json",
+      "package-lock.json",
+      "patches/**",
+      ".github/workflows/ci.yml",
+    ],
+    file_observation: [
+      "packages/server/src/server/file-observer/**",
+      "packages/server/src/server/workspace-git-service*",
+      "packages/server/src/server/watcher-liveness-canary*",
+      "packages/server/vitest.config.ts",
+    ],
   });
 });
 
@@ -410,17 +438,14 @@ test("stable iOS releases upload once and distribute to external testers before 
 test("eight Playwright shards share two-worker coverage", () => {
   const source = readFileSync(ciWorkflowPath, "utf8");
   const jobs = jobBlocks(source);
-  assert.equal(jobs.size, 21);
+  assert.equal(jobs.size, 20);
   for (let shard = 1; shard <= 8; shard++) {
     const job = jobs.get(`playwright-${shard}`).join("\n");
     assert.match(job, new RegExp(`PLAYWRIGHT_SHARD: "${shard}/8"`));
     assert.match(job, new RegExp(`PLAYWRIGHT_ARTIFACT: "${shard}"`));
-    assert.match(
-      job,
-      shard === 1 ? /steps: &playwright_test_steps/ : /steps: \*playwright_test_steps/,
-    );
+    assert.match(job, /steps: \*playwright_test_steps/);
   }
-  const shared = jobs.get("playwright-1").join("\n");
+  const shared = jobs.get("playwright-smoke").join("\n");
   assert.match(shared, /E2E_WORKERS: "2"/);
   const weights = /PWTEST_SHARD_WEIGHTS: "([\d:]+)"/.exec(shared)[1].split(":").map(Number);
   assert.equal(weights.length, 8);
@@ -472,7 +497,7 @@ test("quality preserves commands and routes each domain independently after fail
       success: () => false,
     });
   }
-  const disabled = { full: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
+  const disabled = { all: "false", ...Object.fromEntries(domains.map((key) => [key, "false"])) };
   const jobCondition = /    if: \$\{\{ (.+) \}\}/.exec(quality)[1];
   assert.equal(accepts(jobCondition, disabled), false);
   for (const selected of domains) {
@@ -483,7 +508,7 @@ test("quality preserves commands and routes each domain independently after fail
     }
   }
   for (const [, expression] of checks) {
-    assert.equal(accepts(expression, { ...disabled, full: "true" }), true);
+    assert.equal(accepts(expression, { ...disabled, all: "true" }), true);
     assert.equal(accepts(expression, {}), true, "missing routing outputs fail open");
     assert.equal(accepts(expression, {}, { cancelled: true }), false);
     assert.equal(accepts(expression, {}, { installed: false }), false);
@@ -491,94 +516,251 @@ test("quality preserves commands and routes each domain independently after fail
   assert.equal(accepts(jobCondition, {}, { cancelled: true }), false);
 });
 
-test("Windows units and integration run independently with complete routed coverage", () => {
+function expressionValue(expression, context) {
+  return runInNewContext(expression.replace(/^\$\{\{ | \}\}$/g, ""), context);
+}
+
+function jobSelected(job, outputs, cancelled = false) {
+  const expression = /    if: (.+)/.exec(job.join("\n"))[1];
+  return expressionValue(expression, {
+    needs: { changes: { outputs } },
+    cancelled: () => cancelled,
+  });
+}
+
+test("fork modes select smoke or full coverage without Windows runners", () => {
   const source = readFileSync(ciWorkflowPath, "utf8");
   const jobs = jobBlocks(source);
-  const ubuntu = jobs.get("server-tests-ubuntu").join("\n");
-  const windows = jobs.get("server-tests-windows").join("\n");
-  const integration = jobs.get("server-integration-windows").join("\n");
-  assert.match(ubuntu, /run: npm run test --workspace=@getpaseo\/server/);
-  assert.match(windows, /run: npm run test:unit --workspace=@getpaseo\/server/);
-  assert.doesNotMatch(windows, /run: npm run test(?: |:integration)/);
-  assert.match(integration, /run: npm run test:integration --workspace=@getpaseo\/server/);
-  assert.doesNotMatch(integration, /test:unit|server_plugin_tests|server_hub_contract/);
-  for (const job of [windows, integration]) {
-    assert.match(job, /^    needs: changes$/m, "both phases become eligible independently");
-    assert.match(job, /^    runs-on: windows-latest$/m);
-    assert.doesNotMatch(job, /continue-on-error|maxWorkers|--exclude/);
-    for (const step of [
-      "server_capacity",
-      "server_checkout",
-      "server_node",
-      "server_fetch",
-      "server_install",
-      "server_agent_clis",
-      "server_build",
-    ]) {
-      assert.match(ubuntu, new RegExp(`&${step}\\b`));
-      assert.match(job, new RegExp(`- \\*${step}\\b`));
-    }
-    assert.match(job, /env: \*server_test_env/);
-  }
-  assert.match(windows, /- \*server_plugin_tests/);
-  assert.match(windows, /- \*server_hub_contract/);
-  assert.match(ubuntu, /run: npm run test --workspace=@getpaseo\/builtin-plugins/);
-  assert.match(ubuntu, /run: npm run test:hub-cli-contract --workspace=@getpaseo\/server/);
-
-  const scripts = JSON.parse(
-    readFileSync(new URL("packages/server/package.json", repoRoot), "utf8"),
-  ).scripts;
-  assert.equal(scripts.test, "npm run test:unit && npm run test:integration");
-  assert.equal(scripts["test:unit"], 'vitest run --fileParallelism --exclude "**/*.e2e.test.ts"');
-  const invocations = scripts["test:integration"].split(" && ");
-  // Each vitest start costs about half a minute on Windows, so the
-  // name-filtered files share one invocation and one combined filter.
-  assert.equal(invocations.length, 2);
-  assert.ok(invocations.every((command) => command.startsWith("vitest run --maxWorkers=1 ")));
-  assert.doesNotMatch(invocations[0], / -t /);
-  assert.equal(
-    invocations[1],
-    'vitest run --maxWorkers=1 src/server/agent/providers/omp/history.e2e.test.ts src/server/daemon-e2e/git-operations.e2e.test.ts src/server/session.create-agent-worktree-autoarchive.e2e.test.ts src/server/agent/providers/opencode-bridge.local.e2e.test.ts src/server/daemon-e2e/relay-transport.e2e.test.ts -t "merges into|creates a worktree and auto-archives both|versioned runtime|oversized attachments|connected hosts|password-protected daemon refuses|replays selected OMP history"',
+  assert.match(source, /branches: \[paseo-customizations\]/);
+  assert.match(source, /default: normal\n\s+options: \[normal, full\]/);
+  assert.doesNotMatch(source, /windows-latest|runner.os == 'Windows'/);
+  const outputs = Object.fromEntries(
+    [...source.matchAll(/^      (\w+): \$\{\{ (.+) \}\}$/gm)].map(([, key, expression]) => [
+      key,
+      expression,
+    ]),
   );
-  const serverConfig = readFileSync(new URL("packages/server/vitest.config.ts", repoRoot), "utf8");
-  assert.doesNotMatch(serverConfig, /maxWorkers/);
-
-  function condition(job) {
-    return /    if: \$\{\{ (.+) \}\}/.exec(job)[1];
+  const filters = Object.fromEntries(
+    Object.keys(loadFilters(filtersPath)).map((key) => [key, "false"]),
+  );
+  const context = (event, mode, changed = {}) => ({
+    inputs: { mode },
+    github: { event_name: event },
+    steps: { filter: { outputs: { ...filters, ...changed } } },
+  });
+  function route(event, mode, changed) {
+    const state = context(event, mode, changed);
+    return Object.fromEntries(
+      Object.entries(outputs).map(([key, expression]) => [
+        key,
+        String(expressionValue(expression, state)),
+      ]),
+    );
   }
-  function selected(expression, outputs, cancelled = false) {
-    return runInNewContext(expression, {
-      needs: { changes: { outputs } },
-      cancelled: () => cancelled,
-    });
-  }
-  const unitCondition = condition(windows);
-  const integrationCondition = condition(integration);
-  const unitStep = /      - name: Run server unit tests\n        if: \$\{\{ (.+) \}\}/.exec(
-    windows,
-  )[1];
-  const hubStep =
-    /      - &server_hub_contract\n        name: Run Hub CLI\/daemon contract\n        if: \$\{\{ (.+) \}\}/.exec(
-      ubuntu,
-    )[1];
-  const pluginStep =
-    /      - &server_plugin_tests\n        name: Run built-in plugin tests\n        if: \$\{\{ (.+) \}\}/.exec(
-      ubuntu,
-    )[1];
-  for (const [outputs, units, integrations, hub] of [
-    [{ full: "true", server: "false", hub: "false" }, true, true, false],
-    [{ full: "false", server: "true", hub: "false" }, true, true, false],
-    [{ full: "false", server: "false", hub: "true" }, true, false, true],
-    [{ full: "false", server: "false", hub: "false" }, false, false, false],
-    [{}, true, true, false],
+  const normal = route("workflow_dispatch", "normal");
+  const full = route("workflow_dispatch", "full");
+  for (const id of [
+    "quality",
+    "typecheck",
+    "app-tests",
+    "server-tests-ubuntu",
+    "desktop-tests-ubuntu",
+    "cli-tests-3",
   ]) {
-    assert.equal(selected(unitCondition, outputs), units);
-    assert.equal(selected(integrationCondition, outputs), integrations);
-    assert.equal(selected(unitStep, outputs), integrations);
-    assert.equal(selected(pluginStep, outputs), integrations);
-    assert.equal(selected(hubStep, outputs), hub);
-    assert.equal(selected(unitCondition, outputs, true), false);
-    assert.equal(selected(integrationCondition, outputs, true), false);
+    assert.equal(jobSelected(jobs.get(id), normal), true, id);
+  }
+  assert.equal(jobSelected(jobs.get("playwright-smoke"), normal), true);
+  assert.equal(jobSelected(jobs.get("playwright-smoke"), full), false);
+  for (let shard = 1; shard <= 8; shard++) {
+    assert.equal(jobSelected(jobs.get(`playwright-${shard}`), normal), false);
+    assert.equal(jobSelected(jobs.get(`playwright-${shard}`), full), true);
+  }
+  for (const id of ["cli-tests-1", "cli-tests-2", "website-tests", "server-tests-macos"]) {
+    assert.equal(jobSelected(jobs.get(id), normal), false, id);
+    assert.equal(jobSelected(jobs.get(id), full), true, id);
+  }
+  assert.equal(normal.integration, "false");
+  assert.equal(normal.desktop_e2e, "false");
+  assert.equal(full.integration, "true");
+  assert.equal(full.desktop_e2e, "true");
+  const app = route("pull_request", "", {
+    app: "true",
+    browser: "true",
+    quality: "true",
+    format: "true",
+  });
+  assert.equal(jobSelected(jobs.get("playwright-smoke"), app), true);
+  assert.equal(jobSelected(jobs.get("server-tests-ubuntu"), app), false);
+  assert.equal(app.integration, "false");
+  assert.equal(app.cli_e2e, "false");
+  assert.equal(app.desktop_e2e, "false");
+  for (const event of ["push", "pull_request"]) {
+    const server = route(event, "", { server: "true" });
+    assert.equal(server.integration, "true");
+    assert.equal(jobSelected(jobs.get("server-tests-ubuntu"), server), true);
+    const cli = route(event, "", { cli: "true" });
+    assert.equal(jobSelected(jobs.get("cli-tests-1"), cli), true);
+    assert.equal(jobSelected(jobs.get("cli-tests-2"), cli), true);
+    assert.equal(route(event, "", { desktop: "true" }).desktop_e2e, "true");
+  }
+  const shared = route("pull_request", "", { workspace: "true" });
+  assert.equal(jobSelected(jobs.get("app-tests"), shared), true);
+  assert.equal(jobSelected(jobs.get("playwright-smoke"), shared), true);
+  assert.equal(shared.integration, "false");
+  for (const [id, job] of jobs) {
+    if (id !== "changes") {
+      assert.equal(jobSelected(job, full), id !== "playwright-smoke", id);
+      assert.equal(jobSelected(job, full, true), false, id);
+    }
+  }
+});
+
+test("normal and full steps preserve integration, desktop, website and CLI coverage", () => {
+  const jobs = jobBlocks(readFileSync(ciWorkflowPath, "utf8"));
+  const server = jobs.get("server-tests-ubuntu").join("\n");
+  assert.match(server, /run: npm run test:unit --workspace=@getpaseo\/server/);
+  assert.match(
+    server,
+    /Run server integration tests\n\s+if: \$\{\{ needs.changes.outputs.integration == 'true' \}\}\n\s+run: npm run test:integration/,
+  );
+  const desktop = jobs.get("desktop-tests-ubuntu").join("\n");
+  for (const name of ["renderer", "browser"]) {
+    assert.match(desktop, new RegExp(`Run desktop ${name} E2E\\n\\s+if: .*desktop_e2e == 'true'`));
+  }
+  const typecheck = jobs.get("typecheck").join("\n");
+  assert.doesNotMatch(typecheck, /website|playwright install/);
+  const website = jobs.get("website-tests").join("\n");
+  assert.match(website, /vitest run packages\/website\/src/);
+  assert.match(website, /playwright install --with-deps chromium webkit/);
+  assert.match(website, /test:e2e --workspace=@getpaseo\/website/);
+  const cli = jobs.get("cli-tests-1").join("\n");
+  assert.match(cli, /Run CLI E2E tests\n\s+if: .*cli_e2e == 'true'/);
+  assert.match(cli, /Build CLI unit dependencies\n\s+if: .*cli_e2e != 'true'/);
+  assert.match(cli, /Run CLI source tests\n\s+if: .*PASEO_CLI_TEST_SHARD == '3'/);
+});
+
+test("browser smoke selects existing deterministic journeys", () => {
+  const manifest = JSON.parse(readFileSync(new URL("packages/app/package.json", repoRoot), "utf8"));
+  const command = manifest.scripts["test:e2e:smoke"];
+  assert.match(command, /^playwright test --project=browser /);
+  const specs = command.split(" ").slice(3);
+  assert.equal(specs.length, 10);
+  for (const spec of specs) {
+    assert.match(spec, /^e2e\/browser\/[a-z-]+\.spec\.ts$/);
+    assert.doesNotMatch(spec, /\.real\./);
+    assert.ok(readFileSync(new URL(`packages/app/${spec}`, repoRoot), "utf8").includes("test"));
+  }
+});
+
+test("local full verification covers the fork with bounded workers", () => {
+  const result = spawnSync(process.execPath, ["scripts/verify-local.mjs", "--list"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  const plan = JSON.parse(result.stdout);
+  const names = new Set(plan.map((step) => step.name));
+  for (const name of [
+    "typecheck",
+    "lint",
+    "format:check",
+    "script-contracts",
+    "server-units",
+    "server-integration",
+    "cli-units",
+    "cli-e2e",
+    "website-browser",
+    "app-browser",
+    "app-tests",
+    "desktop-lifecycle",
+    "desktop-renderer",
+    "desktop-browser-tabs",
+  ]) {
+    assert.ok(names.has(name), name);
+  }
+  for (const step of plan.filter(
+    (entry) => entry.name.endsWith("-tests") || entry.name.endsWith("-units"),
+  )) {
+    assert.ok(step.args.includes("--maxWorkers=1"), step.name);
+  }
+  assert.ok(plan.find((step) => step.name === "app-browser").args.includes("--workers=1"));
+});
+
+test("local verification serializes stages, records failures and releases its machine lock", () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-verification-test-"));
+  const fakeNpm = join(directory, "npm.cjs");
+  const trace = join(directory, "trace.json");
+  let evidence;
+  try {
+    writeFileSync(
+      fakeNpm,
+      `const fs = require("node:fs");
+const path = process.env.LOCAL_TEST_TRACE;
+const rows = fs.existsSync(path) ? JSON.parse(fs.readFileSync(path)) : [];
+rows.push({ args: process.argv.slice(2), workers: process.env.E2E_WORKERS, cli: process.env.PASEO_CLI_TEST_CONCURRENCY, shard: process.env.PASEO_CLI_TEST_SHARD_TOTAL, ci: process.env.CI });
+fs.writeFileSync(path, JSON.stringify(rows));
+console.log("stage fixture");
+process.exit(rows.length === 3 ? 7 : 0);
+`,
+    );
+    const result = spawnSync(process.execPath, ["scripts/verify-local.mjs"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        TMPDIR: directory,
+        npm_execpath: fakeNpm,
+        LOCAL_TEST_TRACE: trace,
+        CI: "true",
+        E2E_WORKERS: "32",
+        PASEO_CLI_TEST_SHARD_TOTAL: "8",
+      },
+    });
+    assert.equal(result.status, 1, result.stdout + result.stderr);
+    evidence = /Full local verification: (.+)/.exec(result.stdout)[1];
+    const rows = JSON.parse(readFileSync(trace, "utf8"));
+    assert.equal(rows.length, 3);
+    assert.deepEqual(
+      rows.map((row) => row.args[1]),
+      ["build:protocol", "build:client", "build:highlight"],
+    );
+    assert.ok(
+      rows.every(
+        (row) =>
+          row.workers === "1" && row.cli === "1" && row.shard === "1" && row.ci === undefined,
+      ),
+    );
+    const report = JSON.parse(readFileSync(join(evidence, "summary.json"), "utf8"));
+    assert.match(report.commit, /^[a-f0-9]{40}$/);
+    assert.deepEqual(
+      report.steps.map((step) => step.code),
+      [0, 0, 7],
+    );
+    assert.match(readFileSync(report.steps[2].log, "utf8"), /stage fixture/);
+    assert.equal(
+      readdirSync(directory).some((name) => name.endsWith(".lock")),
+      false,
+    );
+  } finally {
+    if (evidence) rmSync(evidence, { recursive: true, force: true });
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("local verification refuses a second full run before starting any suite", () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-verification-lock-test-"));
+  try {
+    mkdirSync(join(directory, `paseo-full-verification-${process.getuid()}.lock`));
+    const result = spawnSync(process.execPath, ["scripts/verify-local.mjs"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: { ...process.env, TMPDIR: directory, npm_execpath: "unused" },
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Another full verification owns/);
+    assert.doesNotMatch(result.stdout, /Full local verification:/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 
