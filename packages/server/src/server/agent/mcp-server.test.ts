@@ -4672,10 +4672,12 @@ describe("message order for one recipient", () => {
       ]);
       // The older steer is spent: the pause turn ending starts nothing.
       recipient.session.finishTurn();
+      await vi.waitFor(() =>
+        expect(recipient.agentManager.getAgent(recipient.recipientId)?.lifecycle).toBe("idle"),
+      );
       recipient.advance(10 * 60_000);
       await recipient.settled();
       expect(recipient.session.prompts).toHaveLength(2);
-      expect(recipient.agentManager.getAgent(recipient.recipientId)?.lifecycle).toBe("idle");
     } finally {
       await recipient.cleanup();
     }
