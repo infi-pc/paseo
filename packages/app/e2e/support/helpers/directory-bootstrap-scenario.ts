@@ -33,8 +33,10 @@ async function createRunningMockAgent(
   return { id: agent.id, title };
 }
 
-async function openCommandCenter(page: Page): Promise<void> {
+// Agents are found through their workspace: the query names the agent, the row shows it.
+async function searchCommandCenter(page: Page, query: string): Promise<void> {
   await page.getByTestId("sidebar-search").click();
+  await page.getByTestId("command-center-input").fill(query);
 }
 
 export class DirectoryBootstrapScenario {
@@ -82,9 +84,9 @@ export class DirectoryBootstrapScenario {
     const workspaceLink = this.page.getByTestId(`sidebar-project-tab-${workspace.projectKey}`);
     await expect(workspaceLink).toHaveCount(1);
     await expect(workspaceLink).toBeVisible();
-    await openCommandCenter(this.page);
+    await searchCommandCenter(this.page, agent.title);
     const agentLink = this.page
-      .getByTestId(`command-center-agent-${getServerId()}:${agent.id}`)
+      .getByTestId("command-center-workspace-agent")
       .getByText(agent.title, { exact: true });
     await expect(agentLink).toHaveCount(1);
     await expect(agentLink).toBeVisible();
@@ -117,9 +119,9 @@ export class DirectoryBootstrapScenario {
     const workspaceLink = this.page.getByTestId(`sidebar-project-tab-${workspace.projectKey}`);
     await expect(workspaceLink).toHaveCount(1);
     await expect(workspaceLink).toBeVisible();
-    await openCommandCenter(this.page);
+    await searchCommandCenter(this.page, agent.title);
     const agentLink = this.page
-      .getByTestId(`command-center-agent-${getServerId()}:${agent.id}`)
+      .getByTestId("command-center-workspace-agent")
       .getByText(agent.title, { exact: true });
     await expect(agentLink).toHaveCount(1);
     await expect(agentLink).toBeVisible();

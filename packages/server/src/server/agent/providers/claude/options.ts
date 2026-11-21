@@ -46,8 +46,9 @@ const SandboxFilesystemSchema = z
 export const ClaudeProviderOptionsSchema = z
   .object({
     tools: z.array(z.string()).optional(),
-    /** Composer control, not a Claude SDK option: the provider reads it and keeps it out of the SDK options. */
+    /** Composer controls applied through Claude flag settings. */
     fast_mode: z.boolean().optional(),
+    ultracode: z.boolean().optional(),
     allowedTools: z.array(z.string()).optional(),
     disallowedTools: z.array(z.string()).optional(),
     additionalDirectories: z.array(z.string()).optional(),

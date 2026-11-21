@@ -218,6 +218,36 @@ test.describe("Plugin sidebar items", () => {
     });
   });
 
+  test("a short desktop sidebar keeps workspaces usable while navigation scrolls", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 480 });
+    await gotoAppShell(page, { projectKey });
+    await expect(botRow(page, "status")).toBeAttached();
+    const navigation = visibleTestId(page, "sidebar-nav-scroll");
+    const workspace = visibleTestId(page, `sidebar-workspace-row-${getServerId()}:${workspaceId}`);
+    await expect(workspace).toBeInViewport({ ratio: 1 });
+    await expect(botRow(page, "status")).not.toBeInViewport();
+
+    await test.step("navigation stays within half the sidebar", async () => {
+      const nav = await boxOf(navigation);
+      expect(nav.height).toBeLessThanOrEqual(480 / 2 + 1);
+    });
+
+    await test.step("scrolling navigation reaches its last row without moving workspaces", async () => {
+      const before = await boxOf(workspace);
+      await navigation.hover();
+      await page.mouse.wheel(0, 800);
+      await expect(botRow(page, "status")).toBeInViewport({ ratio: 1 });
+      await expect(workspace).toBeInViewport({ ratio: 1 });
+      expect((await boxOf(workspace)).y).toBe(before.y);
+      await qaScreenshot(page, "desktop-short-sidebar-nav-scrolled");
+      await botRow(page, "status").click();
+      await expect(page.getByText("Bot status details", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Close bot status", exact: true }).click();
+    });
+  });
+
   test("a restored plugin screen waits for its catalog before rendering", async ({ page }) => {
     await page.setViewportSize(WIDE);
     await gotoWorkspace(page, workspaceId);
@@ -341,6 +371,16 @@ test.describe("Plugin sidebar items", () => {
       await page.getByRole("button", { name: "Close sync details", exact: true }).click();
       await expect(page.getByText("Sync details", { exact: true })).toHaveCount(0);
     });
+  });
+
+  test("a plugin screen reads workspaces through the state hooks", async ({ page }) => {
+    await page.setViewportSize(WIDE);
+    await gotoWorkspace(page, workspaceId);
+    await expect(headerRow(page, SHOWCASE_PLUGIN_ID, "deploys")).toBeVisible({ timeout: 30_000 });
+    await runCommand(page, "Open plugin workspaces");
+    await expect(screenTitle(page)).toHaveText("Workspaces");
+    await expect(page.getByText(`Workspace ${workspaceId}`, { exact: true })).toBeVisible();
+    await expect(page.getByText("Plugin failed", { exact: false })).toHaveCount(0);
   });
 
   test("a rail action shows its shortcut hint and opens workspace setup", async ({ page }) => {

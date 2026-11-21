@@ -38,7 +38,13 @@ import {
   resolveRelayoutScrollTop,
 } from "./model";
 import { paintWebFileHeader, paintWebViewport } from "./paint.web";
-import { hasPointerDragStarted } from "./pointer-gesture";
+import {
+  hasPointerDragStarted,
+  lineSelectionForDrag,
+  wordSelectionForDrag,
+  type LineAtPosition,
+  type WordAtPosition,
+} from "./pointer-gesture";
 import {
   createMeasuredAdvances,
   createAdditiveAdvances,
@@ -47,6 +53,8 @@ import {
 } from "./text-measurement";
 import { retainDiffViewport } from "./viewport";
 import type {
+  DiffCell,
+  DiffCharacterPosition,
   DiffHit,
   DiffFileSection,
   DiffSelection,
@@ -54,6 +62,7 @@ import type {
   DiffTypography,
   TextMeasurer,
 } from "./types";
+import { wordRangeAtOffset } from "./word-boundaries";
 import { useDiffDocumentWorkspaceCache } from "./workspace-cache";
 
 const DEFAULT_MONO_STACK = "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
@@ -116,6 +125,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
     startY: number;
     moved: boolean;
     dismissSelectionOnClick: boolean;
+    granularity:
+      | { kind: "character" }
+      | { kind: "word"; anchor: WordAtPosition }
+      | { kind: "line"; anchor: LineAtPosition };
+    pointerType: string;
   } | null>(null);
   const frameRef = useRef<number | null>(null);
   const activeHeaderPathRef = useRef<string | null>(null);
@@ -603,6 +617,31 @@ export function DiffSurface(props: DiffSurfaceProps) {
     desiredTypography,
     setSelection,
   ]);
+  const cellAt = useCallback((position: DiffCharacterPosition): DiffCell | null => {
+    const currentModel = modelRef.current;
+    if (!currentModel) return null;
+    const row = currentModel.rows[position.rowIndex];
+    return row?.kind === "line" ? row.cells[position.cellIndex] : null;
+  }, []);
+  const wordAt = useCallback(
+    (hit: Extract<DiffHit, { kind: "cell" }>): WordAtPosition | null => {
+      const cell = cellAt(hit.position);
+      if (!cell) return null;
+      return {
+        position: { ...hit.position, sourceOffset: hit.graphemeOffset },
+        word: wordRangeAtOffset(cell.content, hit.graphemeOffset),
+      };
+    },
+    [cellAt],
+  );
+  const lineAt = useCallback(
+    (hit: Extract<DiffHit, { kind: "cell" }>): LineAtPosition | null => {
+      const cell = cellAt(hit.position);
+      if (!cell) return null;
+      return { position: hit.position, end: cell.content.length };
+    },
+    [cellAt],
+  );
   const pointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
@@ -614,10 +653,11 @@ export function DiffSurface(props: DiffSurfaceProps) {
         )
       )
         return;
-      if (language && (event.metaKey || event.ctrlKey)) {
+      const hit = pointHit(event);
+      if (language && hit?.kind === "cell" && (event.metaKey || event.ctrlKey)) {
         const current = modelRef.current;
         const codeTarget = current
-          ? diffLanguageTarget(current, pointHit(event), language.scope.cwd)
+          ? diffLanguageTarget(current, hit.position, language.scope.cwd)
           : null;
         if (codeTarget) {
           event.preventDefault();
@@ -625,24 +665,55 @@ export function DiffSurface(props: DiffSurfaceProps) {
           return;
         }
       }
-      const dismissSelectionOnClick = selectionRef.current !== null;
-      if (dismissSelectionOnClick) {
-        setSelection(null);
-      }
-      const hit = pointHit(event);
+      const hadSelection = selectionRef.current !== null;
+      if (hadSelection) setSelection(null);
       if (hit?.kind !== "cell") return;
       dragRef.current = {
         anchor: hit.position,
         startX: event.clientX,
         startY: event.clientY,
         moved: false,
-        dismissSelectionOnClick,
+        dismissSelectionOnClick: hadSelection,
+        granularity: { kind: "character" },
+        pointerType: event.pointerType,
       };
       setSelection({ anchor: hit.position, focus: hit.position });
       event.currentTarget.focus();
       event.currentTarget.setPointerCapture(event.pointerId);
     },
     [language, pointHit, setSelection],
+  );
+  // The native click count honors the OS double-click setting and arrives on the
+  // second mousedown, after pointerdown has opened the character drag.
+  const mouseDown = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag || event.button !== 0 || event.detail < 2 || drag.pointerType === "touch") return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          '[data-diff-header="true"], [data-diff-review="true"], [role="menuitem"], button, input, textarea',
+        )
+      )
+        return;
+      const hit = pointHitAt(event.clientX, event.clientY);
+      if (hit?.kind !== "cell") return;
+      if (event.detail >= 3) {
+        const lineAnchor = lineAt(hit);
+        if (!lineAnchor) return;
+        drag.granularity = { kind: "line", anchor: lineAnchor };
+        drag.dismissSelectionOnClick = false;
+        setSelection(lineSelectionForDrag({ anchor: lineAnchor, focus: lineAnchor }));
+        return;
+      }
+      const wordAnchor = wordAt(hit);
+      if (!wordAnchor) return;
+      drag.granularity = { kind: "word", anchor: wordAnchor };
+      drag.dismissSelectionOnClick = false;
+      setSelection(wordSelectionForDrag({ anchor: wordAnchor, focus: wordAnchor }));
+    },
+    [lineAt, pointHitAt, setSelection, wordAt],
   );
   const updateActiveHeader = useCallback(
     (target: EventTarget | null) => {
@@ -661,7 +732,13 @@ export function DiffSurface(props: DiffSurfaceProps) {
     (event: React.PointerEvent<HTMLDivElement>, hit: DiffHit | null) => {
       if (language) {
         const current = modelRef.current;
-        const target = current ? diffLanguageTarget(current, hit, language.scope.cwd) : null;
+        const target = current
+          ? diffLanguageTarget(
+              current,
+              hit?.kind === "cell" ? hit.position : null,
+              language.scope.cwd,
+            )
+          : null;
         if (target && !event.buttons)
           language.hover(target, { x: event.clientX, y: event.clientY });
         else if (event.buttons) language.dismissHover();
@@ -669,6 +746,33 @@ export function DiffSurface(props: DiffSurfaceProps) {
       }
     },
     [language],
+  );
+
+  const updateHoveredAffordance = useCallback(
+    (hit: Extract<DiffHit, { kind: "cell" }>, clientX: number) => {
+      const row = modelRef.current?.rows[hit.position.rowIndex];
+      const file = modelRef.current?.files[hit.position.fileIndex];
+      const sideIndex =
+        row?.kind === "line" && row.cells.length === 2 && hit.position.side === "new" ? 1 : 0;
+      if (row && file) {
+        const columnWidth = viewport.width / (row.kind === "line" ? row.cells.length : 1);
+        const gutterBorder = sideIndex * columnWidth + file.gutterWidth;
+        const rootBounds = rootRef.current?.getBoundingClientRect();
+        const pointerX = rootBounds ? clientX - rootBounds.left : Number.NaN;
+        if (hit.target && Number.isFinite(pointerX)) {
+          hasHoveredAffordanceRef.current = true;
+          setHoveredAffordance({
+            hit,
+            left: gutterBorder - 12,
+            top: row.top - scrollTopRef.current + (modelRef.current!.lineHeight - 22) / 2,
+          });
+          return;
+        }
+      }
+      hasHoveredAffordanceRef.current = false;
+      setHoveredAffordance(null);
+    },
+    [viewport.width],
   );
   const pointerMove = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -686,35 +790,37 @@ export function DiffSurface(props: DiffSurfaceProps) {
         });
       }
       if (hit?.kind === "cell") {
-        const row = modelRef.current?.rows[hit.position.rowIndex];
-        const file = modelRef.current?.files[hit.position.fileIndex];
-        const sideIndex =
-          row?.kind === "line" && row.cells.length === 2 && hit.position.side === "new" ? 1 : 0;
-        if (row && file) {
-          const columnWidth = viewport.width / (row.kind === "line" ? row.cells.length : 1);
-          const gutterBorder = sideIndex * columnWidth + file.gutterWidth;
-          const rootBounds = rootRef.current?.getBoundingClientRect();
-          const pointerX = rootBounds ? event.clientX - rootBounds.left : Number.NaN;
-          if (hit.target && Number.isFinite(pointerX)) {
-            hasHoveredAffordanceRef.current = true;
-            setHoveredAffordance({
-              hit,
-              left: gutterBorder - 12,
-              top: row.top - scrollTopRef.current + (modelRef.current!.lineHeight - 22) / 2,
-            });
-          } else {
-            hasHoveredAffordanceRef.current = false;
-            setHoveredAffordance(null);
-          }
-        }
+        updateHoveredAffordance(hit, event.clientX);
       } else {
         hasHoveredAffordanceRef.current = false;
         setHoveredAffordance(null);
       }
       if (!drag || hit?.kind !== "cell") return;
+      if (drag.granularity.kind === "word") {
+        const focusWord = wordAt(hit);
+        if (focusWord) {
+          setSelection(wordSelectionForDrag({ anchor: drag.granularity.anchor, focus: focusWord }));
+        }
+        return;
+      }
+      if (drag.granularity.kind === "line") {
+        const focusLine = lineAt(hit);
+        if (focusLine) {
+          setSelection(lineSelectionForDrag({ anchor: drag.granularity.anchor, focus: focusLine }));
+        }
+        return;
+      }
       setSelection({ anchor: drag.anchor, focus: hit.position });
     },
-    [hoverCode, pointHit, setSelection, updateActiveHeader, viewport.width],
+    [
+      hoverCode,
+      lineAt,
+      pointHit,
+      setSelection,
+      updateActiveHeader,
+      updateHoveredAffordance,
+      wordAt,
+    ],
   );
   const pointerUp = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -820,8 +926,9 @@ export function DiffSurface(props: DiffSurfaceProps) {
       if (event.key === "F12" && language) {
         const position = selectionRef.current?.focus ?? contextHit?.position;
         const current = modelRef.current;
-        const hit: DiffHit | null = position ? { kind: "cell", target: null, position } : null;
-        const codeTarget = current ? diffLanguageTarget(current, hit, language.scope.cwd) : null;
+        const codeTarget = current
+          ? diffLanguageTarget(current, position, language.scope.cwd)
+          : null;
         if (codeTarget) {
           event.preventDefault();
           void language.run(
@@ -884,7 +991,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
   );
 
   const contextLanguageTarget = language
-    ? diffLanguageTarget(model, contextHit, language.scope.cwd)
+    ? diffLanguageTarget(model, contextHit?.position, language.scope.cwd)
     : null;
   const inspectContext = useCallback(() => {
     if (language && contextLanguageTarget)
@@ -917,6 +1024,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
         data-overlay-scrollbar="true"
         tabIndex={0}
         onPointerDown={pointerDown}
+        onMouseDown={mouseDown}
         onPointerMove={pointerMove}
         onPointerUp={pointerUp}
         onPointerCancel={cancelPointer}

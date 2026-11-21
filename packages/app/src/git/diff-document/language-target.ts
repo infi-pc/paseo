@@ -1,17 +1,17 @@
 import { isTypeScriptFile } from "@getpaseo/protocol/code-language";
 import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import type { CodeTarget } from "@/code-language/actions";
-import type { DiffDocumentModel, DiffHit } from "./types";
+import type { DiffCharacterPosition, DiffDocumentModel } from "./types";
 
 export function diffLanguageTarget(
   model: DiffDocumentModel,
-  hit: DiffHit | null,
+  position: DiffCharacterPosition | null | undefined,
   cwd: string,
 ): CodeTarget | null {
-  if (hit?.kind !== "cell") return null;
-  const row = model.rows[hit.position.rowIndex];
+  if (!position) return null;
+  const row = model.rows[position.rowIndex];
   if (row?.kind !== "line") return null;
-  const cell = row.cells[hit.position.cellIndex];
+  const cell = row.cells[position.cellIndex];
   const file = model.files[row.fileIndex]?.file;
   if (!cell || !file || !isTypeScriptFile(file.path)) return null;
   if (
@@ -26,7 +26,7 @@ export function diffLanguageTarget(
     path: buildAbsoluteExplorerPath({ workspaceRoot: cwd, entryPath: file.path }),
     position: {
       line: cell.lineNumber - 1,
-      character: Math.max(0, hit.position.sourceOffset - bomWidth),
+      character: Math.max(0, position.sourceOffset - bomWidth),
     },
     targetContentId: file.targetContentId,
   };

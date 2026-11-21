@@ -145,6 +145,7 @@ export interface SeedDaemonClient {
         status: string;
         title?: string | null;
         responseMetadata?: import("@getpaseo/protocol/messages").AgentResponseMetadata;
+        metadata?: Record<string, unknown>;
       };
     }>;
   }>;

@@ -3,6 +3,7 @@ import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { describe, expect, it } from "vitest";
 import {
   characterOffsetAtPoint,
+  graphemeOffsetAtPoint,
   hitTestDiffDocument,
   orderedSelection,
   selectAllSource,
@@ -19,8 +20,9 @@ describe("diff hit testing", () => {
     const model = buildModel("\uFEFFconst emoji = '😀';");
     model.files[0]!.file.targetContentId = "snapshot";
     const cell = changedCell(model);
-    const hit = { kind: "cell" as const, target: null, position: position(model, cell, 8) };
-    expect(diffLanguageTarget(model, hit, "/repo")?.position.character).toBe(7);
+    expect(diffLanguageTarget(model, position(model, cell, 8), "/repo")?.position.character).toBe(
+      7,
+    );
   });
 
   it("maps unified and split current cells to UTF-16 source positions and excludes old sides", () => {
@@ -32,18 +34,17 @@ describe("diff hit testing", () => {
         if (row.kind !== "line") continue;
         row.cells.forEach((cell, cellIndex) => {
           if (!cell || cell.type === "header") return;
-          const hit = {
-            kind: "cell" as const,
-            target: null,
-            position: {
+          const target = diffLanguageTarget(
+            model,
+            {
               fileIndex: row.fileIndex,
               rowIndex: row.index,
               cellIndex,
               side: cell.sourceIdentity.side,
               sourceOffset: 3,
             },
-          };
-          const target = diffLanguageTarget(model, hit, "/repo");
+            "/repo",
+          );
           if (cell.sourceIdentity.side === "old") expect(target).toBeNull();
           else
             expect(target).toEqual({
@@ -55,13 +56,7 @@ describe("diff hit testing", () => {
       }
     }
     const model = buildModel("no snapshot");
-    expect(
-      diffLanguageTarget(
-        model,
-        { kind: "cell", target: null, position: position(model, changedCell(model), 0) },
-        "/repo",
-      ),
-    ).toBeNull();
+    expect(diffLanguageTarget(model, position(model, changedCell(model), 0), "/repo")).toBeNull();
   });
 
   it("locates the closest character from measured wrapped geometry", () => {
@@ -91,6 +86,49 @@ describe("diff hit testing", () => {
         lineHeight: 18,
       }),
     ).toBe(combining?.end);
+  });
+
+  it("keeps the nearest caret for character drags but hits the grapheme under word gestures", () => {
+    const cell = changedCell(buildModel("call(foo)", { wrapLines: false, viewportWidth: 300 }));
+    const graphemes = cell.fragments[0]!.graphemes;
+    const lastOfWord = graphemes[3]!;
+    const punctuation = graphemes[4]!;
+    const beforeLastOfWord = graphemes
+      .slice(0, 3)
+      .reduce((width, grapheme) => width + grapheme.width, 0);
+    const rightHalfOfWord = beforeLastOfWord + lastOfWord.width * 0.75;
+    const leftHalfOfPunctuation = beforeLastOfWord + lastOfWord.width + punctuation.width * 0.1;
+
+    expect(characterOffsetAtPoint({ cell, x: rightHalfOfWord, y: 0, lineHeight: 18 })).toBe(
+      punctuation.start,
+    );
+    expect(graphemeOffsetAtPoint({ cell, x: rightHalfOfWord, y: 0, lineHeight: 18 })).toBe(
+      lastOfWord.start,
+    );
+    expect(characterOffsetAtPoint({ cell, x: leftHalfOfPunctuation, y: 0, lineHeight: 18 })).toBe(
+      punctuation.start,
+    );
+    expect(graphemeOffsetAtPoint({ cell, x: leftHalfOfPunctuation, y: 0, lineHeight: 18 })).toBe(
+      punctuation.start,
+    );
+  });
+
+  it("keeps wrapped fragment boundaries from stealing the grapheme under the pointer", () => {
+    const cell = changedCell(buildModel("abcdef", { viewportWidth: 90 }));
+    const firstFragment = cell.fragments[0]!;
+    expect(cell.fragments.length).toBeGreaterThan(1);
+    const lastGrapheme = firstFragment.graphemes.at(-1)!;
+    const beforeLastGrapheme = firstFragment.graphemes
+      .slice(0, -1)
+      .reduce((width, grapheme) => width + grapheme.width, 0);
+    const rightHalfOfLastGrapheme = beforeLastGrapheme + lastGrapheme.width * 0.75;
+
+    expect(characterOffsetAtPoint({ cell, x: rightHalfOfLastGrapheme, y: 0, lineHeight: 18 })).toBe(
+      firstFragment.end,
+    );
+    expect(graphemeOffsetAtPoint({ cell, x: rightHalfOfLastGrapheme, y: 0, lineHeight: 18 })).toBe(
+      lastGrapheme.start,
+    );
   });
 
   it("normalizes backwards selection and copies exact source including empty lines", () => {

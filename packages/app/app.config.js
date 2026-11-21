@@ -7,6 +7,7 @@ const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
 const withPasteInput = require("./plugins/with-paste-input");
 const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
+const withAndroidDisplayMetrics = require("./modules/paseo-display-metrics/app.plugin");
 const { getNativeReleaseVersion } = require("./native-release-version");
 // FORK(testflight): personal Apple and Expo identities never fall back to upstream.
 const { getTestflightConfig } = require("./testflight/config");
@@ -169,6 +170,7 @@ export default () => {
         "expo-router",
         withPasteInput,
         withAndroidScroll,
+        withAndroidDisplayMetrics,
         [withAndroidAsyncStorageSize, 64],
         ...buildProfile.cameraPlugins,
         withAndroidOptionalCamera,

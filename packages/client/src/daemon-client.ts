@@ -26,6 +26,7 @@ import {
 } from "@getpaseo/protocol/binary-frames/index";
 import { messageTooLargeError } from "./daemon-client-transport-utils.js";
 import type { HostAdd, HostUpdate, HostDirectory } from "@getpaseo/protocol/hosts";
+import type { PluginListingDetail, PluginListingIndex } from "@getpaseo/protocol/plugin-registry";
 import { legacyUsageIcon } from "./legacy-usage-icons.js";
 import { subscribeTimeline, type TimelineMessage } from "./timeline-subscription/index.js";
 import { ProviderSnapshotUpdates } from "./provider-snapshots/index.js";
@@ -78,6 +79,7 @@ import type {
   GitSetupOptions,
   CheckoutStatusResponse,
   CheckoutCommit,
+  CheckoutWorktree,
   ParsedDiffFile,
   CheckoutCommitResponse,
   CheckoutMergeResponse,
@@ -128,6 +130,8 @@ import type {
   RefreshProvidersSnapshotResponseMessage,
   ProviderDiagnosticResponseMessage,
   ProviderUsageListResponseMessage,
+  ProviderInstallationInspectResponseMessage,
+  ProviderInstallationCheckUpdatesResponseMessage,
   UsageReportEntry,
   DaemonGetStatusResponse,
   DaemonGetPairingOfferResponse,
@@ -493,7 +497,7 @@ export interface SendMessageOptions {
   sourceAgentServerId?: string;
   sessionMode?: string;
   messageId?: string;
-  /** What happens when the agent is mid-turn. The daemon interrupts the turn when omitted. */
+  /** Agent sources wait for turn end unless interrupt is explicit. Human sources default to interrupt. */
   activeTurnBehavior?: ActiveTurnBehavior;
   images?: Array<{ data: string; mimeType: string }>;
   attachments?: SendAgentMessageRequest["attachments"];
@@ -641,6 +645,13 @@ type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"
 type RefreshProvidersSnapshotPayload = RefreshProvidersSnapshotResponseMessage["payload"];
 type ProviderDiagnosticPayload = ProviderDiagnosticResponseMessage["payload"];
 type ProviderUsageListPayload = ProviderUsageListResponseMessage["payload"];
+type ProviderInstallationInspectPayload = ProviderInstallationInspectResponseMessage["payload"];
+type ProviderInstallationCheckUpdatesPayload =
+  ProviderInstallationCheckUpdatesResponseMessage["payload"];
+type ProviderInstallationUpdatePayload = Extract<
+  SessionOutboundMessage,
+  { type: "provider.installation.update.response" }
+>["payload"];
 interface UsageListReportsPayload {
   requestId: string;
   reports: UsageReportEntry[];
@@ -1039,6 +1050,7 @@ interface WaitHandle<T> {
 interface WaitOptions {
   skipQueue?: boolean;
   requestId?: string;
+  requestType?: SessionInboundMessage["type"];
 }
 
 interface CorrelatedResponseIdentity {
@@ -2375,7 +2387,7 @@ export class DaemonClient {
         return { kind: "ok", value };
       },
       timeout,
-      { ...params.options, requestId: params.requestId },
+      { ...params.options, requestId: params.requestId, requestType: params.message.type },
     );
 
     // The response deadline still applies while the transport waits for drain.
@@ -3193,6 +3205,9 @@ export class DaemonClient {
         cwd,
       },
       responseType: "open_project_response",
+      // Opening a path whose checkout is currently archiving waits on the daemon checkout gate;
+      // wait for the terminal response or transport disconnect instead of timing out while queued.
+      timeout: 0,
     });
   }
 
@@ -3324,6 +3339,9 @@ export class DaemonClient {
         workspaceId,
       },
       responseType: "archive_workspace_response",
+      // Archive may wait for a queued checkout operation and then run teardown/manager removal,
+      // each bounded on the daemon; wait for the terminal response or transport disconnect.
+      timeout: 0,
     });
   }
 
@@ -3890,7 +3908,9 @@ export class DaemonClient {
           type: "workspace.recovery.restore.request",
           workspaceId,
         },
-        timeout: 150_000,
+        // Restore may wait behind an active archive/removal before running a bounded restore stage;
+        // wait for the terminal response or transport disconnect instead of timing out mid-workflow.
+        timeout: 0,
       });
     if (!payload.accepted) {
       throw new Error(payload.error ?? "Workspace recovery was rejected by the host");
@@ -3906,8 +3926,9 @@ export class DaemonClient {
           type: "workspace.archive.undo.request",
           workspaceId,
         },
-        // Undoing a finished worktree archive recreates the worktree, like recovery does.
-        timeout: 150_000,
+        // Undo may wait for an in-flight archive to settle and then recreate the worktree;
+        // wait for the terminal response or transport disconnect.
+        timeout: 0,
       });
     if (!payload.accepted) {
       throw new Error(payload.error ?? "The host could not undo the workspace archive");
@@ -5192,6 +5213,23 @@ export class DaemonClient {
     return { baseRef: payload.baseRef, commits: payload.commits };
   }
 
+  /** Every git worktree of the repository `cwd` is in, whoever created it. */
+  async listCheckoutWorktrees(cwd: string, requestId?: string): Promise<CheckoutWorktree[]> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"checkout.worktrees.list.response">({
+        requestId,
+        message: {
+          type: "checkout.worktrees.list.request",
+          cwd,
+        },
+        timeout: 60000,
+      });
+    if (payload.error) {
+      throw new Error(payload.error.message);
+    }
+    return payload.worktrees;
+  }
+
   async getCommitFileDiff(
     cwd: string,
     sha: string,
@@ -5483,6 +5521,9 @@ export class DaemonClient {
         ...(input.scope !== undefined ? { scope: input.scope } : {}),
       },
       responseType: "paseo_worktree_archive_response",
+      // Archive may wait for a queued checkout operation and then run teardown/manager removal,
+      // each bounded on the daemon; wait for the terminal response or transport disconnect.
+      timeout: 0,
     });
   }
 
@@ -5506,6 +5547,10 @@ export class DaemonClient {
         ...(input.githubPrNumber !== undefined ? { githubPrNumber: input.githubPrNumber } : {}),
       },
       responseType: "create_paseo_worktree_response",
+      // Every daemon stage (before hooks, shared 120s manager budget, Git, after hooks) enforces
+      // its own deadline, and transport heartbeats/close reject if the host drops, so wait for the
+      // terminal worktree response instead of aborting prematurely mid-workflow.
+      timeout: 0,
     });
   }
 
@@ -6350,6 +6395,70 @@ export class DaemonClient {
     });
   }
 
+  /** Install and update links plus installed state. Requires `features.providerInstallation`. */
+  async inspectProviderInstallation(
+    provider: AgentProvider,
+    options?: { refresh?: boolean; requestId?: string },
+  ): Promise<ProviderInstallationInspectPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"provider.installation.inspect.response">({
+      requestId: options?.requestId,
+      message: {
+        type: "provider.installation.inspect.request",
+        provider,
+        ...(options?.refresh ? { refresh: true } : {}),
+      },
+      timeout: 60_000,
+    });
+  }
+
+  /** Whether the provider reports a newer version. Requires `features.providerInstallation`. */
+  async checkProviderUpdates(
+    provider: AgentProvider,
+    options?: { refresh?: boolean; requestId?: string },
+  ): Promise<ProviderInstallationCheckUpdatesPayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"provider.installation.check_updates.response">(
+      {
+        requestId: options?.requestId,
+        message: {
+          type: "provider.installation.check_updates.request",
+          provider,
+          ...(options?.refresh ? { refresh: true } : {}),
+        },
+        timeout: 60_000,
+      },
+    );
+  }
+
+  /** Starts the provider's update, or joins the running one. Follow it with `observeProviderUpdates`. */
+  async updateProvider(
+    provider: AgentProvider,
+    options?: { requestId?: string },
+  ): Promise<ProviderInstallationUpdatePayload> {
+    return this.sendNamespacedCorrelatedSessionRequest<"provider.installation.update.response">({
+      requestId: options?.requestId,
+      message: { type: "provider.installation.update.request", provider },
+      timeout: 60_000,
+    });
+  }
+
+  /**
+   * The provider's latest update, then `provider.installation.update.progress` as updates start,
+   * report output and settle, and `provider.installation.update.cleared` when a refresh drops a
+   * failed update. Survives reconnects: each new snapshot replaces the previous one.
+   */
+  observeProviderUpdates(
+    provider: AgentProvider,
+    options?: { signal?: AbortSignal },
+  ): OwnedSubscription<
+    CorrelatedResponsePayload<"provider.installation.update.subscribe.response">
+  > {
+    return this.observe(
+      "provider.installation.update.subscribe.response",
+      { type: "provider.installation.update.subscribe.request", provider },
+      options,
+    );
+  }
+
   async listProviderUsage(options?: { requestId?: string }): Promise<ProviderUsageListPayload> {
     return this.sendNamespacedCorrelatedSessionRequest({
       requestId: options?.requestId,
@@ -6757,6 +6866,38 @@ export class DaemonClient {
       responseType: "plugin.source.status.response",
     });
     return payload.plugins;
+  }
+
+  private requirePluginRegistry(): void {
+    // COMPAT(pluginRegistry): added in v0.16.0; remove after 2027-05-15 once daemon floor proxies the registry.
+    if (this.getLastServerInfoMessage()?.features?.pluginRegistry !== true)
+      throw new Error("Update the host to browse plugins.");
+  }
+
+  /** The host's default plugin registry directory. */
+  async listPluginRegistry(): Promise<PluginListingIndex> {
+    this.requirePluginRegistry();
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.registry.list.request", requestId },
+      responseType: "plugin.registry.list.response",
+      timeout: 60_000,
+    });
+    return payload.index;
+  }
+
+  /** One registry listing with its overview. */
+  async getRegistryPlugin(id: string): Promise<PluginListingDetail> {
+    this.requirePluginRegistry();
+    const requestId = this.createRequestId();
+    const payload = await this.sendCorrelatedSessionRequest({
+      requestId,
+      message: { type: "plugin.registry.get.request", requestId, id },
+      responseType: "plugin.registry.get.response",
+      timeout: 60_000,
+    });
+    return payload.plugin;
   }
 
   private requirePluginUpdates(): void {
@@ -8258,7 +8399,9 @@ export class DaemonClient {
   ): WaitHandle<T> {
     // Capture stack trace at call site, not inside setTimeout
     const timeoutError = new DaemonConnectionError(
-      `Timeout waiting for message (${timeout}ms)`,
+      options?.requestType
+        ? `No response to ${options.requestType} after ${timeout}ms`
+        : `Timeout waiting for message (${timeout}ms)`,
       "DAEMON_REQUEST_TIMEOUT",
     );
 

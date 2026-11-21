@@ -197,12 +197,14 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
                 has to appear, so it sits beside the row rather than inside it. */}
             <View style={styles.workspaceMetaLineContent}>
               <WorkspaceMetaRow
+                backdrop={backdrop}
                 currentBranch={workspace.currentBranch}
                 projectName={leadingProjectName}
                 hostBadge={hostBadge ?? null}
                 prHint={workspace.prHint}
                 serviceSummary={serviceSummary}
                 labels={labels}
+                workspace={workspace}
               />
             </View>
             <SidebarMergedArchiveAction

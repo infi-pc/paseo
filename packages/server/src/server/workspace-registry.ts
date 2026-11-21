@@ -74,6 +74,7 @@ const PersistedWorkspaceRecordSchema = z.object({
     .nullable()
     .optional()
     .transform((value) => value ?? null),
+  head: z.string().optional(),
   // Exact checkout/worktree root backing cwd. This differs from cwd when the
   // selected project is a subdirectory inside a repository. Persist it so
   // archive and recovery do not need the directory to still exist in order to
@@ -89,6 +90,7 @@ const PersistedWorkspaceRecordSchema = z.object({
     .transform((value) => value ?? null),
   isPaseoOwnedWorktree: z.boolean().default(false),
   mainRepoRoot: z.string().nullable().default(null),
+  worktreeManagerPluginId: z.string().min(1).optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
   archivedAt: z.string().nullable(),
@@ -130,6 +132,7 @@ export interface WorkspaceMutationContext {
 
 export interface WorkspaceArchiveContext {
   autoArchivedChangeRequestUrl?: string;
+  head?: string;
 }
 
 export interface ProjectMutation {
@@ -592,6 +595,7 @@ export class FileBackedWorkspaceRegistry
           archivedAt,
           // FORK(workspace-snooze): archived workspaces never wake.
           snooze: null,
+          head: context?.head,
           ...(context?.autoArchivedChangeRequestUrl
             ? { autoArchivedChangeRequestUrl: context.autoArchivedChangeRequestUrl }
             : {}),
@@ -701,6 +705,7 @@ export function createPersistedWorkspaceRecord(input: {
   baseBranch?: string | null;
   isPaseoOwnedWorktree?: boolean;
   mainRepoRoot?: string | null;
+  worktreeManagerPluginId?: string | null;
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;
@@ -711,7 +716,7 @@ export function createPersistedWorkspaceRecord(input: {
   untrustedSource?: UntrustedWorkspaceSource;
   background?: boolean;
 }): PersistedWorkspaceRecord {
-  const { background, ...rest } = input;
+  const { background, worktreeManagerPluginId, ...rest } = input;
   return PersistedWorkspaceRecordSchema.parse({
     ...rest,
     background: background ?? false,
@@ -721,6 +726,7 @@ export function createPersistedWorkspaceRecord(input: {
     baseBranch: input.baseBranch ?? null,
     isPaseoOwnedWorktree: input.isPaseoOwnedWorktree ?? false,
     mainRepoRoot: input.mainRepoRoot ?? null,
+    ...(worktreeManagerPluginId ? { worktreeManagerPluginId } : {}),
     archivedAt: input.archivedAt ?? null,
     autoArchivedChangeRequestUrl: input.autoArchivedChangeRequestUrl ?? null,
     pinnedAt: input.pinnedAt ?? null,

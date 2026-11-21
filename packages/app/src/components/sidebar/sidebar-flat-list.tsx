@@ -4,18 +4,10 @@ import { SidebarSessionsContext, WorkspaceSessionRows } from "./navigation/sessi
 import { sectionPreferenceKey } from "./navigation/use-navigation";
 import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
-import {
-  memo,
-  useCallback,
-  useMemo,
-  useState,
-  useContext,
-  useId,
-  type ReactNode,
-  type Ref,
-} from "react";
+import { useWorkspaceRowPress } from "../../../modules/paseo-press-feedback";
+import { memo, useCallback, useMemo, useState, useContext, type ReactNode, type Ref } from "react";
 import { useTranslation } from "react-i18next";
-import { View, Text, ScrollView, type GestureResponderEvent } from "react-native";
+import { View, Text, ScrollView } from "react-native";
 import { NestableScrollContainer } from "react-native-draggable-flatlist";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -28,14 +20,13 @@ import { density } from "@/styles/density";
 import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
 
 import { useToast } from "@/contexts/toast-context";
+import { SidebarToastClearance } from "@/components/sidebar/sidebar-toast-region";
 import { useSidebarWorkspaceRename } from "@/workspace-rename";
 import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-actions";
 import { redirectIfArchivingActiveWorkspace } from "@/utils/sidebar-workspace-archive-redirect";
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
-import { toWorktreeArchiveRisk } from "@/git/worktree-archive-warning";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useWorkspaceReadState } from "@/hooks/use-workspace-read-state";
 import {
   SidebarWorkspaceRowFrame,
@@ -130,6 +121,7 @@ export function SidebarFlatWorkspaceList({
           <Text style={styles.emptyNavigation}>{t("sidebar.navigation.empty")}</Text>
         ) : null}
       </View>
+      <SidebarToastClearance />
     </>
   );
   return (
@@ -320,8 +312,9 @@ function StatusWorkspaceRowWithMenu({
     serverId: workspace.serverId,
     workspaceId: workspace.workspaceId,
     workspaceKind: workspace.workspaceKind,
+    workspaceDirectory: workspace.workspaceDirectory,
     name: workspace.name,
-    ...toWorktreeArchiveRisk(workspace),
+    diffStat: workspace.diffStat,
     onArchiveStarted: redirectAfterArchive,
     onSetHiding: setIsHidingWorkspace,
   });
@@ -362,18 +355,6 @@ function StatusWorkspaceRowWithMenu({
       toast.error(error instanceof Error ? error.message : "Failed to mark workspace as unread");
     });
   }, [markUnread, toast]);
-
-  const handlerInstance = useId();
-  useKeyboardActionHandler({
-    handlerId: `workspace-archive-${workspace.workspaceKey}-${handlerInstance}`,
-    actions: ["workspace.archive"],
-    enabled: selected && !isArchiving,
-    priority: 0,
-    handle: () => {
-      handleArchive();
-      return true;
-    },
-  });
 
   return (
     <>
@@ -489,7 +470,7 @@ function StatusWorkspaceRowInnerContent({
 }) {
   const isCompact = useIsCompactFormFactor();
   const isTouchPlatform = platformIsNative || isCompact;
-  const [isPressed, setIsPressed] = useState(false);
+  const [isHighlighted, setIsHighlighted] = useState(false);
   const trailing = useSidebarWorkspaceTrailing();
   const {
     role: _dragRole,
@@ -507,24 +488,11 @@ function StatusWorkspaceRowInnerContent({
   const startDragPress = dragInteraction?.handlePressIn;
   const moveDragPress = dragInteraction?.handleTouchMove;
   const endDragPress = dragInteraction?.handlePressOut;
-  const handlePress = useCallback(() => {
-    if (didLongPressRef?.current) {
-      didLongPressRef.current = false;
-      return;
-    }
-    onPress();
-  }, [didLongPressRef, onPress]);
-  const handlePressIn = useCallback(
-    (event: GestureResponderEvent) => {
-      setIsPressed(true);
-      startDragPress?.(event);
-    },
-    [startDragPress],
-  );
-  const handlePressOut = useCallback(() => {
-    setIsPressed(false);
-    endDragPress?.();
-  }, [endDragPress]);
+  const { onPress: handlePress, feedback } = useWorkspaceRowPress({
+    didLongPressRef,
+    onPress,
+    selected,
+  });
 
   return (
     <SidebarWorkspaceRowFrame
@@ -550,12 +518,11 @@ function StatusWorkspaceRowInnerContent({
           showShortcut,
         });
         const workspaceRowStyle = getStatusWorkspaceRowStyle({
-          isPressed,
           selected,
           isHovered,
           isDragging,
         });
-        const backdrop = getSidebarRowBackdrop({ isDragging, isPressed, selected, isHovered });
+        const backdrop = getSidebarRowBackdrop({ isDragging, isHighlighted, selected, isHovered });
         return (
           <View
             {...dragAttributes}
@@ -591,10 +558,11 @@ function StatusWorkspaceRowInnerContent({
               accessibilityState={accessibilityState}
               aria-selected={selected}
               style={workspaceRowStyle}
-              highlightStyle={styles.workspaceRowPressed}
-              onPressIn={isEditingTitle ? undefined : handlePressIn}
+              highlightStyle={isEditingTitle ? undefined : styles.workspaceRowPressed}
+              onHighlightChange={setIsHighlighted}
+              onPressIn={isEditingTitle ? undefined : startDragPress}
               onTouchMove={isEditingTitle ? undefined : moveDragPress}
-              onPressOut={isEditingTitle ? undefined : handlePressOut}
+              onPressOut={isEditingTitle ? undefined : endDragPress}
               onPress={isEditingTitle ? undefined : handlePress}
               testID={`sidebar-workspace-row-${workspace.workspaceKey}`}
             >
@@ -639,6 +607,7 @@ function StatusWorkspaceRowInnerContent({
                   />
                 ) : null}
               </SidebarWorkspaceRowContent>
+              {feedback}
             </SidebarWorkspaceContextMenu>
           </View>
         );
@@ -694,7 +663,11 @@ function StatusWorkspaceActionSlot({
   return (
     <SidebarWorkspaceTrailingActionSlot reserveWidth={reserveSlotWidth}>
       <SidebarWorkspaceTrailingActionBase presentation={trailingPresentation}>
-        <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
+        <SidebarWorkspaceTrailingContent
+          workspace={workspace}
+          trailing={trailing}
+          backdrop={backdrop}
+        />
       </SidebarWorkspaceTrailingActionBase>
       <SidebarWorkspaceTrailingActionOverlay
         visible={kebab.showKebab}
@@ -729,12 +702,10 @@ function StatusWorkspaceActionSlot({
 }
 
 function getStatusWorkspaceRowStyle({
-  isPressed,
   selected,
   isHovered,
   isDragging,
 }: {
-  isPressed: boolean;
   selected: boolean;
   isHovered: boolean;
   isDragging: boolean;
@@ -744,7 +715,6 @@ function getStatusWorkspaceRowStyle({
     isHovered && styles.workspaceRowHovered,
     selected && styles.sidebarRowSelected,
     isDragging && styles.workspaceRowDragging,
-    isPressed && styles.workspaceRowPressed,
   ];
 }
 
@@ -769,6 +739,7 @@ const styles = StyleSheet.create((theme) => ({
   listContent: {
     paddingHorizontal: theme.spacing[2],
     paddingTop: 2,
+    // Room for the sidebar toast comes from SidebarToastClearance at the end of the content.
     paddingBottom: theme.spacing[4],
   },
   workspaceRowContainer: {

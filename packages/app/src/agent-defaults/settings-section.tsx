@@ -53,9 +53,16 @@ function AgentDefaultsPicker({
   const { entries, isLoading, refresh, refetchIfStale } = useProvidersSnapshot(serverId, {
     cwd: workingDir,
   });
-  const providers = useMemo(() => buildSelectableProviderSelectorProviders(entries), [entries]);
   const defaults = config?.agentDefaults;
   const selection = projectId ? defaults?.projects?.[projectId] : defaults?.host;
+  const providers = useMemo(
+    () =>
+      buildSelectableProviderSelectorProviders(entries, {
+        selectedProvider: selection?.provider ?? null,
+        isConnected: connected,
+      }),
+    [entries, selection, connected],
+  );
   const inheritedLabel = t(
     projectId ? "settings.agentDefaults.inherit" : "settings.agentDefaults.remember",
   );

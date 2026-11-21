@@ -463,7 +463,9 @@ describe("sidebar group visibility", () => {
 
   it.each([0, 20, 21])("limits %i Done rows to twenty", (count) => {
     const items = entries(Array(count).fill("done"));
-    const { result } = renderHook(() => useLimitedSidebarGroup({ items, selection: null, policy }));
+    const { result } = renderHook(() =>
+      useLimitedSidebarGroup({ items, selection: null, expanded: false, policy }),
+    );
     expect(result.current.visibleItems).toEqual(items.slice(0, 20));
     expect(result.current.canToggle).toBe(count > 20);
   });
@@ -473,7 +475,7 @@ describe("sidebar group visibility", () => {
     (status) => {
       const items = entries([...Array(24).fill("done"), status]);
       const { result } = renderHook(() =>
-        useLimitedSidebarGroup({ items, selection: null, policy }),
+        useLimitedSidebarGroup({ items, selection: null, expanded: false, policy }),
       );
       expect(names(result.current.visibleItems)).toEqual([...names(items.slice(0, 20)), "row-25"]);
       expect(result.current.visibleItems[20]).toBe(items[24]);
@@ -489,6 +491,7 @@ describe("sidebar group visibility", () => {
         useLimitedSidebarGroup({
           items,
           selection: null,
+          expanded: false,
           policy: createWorkspaceVisibilityPolicy(entriesByKey),
         }),
       );
@@ -513,7 +516,9 @@ describe("sidebar group visibility", () => {
       "needs_input",
       "failed",
     ]);
-    const { result } = renderHook(() => useLimitedSidebarGroup({ items, selection: null, policy }));
+    const { result } = renderHook(() =>
+      useLimitedSidebarGroup({ items, selection: null, expanded: false, policy }),
+    );
     expect(result.current.visibleItems).toEqual(items);
     expect(result.current.canToggle).toBe(false);
   });
@@ -527,9 +532,10 @@ describe("sidebar group visibility", () => {
       "done",
       "attention",
     ]);
-    const { result, rerender, unmount } = renderHook(
-      ({ rows }) => useLimitedSidebarGroup({ items: rows, selection: null, policy }),
-      { initialProps: { rows: items } },
+    const { result, rerender } = renderHook(
+      ({ rows, expanded }) =>
+        useLimitedSidebarGroup({ items: rows, selection: null, expanded, policy }),
+      { initialProps: { rows: items, expanded: false } },
     );
     expect(names(result.current.visibleItems)).toEqual([
       ...names(items.slice(0, 20)),
@@ -537,27 +543,36 @@ describe("sidebar group visibility", () => {
       "row-23",
       "row-25",
     ]);
-    act(() => result.current.toggleExpanded());
+    rerender({ rows: items, expanded: true });
     expect(result.current.visibleItems).toEqual(items);
-    rerender({ rows: items.map((item) => ({ ...item, statusBucket: "running" })) });
+    rerender({ rows: items.map((item) => ({ ...item, statusBucket: "running" })), expanded: true });
     expect(result.current.canToggle).toBe(false);
-    expect(result.current.expanded).toBe(true);
-    rerender({ rows: items.slice(0, 3) });
+    rerender({ rows: items.slice(0, 3), expanded: true });
     expect(result.current.canToggle).toBe(false);
-    rerender({ rows: items.toReversed() });
+    rerender({ rows: items.toReversed(), expanded: true });
     expect(result.current.visibleItems).toEqual(items.toReversed());
-    act(() => result.current.toggleExpanded());
+    rerender({ rows: items.toReversed(), expanded: false });
     expect(result.current.visibleItems).toEqual(items.toReversed().slice(0, 20));
     const newest = { ...items[0], workspaceId: "new", workspaceKey: "srv:new" };
-    rerender({ rows: [newest, ...items] });
+    rerender({ rows: [newest, ...items], expanded: false });
     expect(result.current.visibleItems[0]).toBe(newest);
     expect(result.current.visibleItems).toHaveLength(23);
-    expect(result.current.expanded).toBe(false);
-    act(() => result.current.toggleExpanded());
-    unmount();
-    const remounted = renderHook(() => useLimitedSidebarGroup({ items, selection: null, policy }));
-    expect(remounted.result.current.expanded).toBe(false);
-    expect(remounted.result.current.visibleItems).toHaveLength(23);
+  });
+
+  it("shows the reveal its owner passes in on every mount", () => {
+    // A native drop remounts every project block it moves, so the group holds no reveal of its
+    // own. Only the native list remounts rows; the browser list never does, so no test here can
+    // drive that remount.
+    const items = entries([...Array(20).fill("done"), "running", "done", "failed", "done"]);
+    const first = renderHook(() =>
+      useLimitedSidebarGroup({ items, selection: null, expanded: true, policy }),
+    );
+    expect(first.result.current.visibleItems).toEqual(items);
+    first.unmount();
+    const remounted = renderHook(() =>
+      useLimitedSidebarGroup({ items, selection: null, expanded: true, policy }),
+    );
+    expect(remounted.result.current.visibleItems).toEqual(items);
   });
 
   it("follows effective pending creation, recovery and agent activity without changing Created order", () => {
@@ -580,7 +595,12 @@ describe("sidebar group visibility", () => {
     };
     const { result, rerender } = renderHook(
       ({ last }) =>
-        useLimitedSidebarGroup({ items: [...items.slice(0, 24), last], selection: null, policy }),
+        useLimitedSidebarGroup({
+          items: [...items.slice(0, 24), last],
+          selection: null,
+          expanded: false,
+          policy,
+        }),
       { initialProps: { last: items[24] } },
     );
     expect(result.current.visibleItems).toHaveLength(20);
@@ -618,12 +638,15 @@ describe("sidebar group visibility", () => {
 
   it("preserves the twenty-row pinned policy regardless of status", () => {
     const items = entries(Array(21).fill("running"));
-    const { result } = renderHook(() => useLimitedSidebarGroup({ items, selection: null }));
+    const { result, rerender } = renderHook(
+      ({ expanded }) => useLimitedSidebarGroup({ items, selection: null, expanded }),
+      { initialProps: { expanded: false } },
+    );
     expect(result.current.visibleItems).toEqual(items.slice(0, 20));
     expect(result.current.canToggle).toBe(true);
-    act(() => result.current.toggleExpanded());
+    rerender({ expanded: true });
     expect(result.current.visibleItems).toEqual(items);
-    act(() => result.current.toggleExpanded());
+    rerender({ expanded: false });
     expect(result.current.visibleItems).toHaveLength(20);
   });
 });
