@@ -234,7 +234,7 @@ Normal mode is the default. Automatic runs select suites by behavior using `.git
 | Server integration                                    | Direct server changes on automatic runs                                                                    | Always                              |
 | CLI                                                   | Units when affected; E2E shards for direct CLI changes on automatic runs                                   | Units and all E2E shards            |
 | Electron                                              | Units and lifecycle smoke when affected; renderer/browser E2E for direct desktop changes on automatic runs | All                                 |
-| macOS file observation                                | Watcher-related changes                                                                                    | Always                              |
+| macOS file observation and compiler cleanup           | Watcher or plugin compiler changes                                                                         | Always                              |
 | Website unit and browser tests                        | Website, public docs, protocol, dependency or workflow changes                                             | Always                              |
 
 The browser smoke command selects existing deterministic specs for streamed Markdown, plan approval, project navigation, drafts, diffs, snoozing, reconnect, pinned prompts, and selection actions. Full mode retains the remaining regression coverage. Neither mode includes live-provider browser specs (`*.real.spec.ts`).

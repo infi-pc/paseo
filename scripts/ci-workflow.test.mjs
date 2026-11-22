@@ -306,6 +306,8 @@ test("PR routing declares stable behavior ownership", () => {
       "packages/server/src/server/file-observer/**",
       "packages/server/src/server/workspace-git-service*",
       "packages/server/src/server/watcher-liveness-canary*",
+      "packages/server/src/server/plugins/compiler*.ts",
+      "packages/server/src/server/plugins/index.posix.test.ts",
       "packages/server/vitest.config.ts",
     ],
   });
