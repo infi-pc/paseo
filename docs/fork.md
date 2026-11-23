@@ -131,7 +131,7 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 - Commits: `df9f8a96d` and `ee8067326`.
 - Owns: `packages/desktop/src/editable/`, `packages/app/src/editable/`, and `packages/app/babel-editable-source.cjs`.
 - Wires into: Electron main, preload, native menu, renderer recovery, and desktop updater; the Expo app shell, sidebar, keyboard actions, English resources, Babel, PWA manifest, and personal TestFlight configuration.
-- Desktop loads signed renderer releases and keeps a recovery renderer. The app's picker sends source locations to the Workshop agent. Personal TestFlight builds can opt in to Expo OTA updates.
+- Desktop loads signed renderer releases and keeps a recovery renderer. Build the side-by-side macOS bundle with `npm run build:dev-app --workspace=@getpaseo/desktop`. Paseo Dev uses `~/.paseo-dev`, port `6770`, and the `paseo-dev:` external scheme. Its Editable menu reads Shelf settings and the signing public key from `~/.editable-paseo` and stores downloaded releases and rollback state under `~/.paseo-dev/editable`. Set `EDITABLE_PASEO_HOME` at launch to use a separate, self-contained Shelf configuration and release store. The app's picker sends source locations to the Workshop agent. Personal TestFlight builds can opt in to Expo OTA updates.
 
 ### Inbox and project navigation
 

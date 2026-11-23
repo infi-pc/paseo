@@ -67,7 +67,7 @@ function assertExecutable(filePath, label) {
 
 function getExecutablePath(appPath) {
   if (process.platform === "darwin") {
-    return path.join(appPath, "Contents", "MacOS", EXECUTABLE_NAME);
+    return getMacMainExecutablePath(appPath);
   }
 
   if (process.platform === "win32") {
@@ -90,7 +90,8 @@ function getCliShimPath(appPath) {
 }
 
 function getMacMainExecutablePath(appPath) {
-  return path.join(appPath, "Contents", "MacOS", EXECUTABLE_NAME);
+  // FORK(editable): the local dev bundle also uses its product name as the executable.
+  return path.join(appPath, "Contents", "MacOS", path.basename(appPath, ".app"));
 }
 
 function getLaunchCommand(executablePath, args) {

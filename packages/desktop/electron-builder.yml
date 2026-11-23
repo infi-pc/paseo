@@ -12,6 +12,8 @@ directories:
   output: release
 files:
   - dist/**/*
+  # FORK(editable): checkout-style opt-in can read the profile inside the asar.
+  - build/paseo-dev-profile.json
   - "!**/*.map"
   - "!node_modules/@getpaseo/*/src/**"
   - "!node_modules/@getpaseo/**/*.test.*"

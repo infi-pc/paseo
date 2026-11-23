@@ -6,7 +6,16 @@ import {
 } from "@getpaseo/protocol/compose-deep-link";
 import { randomUUID } from "node:crypto";
 
-export function parseDesktopDeepLink(input: string): DesktopNavigationTarget | null {
+// FORK(editable): accept the bundle's external scheme and reuse the existing link format.
+export function parseDesktopDeepLink(
+  input: string,
+  scheme = "paseo",
+): DesktopNavigationTarget | null {
+  if (scheme !== "paseo") {
+    const prefix = `${scheme}:`;
+    if (!input.toLowerCase().startsWith(prefix)) return null;
+    input = `paseo:${input.slice(prefix.length)}`;
+  }
   return parseAgentDeepLink(input) ?? parseComposeDeepLink(input);
 }
 
@@ -16,9 +25,12 @@ export function buildDesktopNavigationRoute(target: DesktopNavigationTarget): st
     : buildAgentDeepLinkRoute(target);
 }
 
-export function parseDesktopDeepLinkFromArgv(argv: string[]): DesktopNavigationTarget | null {
+export function parseDesktopDeepLinkFromArgv(
+  argv: string[],
+  scheme?: string,
+): DesktopNavigationTarget | null {
   for (const arg of argv) {
-    const target = parseDesktopDeepLink(arg);
+    const target = parseDesktopDeepLink(arg, scheme);
     if (target) {
       return target;
     }

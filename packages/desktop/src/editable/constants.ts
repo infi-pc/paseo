@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { isDevInstance } from "./dev-profile.js";
 
 export const DESKTOP_RUNTIME_VERSION = "desktop-1";
 export const EDITABLE_APP_SCHEME = "paseo";
@@ -14,5 +15,5 @@ export function isSafeRenderer(argv = process.argv, env = process.env): boolean 
 }
 
 export function allowUpstreamDesktopUpdates(env = process.env): boolean {
-  return env.PASEO_ALLOW_UPSTREAM_DESKTOP_UPDATES === "1";
+  return !isDevInstance() && env.PASEO_ALLOW_UPSTREAM_DESKTOP_UPDATES === "1";
 }

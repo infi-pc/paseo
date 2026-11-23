@@ -1,19 +1,5 @@
-import { protectConsoleStreams } from "./diagnostics/console-streams.js";
-protectConsoleStreams();
-
-process.emitWarning = (() => {}) as typeof process.emitWarning;
-
-import log from "electron-log/main";
-log.transports.console.level = "info";
-log.initialize({ spyRendererConsole: true });
-
-import { inheritLoginShellEnv } from "./login-shell-env.js";
-
 import path from "node:path";
-import { randomBytes, randomUUID } from "node:crypto";
-import { hostname } from "node:os";
-import { existsSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import {
   app,
   autoUpdater as electronAutoUpdater,
@@ -30,6 +16,35 @@ import {
   shell,
   webContents,
 } from "electron";
+// FORK(editable): select the dev identity before logging, shell import, or the instance lock.
+import { applyDevInstanceProfile } from "./editable/dev-profile.js";
+import { resolveEditableHome } from "./editable/constants.js";
+
+const cloudShelfHome = resolveEditableHome();
+const devProfile = applyDevInstanceProfile();
+if (devProfile) {
+  const userData = process.env.PASEO_ELECTRON_USER_DATA_DIR!;
+  mkdirSync(userData, { recursive: true, mode: 0o700 });
+  app.setName(devProfile.name);
+  app.setPath("userData", userData);
+  app.setPath("sessionData", userData);
+  app.setAppLogsPath(path.join(userData, "logs"));
+}
+
+import { protectConsoleStreams } from "./diagnostics/console-streams.js";
+protectConsoleStreams();
+
+process.emitWarning = (() => {}) as typeof process.emitWarning;
+
+import log from "electron-log/main";
+log.transports.console.level = "info";
+log.initialize({ spyRendererConsole: true });
+
+import { inheritLoginShellEnv } from "./login-shell-env.js";
+
+import { randomBytes, randomUUID } from "node:crypto";
+import { hostname } from "node:os";
+import { execFileSync } from "node:child_process";
 import { registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
@@ -121,7 +136,8 @@ import {
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
 const PASEO_DEBUG = process.env.PASEO_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.PASEO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
-const APP_NAME = process.env.PASEO_TEST_APP_NAME?.trim() || "Paseo";
+const APP_NAME = devProfile?.name ?? (process.env.PASEO_TEST_APP_NAME?.trim() || "Paseo");
+const DEEP_LINK_SCHEME = devProfile?.deepLinkScheme;
 const DESKTOP_WINDOW_CHROME_MODE = resolveDesktopWindowChromeMode({
   platform: process.platform,
   override: process.env.PASEO_DESKTOP_WINDOW_CONTROLS,
@@ -307,7 +323,9 @@ function installBrowserWindowOpenHandler(input: {
 // Electron windows can run side-by-side (separate userData = separate lock).
 let devWorktreeName: string | null = null;
 const forcedUserDataDir = process.env.PASEO_ELECTRON_USER_DATA_DIR?.trim();
-if (forcedUserDataDir) {
+if (devProfile) {
+  log.info("[dev-user-data] Paseo Dev userData dir:", app.getPath("userData"));
+} else if (forcedUserDataDir) {
   app.setPath("userData", forcedUserDataDir);
   log.info("[dev-user-data] forced userData dir:", forcedUserDataDir);
 } else if (!app.isPackaged) {
@@ -366,7 +384,7 @@ let pendingOpenProjectPath = parseOpenProjectPathFromArgv({
   argv: process.argv,
   isDefaultApp: process.defaultApp,
 });
-let pendingAgentNavigation = parseDesktopDeepLinkFromArgv(process.argv);
+let pendingAgentNavigation = parseDesktopDeepLinkFromArgv(process.argv, DEEP_LINK_SCHEME);
 
 // Each window pulls its own pending open-project path on mount, keyed by
 // webContents id, so deep-linked windows (second-instance launches, the
@@ -868,7 +886,7 @@ desktopWindowOwner = createDesktopWindowOwner<DesktopNavigationTarget>({
 // ---------------------------------------------------------------------------
 
 function receiveAgentDeepLink(input: string): void {
-  const target = parseDesktopDeepLink(input);
+  const target = parseDesktopDeepLink(input, DEEP_LINK_SCHEME);
   if (!target) {
     return;
   }
@@ -911,7 +929,7 @@ function setupSingleInstanceLock(): boolean {
   }
 
   app.on("second-instance", (_event, commandLine) => {
-    const agentTarget = parseDesktopDeepLinkFromArgv(commandLine);
+    const agentTarget = parseDesktopDeepLinkFromArgv(commandLine, DEEP_LINK_SCHEME);
     if (agentTarget) {
       void bootstrapComplete
         .then(() => desktopWindowOwner.openOrFocusAgent(agentTarget))
@@ -966,6 +984,7 @@ async function bootstrap(): Promise<void> {
   // FORK(editable): serve the verified or built-in renderer on the shared app origin.
   editableRuntime = new EditableDesktopRuntime({
     builtInDistDir: getAppDistDir(),
+    cloudShelfHome: devProfile ? cloudShelfHome : undefined,
     isPackaged: app.isPackaged,
     devServerUrl: DEV_SERVER_URL,
     openNewWindow: () => desktopWindowOwner.openAdditional(),
@@ -979,6 +998,7 @@ async function bootstrap(): Promise<void> {
     editable: {
       useRecoveryRenderer: () => editableRuntime.useRecoveryRenderer(),
       reloadLatestRenderer: () => editableRuntime.reloadLatestRenderer(),
+      syncFromCloudShelf: devProfile ? () => editableRuntime.syncFromCloudShelf() : undefined,
       exitPreviewMode: () => editableRuntime.exitPreviewMode(),
     },
     onNewWindow: () => {
@@ -1041,7 +1061,23 @@ async function bootstrap(): Promise<void> {
 void runDesktopStartup({
   hasPendingGuiLaunchRequest: Boolean(pendingOpenProjectPath || pendingAgentNavigation),
   runCliPassthroughIfRequested,
-  inheritLoginShellEnv,
+  // FORK(editable): a login shell may export the production daemon or renderer paths.
+  inheritLoginShellEnv: () => {
+    if (!devProfile) return inheritLoginShellEnv();
+    const isolationKeys = [
+      "PASEO_HOME",
+      "PASEO_LISTEN",
+      "PASEO_ELECTRON_USER_DATA_DIR",
+      "EDITABLE_PASEO_HOME",
+      "PASEO_RELAY_ENABLED",
+    ];
+    const isolationEnv = isolationKeys.map((key) => [key, process.env[key]] as const);
+    inheritLoginShellEnv();
+    for (const [key, value] of isolationEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  },
   bootstrapGui: bootstrap,
 }).catch((error) => {
   const message = error instanceof Error ? (error.stack ?? error.message) : String(error);

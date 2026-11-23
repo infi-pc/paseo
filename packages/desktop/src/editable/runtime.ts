@@ -7,7 +7,8 @@ import {
   session,
   type IpcMainInvokeEvent,
 } from "electron";
-import { EDITABLE_APP_SCHEME } from "./constants.js";
+import { syncFromCloudShelf } from "./cloud-sync.js";
+import { EDITABLE_APP_SCHEME, resolveEditableHome } from "./constants.js";
 import { validatePreviewUrl } from "./preview.js";
 import {
   createEditableProtocolHandler,
@@ -31,6 +32,8 @@ interface LoadAttempt {
 }
 
 export class EditableDesktopRuntime {
+  private readonly home = resolveEditableHome();
+  private cloudSync: Promise<void> | undefined;
   private readonly store: EditableReleaseStore;
   private readonly windows = new Map<number, BrowserWindow>();
   private readonly previews = new Set<BrowserWindow>();
@@ -43,11 +46,16 @@ export class EditableDesktopRuntime {
       builtInDistDir: string;
       isPackaged: boolean;
       devServerUrl: string;
+      cloudShelfHome?: string;
       openNewWindow: () => Promise<void>;
       warn: (error: unknown) => void;
     },
   ) {
-    this.store = new EditableReleaseStore(options);
+    this.store = new EditableReleaseStore({
+      ...options,
+      home: this.home,
+      publicKeyHome: options.cloudShelfHome,
+    });
     this.useExportedRenderer =
       options.isPackaged || this.store.safe || this.store.activeRelease.releaseDigest !== null;
   }
@@ -212,6 +220,21 @@ export class EditableDesktopRuntime {
 
   async reloadLatestRenderer(): Promise<void> {
     await this.navigateFromMenu(this.store.reloadChannel({ fromMenu: true }));
+  }
+
+  async syncFromCloudShelf(): Promise<void> {
+    if (this.store.safe) throw new Error("Editable renderer is disabled in safe renderer mode");
+    this.cloudSync ??= syncFromCloudShelf({
+      home: this.home,
+      configHome: this.options.cloudShelfHome ?? this.home,
+      publicKey: () => this.store.publicKey(),
+      shouldInstall: (candidate) => this.store.shouldInstallCloudChannel(candidate),
+    })
+      .then((installed) => (installed ? this.reloadLatestRenderer() : undefined))
+      .finally(() => {
+        this.cloudSync = undefined;
+      });
+    return this.cloudSync;
   }
 
   private async navigateFromMenu(release: RendererRelease): Promise<void> {

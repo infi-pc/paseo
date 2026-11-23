@@ -1,6 +1,8 @@
 import { promises as fs } from "node:fs";
 import { app } from "electron";
 import log from "electron-log/main";
+// FORK(editable): the dev bundle must never claim the production CLI path.
+import { isDevInstance } from "../../editable/dev-profile.js";
 import { resolveCliInstallSourcePath } from "./path.js";
 import { getBundledCliShimPath, getCliTargetPath, getLocalBinDir } from "./paths.js";
 import { ensurePathInShellRc } from "./shell-rc.js";
@@ -45,6 +47,7 @@ function buildCmdTrampoline(shimPath: string): string {
 }
 
 export async function installCli(): Promise<InstallStatus> {
+  if (isDevInstance()) return { installed: false };
   const targetPath = getCliTargetPath();
   const shimPath = getBundledCliShimPath();
 
@@ -72,6 +75,7 @@ export async function installCli(): Promise<InstallStatus> {
  * tools in ~/.local/bin rely on it.
  */
 export async function uninstallCli(): Promise<InstallStatus> {
+  if (isDevInstance()) return { installed: false };
   const targetPath = getCliTargetPath();
   if (await isOwnInstall(targetPath)) {
     await fs.unlink(targetPath);
@@ -94,6 +98,7 @@ async function isOwnInstall(targetPath: string): Promise<boolean> {
 }
 
 export async function getCliInstallStatus(): Promise<InstallStatus> {
+  if (isDevInstance()) return { installed: false };
   const targetPath = getCliTargetPath();
   return { installed: await pathOrSymlinkExists(targetPath) };
 }

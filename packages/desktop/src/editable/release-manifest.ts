@@ -26,9 +26,9 @@ export function parseReleaseManifest(payload: unknown) {
   assert.equal(manifest.kind, "release", "Unexpected manifest kind");
   assert.equal(manifest.surface, "electron-web", "Unexpected release surface");
   const releaseDigest = stringMatching(manifest.releaseDigest, sha256, "release digest");
-  stringMatching(manifest.sourceSha, /^[a-f0-9]{40}$/, "source SHA");
-  stringMatching(manifest.archiveSha256, sha256, "archive SHA");
-  bytes(manifest.archiveBytes);
+  const sourceSha = stringMatching(manifest.sourceSha, /^[a-f0-9]{40}$/, "source SHA");
+  const archiveSha256 = stringMatching(manifest.archiveSha256, sha256, "archive SHA");
+  const archiveBytes = bytes(manifest.archiveBytes);
   assert(typeof manifest.runtimeVersion === "string", "Missing runtime version");
   assert(
     typeof manifest.summary === "string" && manifest.summary.length <= 200,
@@ -51,5 +51,12 @@ export function parseReleaseManifest(payload: unknown) {
       bytes: bytes(entry.bytes),
     };
   });
-  return { releaseDigest, runtimeVersion: manifest.runtimeVersion, files };
+  return {
+    releaseDigest,
+    runtimeVersion: manifest.runtimeVersion,
+    sourceSha,
+    archiveSha256,
+    archiveBytes,
+    files,
+  };
 }

@@ -1,0 +1,8 @@
+{
+  "name": "Paseo Dev",
+  "appId": "cz.infi.paseo.dev",
+  "defaultHomeDirName": ".paseo-dev",
+  "defaultListen": "127.0.0.1:6770",
+  "deepLinkScheme": "paseo-dev",
+  "cliName": "paseo-dev"
+}

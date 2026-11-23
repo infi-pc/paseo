@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import type { CloudChannelCandidate } from "./cloud-sync.js";
 import { DESKTOP_RUNTIME_VERSION, isSafeRenderer, resolveEditableHome } from "./constants.js";
 import { resolveRegularFile, verifyReleaseDirectory, verifySignedEnvelope } from "./crypto.js";
 import { validatePreviewUrl } from "./preview.js";
@@ -59,6 +60,7 @@ export class EditableReleaseStore {
   readonly builtIn: RendererRelease;
   readonly safe: boolean;
   private readonly home: string;
+  private readonly publicKeyHome: string;
   private readonly warn: (error: unknown) => void;
   private state = initialState();
   private active: RendererRelease;
@@ -68,10 +70,12 @@ export class EditableReleaseStore {
   constructor(input: {
     builtInDistDir: string;
     home?: string;
+    publicKeyHome?: string;
     safe?: boolean;
     warn?: (error: unknown) => void;
   }) {
     this.home = input.home ?? resolveEditableHome();
+    this.publicKeyHome = input.publicKeyHome ?? this.home;
     this.safe = input.safe ?? isSafeRenderer();
     this.warn = input.warn ?? (() => {});
     this.builtIn = { releaseDigest: null, distDir: input.builtInDistDir, files: null };
@@ -117,8 +121,8 @@ export class EditableReleaseStore {
     }
   }
 
-  private publicKey(): string {
-    return readFileSync(path.join(this.home, "keys", "signing.public.pem"), "utf8");
+  publicKey(): string {
+    return readFileSync(path.join(this.publicKeyHome, "keys", "signing.public.pem"), "utf8");
   }
 
   private manifestPath(digest: string): string | null {
@@ -213,6 +217,27 @@ export class EditableReleaseStore {
     } catch {
       return null;
     }
+  }
+
+  shouldInstallCloudChannel({ digest, generation }: CloudChannelCandidate): boolean {
+    this.requireEditable();
+    if (
+      this.state.quarantinedDigests.includes(digest) ||
+      generation <= this.state.activeGeneration
+    ) {
+      return false;
+    }
+
+    // A local publisher can install a signed pointer without activating it in this window.
+    let local: CloudChannelCandidate | undefined;
+    try {
+      local = this.readChannelRelease();
+    } catch {
+      return true;
+    }
+    return (
+      generation > local.generation || (generation === local.generation && digest === local.digest)
+    );
   }
 
   reloadChannel(options?: { fromMenu?: boolean }): RendererRelease {

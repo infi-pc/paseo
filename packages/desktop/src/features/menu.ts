@@ -12,6 +12,7 @@ interface ApplicationMenuOptions {
   editable: {
     useRecoveryRenderer: () => Promise<void>;
     reloadLatestRenderer: () => Promise<void>;
+    syncFromCloudShelf?: () => Promise<void>;
     exitPreviewMode: () => Promise<void>;
   };
 }
@@ -180,6 +181,9 @@ function buildApplicationMenuTemplate(
       submenu: [
         editableMenuItem("Use Built-in Recovery UI", options.editable.useRecoveryRenderer),
         editableMenuItem("Reload Latest Signed UI", options.editable.reloadLatestRenderer),
+        ...(options.editable.syncFromCloudShelf
+          ? [editableMenuItem("Sync from Cloud Shelf", options.editable.syncFromCloudShelf)]
+          : []),
         editableMenuItem("Exit Preview Mode", options.editable.exitPreviewMode),
       ],
     },

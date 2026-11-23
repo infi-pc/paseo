@@ -16,6 +16,17 @@ describe("desktop agent navigation", () => {
     ).toEqual({ serverId: "server-1", agentId: "agent-2" });
   });
 
+  it("routes Paseo Dev links only with the dev scheme", () => {
+    const prod = "paseo://h/server-1/agent/agent-2";
+    const dev = "paseo-dev://h/server-1/agent/agent-2";
+    expect(parseDesktopDeepLinkFromArgv([dev], "paseo-dev")).toEqual({
+      serverId: "server-1",
+      agentId: "agent-2",
+    });
+    expect(parseDesktopDeepLinkFromArgv([dev])).toBeNull();
+    expect(parseDesktopDeepLinkFromArgv([prod], "paseo-dev")).toBeNull();
+  });
+
   it("holds navigation until the existing renderer is ready", () => {
     const inbox = new AgentNavigationInbox();
     const target = { serverId: "server-1", agentId: "agent-2" };
