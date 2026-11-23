@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
+import { openNewTabMenuWithShortcut } from "../support/helpers/launcher";
 import {
   expectTimelinePromptLandedBelowTop,
   expectTimelinePromptVisible,
@@ -127,15 +128,39 @@ test.describe("pinned current prompt", () => {
     await expect(pinnedPrompt(page)).toHaveCount(0);
   });
 
-  test("fades a prompt longer than the pinned cap", async ({ page }) => {
-    const longPrompt = Array.from({ length: 20 }, (_unused, line) => `pinned cap line ${line}`)
-      .join("\n")
-      .concat(" end");
+  test("keeps a long pin clipped and leaves the transcript clickable after a tab switch", async ({
+    page,
+  }) => {
+    const marker = "pinned cap line 0";
+    const longPrompt = Array.from({ length: 60 }, (_, line) => `pinned cap line ${line}`).join(
+      "\n",
+    );
     await agent.client.sendAgentMessage(agent.agentId, longPrompt);
     await agent.client.waitForFinish(agent.agentId, 15_000);
     await scrollPromptAboveFold(page, longPrompt);
 
-    await expect(pinnedPrompt(page)).toBeVisible();
+    const pin = pinnedPrompt(page);
+    await expect(pin).toContainText(marker);
+    await expect(page.getByTestId("pinned-prompt-fade")).toBeVisible();
+
+    const chatTab = page
+      .getByTestId("workspace-tabs-row")
+      .getByRole("button", { name: "Timeline pagination regression", exact: true });
+    await openNewTabMenuWithShortcut(page);
+    await expect(pin.filter({ visible: true })).toHaveCount(0);
+    await chatTab.click();
+
+    await expect(pin).toContainText(marker);
+    const geometry = await pin.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      const besidePin = document.elementFromPoint(box.left - 8, box.top + box.height / 2);
+      return {
+        height: box.height,
+        transcriptReceivesClick: !!besidePin?.closest('[data-testid="agent-chat-scroll"]'),
+      };
+    });
+    expect(geometry.height).toBeLessThan(120);
+    expect(geometry.transcriptReceivesClick).toBe(true);
     await expect(page.getByTestId("pinned-prompt-fade")).toBeVisible();
   });
 

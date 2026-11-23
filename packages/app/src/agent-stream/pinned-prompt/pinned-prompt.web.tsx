@@ -2,7 +2,7 @@ import { PressHighlight } from "@/components/ui/press-highlight";
 import { useCallback, useId, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { StyleSheet as RNStyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
-import Animated, { FadeIn, FadeOut, useReducedMotion } from "react-native-reanimated";
+import Animated, { FadeIn, useReducedMotion } from "react-native-reanimated";
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -32,18 +32,14 @@ export function PinnedPrompt({ pinnedId, promptById, onJumpToPrompt }: PinnedPro
   const isCompact = useIsCompactFormFactor();
   const prompt = pinnedItemId === null ? null : (promptById.get(pinnedItemId) ?? null);
   // A pinned header would eat a phone viewport, where the transcript is already the whole screen.
-  if (isCompact) {
+  if (isCompact || !prompt) {
     return null;
   }
-  // The layer stays mounted across pins so the bubble's exit animation has a parent to run under.
-  // Keying the bubble on the prompt resets its overflow measurement, so a short prompt following a
-  // long one never inherits its fade.
+  // Keying on the prompt resets the bubble's overflow measurement when the reading position moves.
   return (
     <View style={styles.layer} pointerEvents="box-none">
       <View style={styles.rail} pointerEvents="box-none">
-        {prompt ? (
-          <PinnedPromptBubble key={prompt.id} prompt={prompt} onJumpToPrompt={onJumpToPrompt} />
-        ) : null}
+        <PinnedPromptBubble key={prompt.id} prompt={prompt} onJumpToPrompt={onJumpToPrompt} />
       </View>
     </View>
   );
@@ -81,11 +77,13 @@ function PinnedPromptBubble({
   // the prompt's full height even while the clip box is capped.
   const isOverflowing = clipHeight > 0 && contentHeight > clipHeight;
 
+  // Web exit animations move the bubble into a temporary DOM clone using saved geometry.
+  // Remove the bubble immediately so a hidden tab cannot leave a copy over the transcript.
   return (
     <Animated.View
       style={shellStyles.shell}
+      pointerEvents="box-none"
       entering={prefersReducedMotion ? undefined : FadeIn.duration(140)}
-      exiting={prefersReducedMotion ? undefined : FadeOut.duration(140)}
     >
       <PressHighlight
         style={styles.bubble}
