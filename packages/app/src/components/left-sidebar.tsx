@@ -1,3 +1,5 @@
+// FORK(editable): expose the native screen editor in the sidebar.
+import { EditableNativeTrigger } from "@/editable/EditableNativeTrigger";
 import { SidebarSessionsContext } from "@/components/sidebar/navigation/session-rows";
 import {
   SidebarProjectRail,
@@ -485,6 +487,8 @@ function SidebarFooter({
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
         {rail ? null : <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />}
+        {/* FORK(editable): open the native edit sheet from the current screen. */}
+        <EditableNativeTrigger onOpen={onBeforeNavigate} />
         <View
           style={[styles.sidebarFooter, rail && styles.railFooter]}
           onLayout={handleRowLayout}

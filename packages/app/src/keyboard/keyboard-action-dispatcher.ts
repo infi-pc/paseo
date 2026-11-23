@@ -4,6 +4,8 @@ export type WorkspacePanelTarget = "changes" | "files" | "pull-request";
 export type WorkspacePanelPlacement = "supporting" | "side-pane" | "focused-pane";
 
 export type KeyboardActionId =
+  // FORK(editable): mount the picker as a global keyboard action.
+  | "editable.pick"
   | "agent.interrupt"
   | "message-input.focus"
   | "message-input.send"
@@ -60,6 +62,8 @@ export type KeyboardActionId =
   | "workspace.setup.show";
 
 export type KeyboardActionDefinition =
+  // FORK(editable): pick mode takes no keyboard payload.
+  | { id: "editable.pick"; scope: "global" }
   | { id: "agent.interrupt"; scope: KeyboardActionScope }
   | { id: "message-input.focus"; scope: KeyboardActionScope }
   | { id: "message-input.send"; scope: KeyboardActionScope }

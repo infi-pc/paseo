@@ -1,3 +1,5 @@
+// FORK(editable): isolate the Workshop overlay from the app shell.
+import { EditableOverlayBoundary } from "@/editable/EditableOverlayBoundary";
 import { useHardwareKeyboardPresent } from "@/keyboard";
 import {
   WindowLayoutProvider,
@@ -1063,6 +1065,8 @@ function RootAppTree() {
             <RootProviders>
               <RuntimeProviders>
                 <AppShell />
+                {/* FORK(editable): mount the optional picker beside the app navigator. */}
+                <EditableOverlayBoundary />
               </RuntimeProviders>
             </RootProviders>
           </AddHostProvider>

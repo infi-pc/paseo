@@ -1,6 +1,31 @@
 import { pluginGallery } from "./plugin-gallery";
 
 export const en = {
+  // FORK(editable): Workshop picker and release controls.
+  editable: {
+    placeholder: "Edit this component…",
+    editScreen: "Edit this screen",
+    pickHint: "Click a component to edit it. Esc to cancel.",
+    component: "Component",
+    repoPath: "Workshop repository path",
+    selectHost: "Choose a Workshop host",
+    noHosts: "Pair a host in Paseo Settings to use it as your Workshop.",
+    saveFailed: "Could not save the Workshop host. Try again.",
+    offline: "The Workshop host is offline. Reconnect it or choose another host.",
+    noProvider: "Set up an agent provider on the Workshop host or choose another host.",
+    busy: "The Workshop is busy. Try again.",
+    sendFailed:
+      "Could not send the edit. Check the Workshop host and repository path, then try again.",
+    cancel: "Cancel",
+    send: "Send",
+    editing: "Workshop editing…",
+    preview: "Preview mode",
+    exitPreview: "Exit",
+    updateReady: "Signed update ready",
+    applyRelease: "Apply",
+    recovery: "Recovery UI",
+    desktopFailed: "Could not change the renderer",
+  },
   // FORK(locator-compose): source links target the remembered worktree composer.
   composeLink: {
     loading: "Opening the worktree composer…",
