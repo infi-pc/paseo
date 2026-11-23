@@ -132,6 +132,28 @@ afterEach(() => {
 });
 
 describe("WorkspaceSessionRows and WorkspaceLeadingSessionToggle", () => {
+  it("shows session shortcuts without repeating a timed snooze reminder", () => {
+    const wakeAt = "2026-11-26T08:00:00.000Z";
+    const workspace: SidebarWorkspaceEntry = {
+      ...makeWorkspace(),
+      snooze: {
+        id: "snooze-1",
+        createdAt: "2026-11-23T08:00:00.000Z",
+        config: { mode: "time", wakeAt, timezone: "Europe/Prague" },
+        nextCheckAt: wakeAt,
+        lastCheck: null,
+      },
+    };
+    const { container } = renderHarness({
+      workspace,
+      sessions: [makeSession()],
+      section: "snoozed",
+      isHovered: false,
+    });
+
+    expect(container.textContent).toBe("Affected e2e tests");
+  });
+
   it("omits the Sessions header line and folds Inbox sessions from the leading icon slot without triggering row press", () => {
     const workspace = makeWorkspace();
     const onRowPress = vi.fn();

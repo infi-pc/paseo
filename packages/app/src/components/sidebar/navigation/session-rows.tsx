@@ -143,18 +143,16 @@ export function WorkspaceSessionRows({
   const { rows, expanded } = useWorkspaceSessionDisclosure(workspace.workspaceKey, section);
   const snooze = workspace.snooze;
   const deadline =
-    snooze?.config.mode === "time" ? snooze.config.wakeAt : snooze?.config.deadlineAt;
-  const showSnooze = Boolean(snooze && section !== "running");
+    section !== "running" && snooze && snooze.config.mode !== "time"
+      ? snooze.config.deadlineAt
+      : undefined;
   const showSessions = expanded && rows.length > 0;
-  if (!showSnooze && !showSessions) return null;
+  if (!deadline && !showSessions) return null;
   return (
     <View style={styles.children}>
-      {showSnooze ? (
+      {deadline ? (
         <Text style={styles.muted}>
-          {t("workspaceSnooze.snoozed")}
-          {deadline
-            ? ` · ${t("inboxSections.reminder", { time: new Date(deadline).toLocaleString() })}`
-            : ""}
+          {t("inboxSections.reminder", { time: new Date(deadline).toLocaleString() })}
         </Text>
       ) : null}
       {showSessions
