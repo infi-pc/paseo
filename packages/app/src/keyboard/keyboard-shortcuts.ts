@@ -266,6 +266,14 @@ const SHORTCUT_HELP_NOTE_KEYS: Record<string, string> = {
 // --- Binding definitions ---
 
 const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
+  // FORK(editable): reserve a web picker chord outside workspace navigation.
+  {
+    id: "editable-pick",
+    action: "editable.pick",
+    combo: "Alt+Shift+F8",
+    when: { commandCenter: false, terminal: false },
+    repeat: false,
+  },
   // --- Open project ---
   // Open project moved from Cmd+Shift+O to Cmd+O. The binding ids intentionally
   // keep their original "cmd-shift-o" / "ctrl-shift-o" names: user shortcut

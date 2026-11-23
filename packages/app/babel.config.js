@@ -1,5 +1,5 @@
 module.exports = function (api) {
-  api.cache(true);
+  api.cache.using(() => process.env.PASEO_EDITABLE_SOURCE_MAP !== "0"); // FORK(editable): invalidate transforms when source stamping changes.
 
   const expoPreset = [
     "babel-preset-expo",
@@ -13,6 +13,7 @@ module.exports = function (api) {
   return {
     presets: [expoPreset],
     plugins: [
+      require("./babel-editable-source.cjs"), // FORK(editable): stamp source locations in web builds.
       [
         "react-native-unistyles/plugin",
         {

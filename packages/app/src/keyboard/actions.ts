@@ -19,6 +19,8 @@ export type MessageInputKeyboardActionKind =
   | "effort-cycle";
 
 export type KeyboardActionId =
+  // FORK(editable): route pick mode through the shared shortcut resolver.
+  | "editable.pick"
   | "agent.interrupt"
   | "agent.new"
   | "workspace.tab.menu.open"
