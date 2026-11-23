@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { DesktopNavigationTarget } from "@getpaseo/protocol/compose-deep-link";
 import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js";
 import type { DesktopWindowChromeMode } from "./window/chrome.js";
+// FORK(editable): status typing is erased from the sandboxed preload.
+import type { EditableDesktopStatus } from "./editable/release-store.js";
 
 // This preload runs in Electron's sandbox and is tsc-compiled (not bundled), so it MUST
 // NOT emit any runtime module load other than "electron" — a require() of a local or
@@ -47,6 +49,20 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
   agentNavigation: {
     ready: () =>
       ipcRenderer.invoke("paseo:agent-navigation:ready") as Promise<DesktopNavigationTarget | null>,
+  },
+  // FORK(editable): keep the sandbox bridge limited to explicit invokes.
+  editable: {
+    getStatus: (): Promise<EditableDesktopStatus> => ipcRenderer.invoke("paseo:editable:getStatus"),
+    switchRelease: (digest: string | null): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("paseo:editable:switchRelease", digest),
+    useRecoveryRenderer: (): Promise<void> =>
+      ipcRenderer.invoke("paseo:editable:useRecoveryRenderer"),
+    setPreviewUrl: (url: string | null): Promise<void> =>
+      ipcRenderer.invoke("paseo:editable:setPreviewUrl", url),
+    openPreviewWindow: (url: string): Promise<void> =>
+      ipcRenderer.invoke("paseo:editable:openPreviewWindow", url),
+    reportHealthy: (digest: string): Promise<void> =>
+      ipcRenderer.invoke("paseo:editable:reportHealthy", digest),
   },
   events: {
     on: (event: string, handler: EventHandler): Promise<() => void> => {

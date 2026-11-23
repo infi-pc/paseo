@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { UUID } from "builder-util-runtime";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { autoUpdaterMock } = vi.hoisted(() => {
   const handlers = new Map<string, (value: unknown) => void>();
@@ -40,6 +40,8 @@ import {
   bucketFromStagingUserId,
   checkForAppUpdate,
   createAppUpdateLifecycleLogger,
+  downloadAndInstallUpdate,
+  installAppUpdateOnQuit,
   resolveStagingUserId,
   rolloutManifestSchema,
   shouldAdmitToRollout,
@@ -47,6 +49,28 @@ import {
 } from "./auto-updater";
 
 describe("checkForAppUpdate", () => {
+  beforeEach(() => vi.stubEnv("PASEO_ALLOW_UPSTREAM_DESKTOP_UPDATES", "1"));
+  afterEach(() => vi.unstubAllEnvs());
+
+  // FORK(editable): enforce the fork guard for automatic, manual, and on-quit updates.
+  it("never checks, downloads or installs upstream updates without explicit opt-in", async () => {
+    vi.stubEnv("PASEO_ALLOW_UPSTREAM_DESKTOP_UPDATES", undefined);
+    autoUpdaterMock.checkForUpdates.mockClear();
+    const input = { currentVersion: "1.2.3", releaseChannel: "stable" as const };
+    for (const intent of ["automatic", "manual"] as const) {
+      await expect(checkForAppUpdate({ ...input, intent })).resolves.toMatchObject({
+        hasUpdate: false,
+      });
+    }
+    await expect(downloadAndInstallUpdate(input)).resolves.toMatchObject({ installed: false });
+    await expect(
+      installAppUpdateOnQuit({ ...input, signal: new AbortController().signal }),
+    ).resolves.toBe(false);
+    expect(autoUpdaterMock.checkForUpdates).not.toHaveBeenCalled();
+    expect(autoUpdaterMock.downloadUpdate).not.toHaveBeenCalled();
+    expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
+  });
+
   it("treats an unpublished channel manifest as an unavailable update", async () => {
     const error = Object.assign(new Error("Cannot find latest-mac.yml"), {
       code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND",

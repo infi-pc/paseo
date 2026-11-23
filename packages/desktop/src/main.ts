@@ -12,7 +12,6 @@ import { inheritLoginShellEnv } from "./login-shell-env.js";
 import path from "node:path";
 import { randomBytes, randomUUID } from "node:crypto";
 import { hostname } from "node:os";
-import { pathToFileURL } from "node:url";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import {
@@ -25,7 +24,6 @@ import {
   Menu,
   ipcMain,
   nativeImage,
-  net,
   protocol,
   screen,
   session,
@@ -108,6 +106,9 @@ import { runDesktopStartup } from "./desktop-startup.js";
 import { registerBrowserAutomationIpc } from "./features/browser-automation/ipc.js";
 import { BrowserKeyboard } from "./features/browser-keyboard/index.js";
 import { installAppUpdateOnQuit } from "./features/auto-updater.js";
+// FORK(editable): the desktop runtime owns signed renderer selection.
+import { EditableDesktopRuntime } from "./editable/runtime.js";
+import { EDITABLE_APP_SCHEME as APP_SCHEME } from "./editable/constants.js";
 // FORK(locator-compose): source links target the remembered worktree composer.
 import type { DesktopNavigationTarget } from "@getpaseo/protocol/compose-deep-link";
 import {
@@ -118,7 +119,6 @@ import {
 } from "./agent-navigation.js";
 
 const DEV_SERVER_URL = process.env.EXPO_DEV_URL ?? "http://localhost:8081";
-const APP_SCHEME = "paseo";
 const PASEO_DEBUG = process.env.PASEO_DEBUG === "1";
 const DISABLE_SINGLE_INSTANCE_LOCK = process.env.PASEO_DISABLE_SINGLE_INSTANCE_LOCK === "1";
 const APP_NAME = process.env.PASEO_TEST_APP_NAME?.trim() || "Paseo";
@@ -590,6 +590,9 @@ function getAppDistDir(): string {
   return path.resolve(__dirname, "../../app/dist");
 }
 
+// FORK(editable): initialize the renderer runtime before opening desktop windows.
+let editableRuntime: EditableDesktopRuntime;
+
 function getWindowIconCandidates(): string[] {
   if (app.isPackaged) {
     if (process.platform === "win32") {
@@ -753,7 +756,11 @@ async function createWindow(
   }
 
   setupDarwinCompositorWatchdog(mainWindow);
-  reloadWhenRendererExits(mainWindow);
+  // FORK(editable): trial releases recover by rolling back to a verified renderer.
+  reloadWhenRendererExits(mainWindow, {
+    shouldReload: () => !editableRuntime.isPending(mainWindow),
+  });
+  editableRuntime.registerWindow(mainWindow);
   setupWindowResizeEvents(mainWindow);
   if (windowStateStore) {
     setupWindowStatePersistence(mainWindow, windowStateStore);
@@ -801,17 +808,19 @@ async function createWindow(
     showOnLoad: process.platform === "linux",
   });
 
-  if (!app.isPackaged) {
-    const { loadReactDevTools } = await import("./features/react-devtools.js");
-    await loadReactDevTools();
-    const initialUrl = options.initialRoute
-      ? new URL(options.initialRoute, `${DEV_SERVER_URL}/`).toString()
-      : DEV_SERVER_URL;
-    await mainWindow.loadURL(initialUrl);
+  // FORK(editable): safe mode and signed releases can also use the exported UI in dev.
+  const exportedLoad = editableRuntime.loadInitial(mainWindow, options.initialRoute ?? "/");
+  if (exportedLoad) {
+    await exportedLoad;
     return mainWindow;
   }
 
-  await mainWindow.loadURL(`${APP_SCHEME}://app${options.initialRoute ?? "/"}`);
+  const { loadReactDevTools } = await import("./features/react-devtools.js");
+  await loadReactDevTools();
+  const initialUrl = options.initialRoute
+    ? new URL(options.initialRoute, `${DEV_SERVER_URL}/`).toString()
+    : DEV_SERVER_URL;
+  await mainWindow.loadURL(initialUrl);
   return mainWindow;
 }
 
@@ -838,10 +847,15 @@ desktopWindowOwner = createDesktopWindowOwner<DesktopNavigationTarget>({
     });
     return ownedDesktopWindow(win);
   },
-  windows: () => BrowserWindow.getAllWindows().map(ownedDesktopWindow),
+  // FORK(editable): unsigned preview windows never receive workspace navigation.
+  windows: () =>
+    BrowserWindow.getAllWindows()
+      .filter((win) => !editableRuntime?.isPreview(win))
+      .map(ownedDesktopWindow),
   focusedWindow: () => {
     const win = BrowserWindow.getFocusedWindow();
-    if (!win) return null;
+    // FORK(editable): only regular windows can receive agent navigation.
+    if (!win || editableRuntime?.isPreview(win)) return null;
     return ownedDesktopWindow(win);
   },
   agentRoute: buildDesktopNavigationRoute,
@@ -949,35 +963,24 @@ async function bootstrap(): Promise<void> {
 
   await app.whenReady();
 
-  const appDistDir = getAppDistDir();
-  protocol.handle(APP_SCHEME, (request) => {
-    const { pathname, search, hash } = new URL(request.url);
-    const decodedPath = decodeURIComponent(pathname);
-
-    // Chromium can occasionally request the exported entrypoint directly.
-    // Canonicalize it back to the route URL so Expo Router sees `/`, not `/index.html`.
-    if (decodedPath.endsWith("/index.html")) {
-      const normalizedPath = decodedPath.slice(0, -"/index.html".length) || "/";
-      return Response.redirect(`${APP_SCHEME}://app${normalizedPath}${search}${hash}`, 307);
-    }
-
-    const filePath = path.join(appDistDir, decodedPath);
-    const relativePath = path.relative(appDistDir, filePath);
-
-    if (relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-      return new Response("Not found", { status: 404 });
-    }
-
-    // SPA fallback: serve index.html for routes without a file extension
-    if (!relativePath || !path.extname(relativePath)) {
-      return net.fetch(pathToFileURL(path.join(appDistDir, "index.html")).toString());
-    }
-
-    return net.fetch(pathToFileURL(filePath).toString());
+  // FORK(editable): serve the verified or built-in renderer on the shared app origin.
+  editableRuntime = new EditableDesktopRuntime({
+    builtInDistDir: getAppDistDir(),
+    isPackaged: app.isPackaged,
+    devServerUrl: DEV_SERVER_URL,
+    openNewWindow: () => desktopWindowOwner.openAdditional(),
+    warn: (error) => log.warn("[editable]", error),
   });
+  editableRuntime.register();
 
   await applyAppIcon();
   setupApplicationMenu({
+    // FORK(editable): recovery stays available when renderer JavaScript cannot run.
+    editable: {
+      useRecoveryRenderer: () => editableRuntime.useRecoveryRenderer(),
+      reloadLatestRenderer: () => editableRuntime.reloadLatestRenderer(),
+      exitPreviewMode: () => editableRuntime.exitPreviewMode(),
+    },
     onNewWindow: () => {
       void desktopWindowOwner.openAdditional().catch((error) => {
         log.error("[window] failed to create window from menu", error);

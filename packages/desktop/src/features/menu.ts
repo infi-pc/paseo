@@ -1,4 +1,4 @@
-import { app, Menu, BrowserWindow, ipcMain } from "electron";
+import { app, dialog, Menu, BrowserWindow, ipcMain } from "electron";
 import { getActivePaseoBrowserWebContentsForHostWindow } from "./browser-webviews/index.js";
 
 interface ShowContextMenuInput {
@@ -8,6 +8,12 @@ interface ShowContextMenuInput {
 
 interface ApplicationMenuOptions {
   onNewWindow: () => void;
+  // FORK(editable): native recovery actions cannot depend on renderer IPC.
+  editable: {
+    useRecoveryRenderer: () => Promise<void>;
+    reloadLatestRenderer: () => Promise<void>;
+    exitPreviewMode: () => Promise<void>;
+  };
 }
 
 function withBrowserWindow(
@@ -168,6 +174,15 @@ function buildApplicationMenuTemplate(
         { role: "togglefullscreen" },
       ],
     },
+    // FORK(editable): keep these actions visible during startup and renderer failures.
+    {
+      label: "Editable",
+      submenu: [
+        editableMenuItem("Use Built-in Recovery UI", options.editable.useRecoveryRenderer),
+        editableMenuItem("Reload Latest Signed UI", options.editable.reloadLatestRenderer),
+        editableMenuItem("Exit Preview Mode", options.editable.exitPreviewMode),
+      ],
+    },
     {
       label: "Window",
       submenu: [
@@ -179,6 +194,23 @@ function buildApplicationMenuTemplate(
       ],
     },
   ];
+}
+
+// FORK(editable): report recovery errors without relying on an active renderer.
+function editableMenuItem(
+  label: string,
+  action: () => Promise<void>,
+): Electron.MenuItemConstructorOptions {
+  return {
+    label,
+    click: () => {
+      void Promise.resolve()
+        .then(action)
+        .catch((error: unknown) => {
+          dialog.showErrorBox(label, error instanceof Error ? error.message : String(error));
+        });
+    },
+  };
 }
 
 let applicationMenuOptions: ApplicationMenuOptions | null = null;

@@ -5,6 +5,8 @@ import { app } from "electron";
 import { UUID } from "builder-util-runtime";
 import log from "electron-log/main";
 import { autoUpdater } from "electron-updater";
+// FORK(editable): protect the fork binary even before any renderer is installed.
+import { allowUpstreamDesktopUpdates } from "../editable/constants.js";
 import {
   createAppUpdateService,
   type AppUpdateCheckResult,
@@ -224,7 +226,8 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
 
 const appUpdateService = createAppUpdateService({
   runtime: new ElectronAppUpdateRuntime(),
-  isPackaged: () => app.isPackaged,
+  // FORK(editable): the single service gate covers checks, downloads and install-on-quit.
+  isPackaged: () => app.isPackaged && allowUpstreamDesktopUpdates(),
   now: () => Date.now(),
   bucket: async () => bucketFromStagingUserId(await getStagingUserId()),
   reportCheckError: (error) => {
@@ -279,6 +282,14 @@ export async function downloadAndInstallUpdate(
   },
   onBeforeQuit?: () => Promise<void>,
 ): Promise<AppUpdateInstallResult> {
+  // FORK(editable): surface the reason when a fork user requests an upstream install.
+  if (app.isPackaged && !allowUpstreamDesktopUpdates()) {
+    return {
+      installed: false,
+      version: currentVersion,
+      message: "Upstream desktop updates are disabled for this fork.",
+    };
+  }
   return appUpdateService.downloadAndInstallUpdate(
     { currentVersion, releaseChannel },
     onBeforeQuit,

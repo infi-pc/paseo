@@ -25,13 +25,16 @@ interface RecoverableWindow {
 
 export function reloadWhenRendererExits(
   win: RecoverableWindow,
-  options: { now?: () => number } = {},
+  // FORK(editable): provisional renderers use signed release rollback instead.
+  options: { now?: () => number; shouldReload?: () => boolean } = {},
 ): void {
   const now = options.now ?? Date.now;
   let reloadTimes: number[] = [];
 
   win.webContents.on("render-process-gone", (_event, details) => {
     if (details.reason === "clean-exit" || win.isDestroyed()) return;
+    // FORK(editable): avoid a competing reload during release rollback.
+    if (options.shouldReload?.() === false) return;
     // Before the first page commits, Chromium finishes the navigation in a new
     // renderer by itself. Reloading then would abort the window's initial load.
     if (win.webContents.getURL() === "") return;
