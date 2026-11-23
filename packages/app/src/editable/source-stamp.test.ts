@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -28,6 +29,14 @@ function transform(platform: string) {
 }
 
 afterEach(() => vi.unstubAllEnvs());
+
+it("keeps the exported PWA manifest separate from the signed renderer manifest", () => {
+  const publicDir = new URL("../../public/", import.meta.url);
+  const html = readFileSync(new URL("index.html", publicDir), "utf8");
+  expect(html).toContain('<link rel="manifest" href="/pwa-manifest.json"');
+  expect(existsSync(new URL("pwa-manifest.json", publicDir))).toBe(true);
+  expect(existsSync(new URL("manifest.json", publicDir))).toBe(false);
+});
 
 describe("Editable JSX source stamping", () => {
   it("composes with the real Expo and Unistyles transforms on web", () => {

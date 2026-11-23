@@ -71,6 +71,21 @@ function resolveShortcut(input: {
   });
 }
 
+// FORK(editable): the first-run screen can pick elements without enabling workspace shortcuts.
+it("resolves only the picker while app shortcuts are disabled", () => {
+  const bindings = buildEffectiveBindings({}, false);
+  expect(bindings.map(({ action }) => action)).toEqual(["editable.pick"]);
+  expect(
+    resolveShortcut({
+      bindings,
+      event: { key: "F8", code: "F8", altKey: true, shiftKey: true },
+    }).match?.action,
+  ).toBe("editable.pick");
+  expect(
+    buildEffectiveBindings({ "editable-pick": UNASSIGNED_COMBO }, false)[0]?.parsedChord,
+  ).toEqual([]);
+});
+
 function expectShortcutResolution(input: {
   event: Partial<KeyboardShortcutInput>;
   context?: Partial<KeyboardShortcutContext>;

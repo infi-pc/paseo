@@ -10,7 +10,8 @@ const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
 const withAndroidDisplayMetrics = require("./modules/paseo-display-metrics/app.plugin");
 const { getNativeReleaseVersion } = require("./native-release-version");
 // FORK(testflight): personal Apple and Expo identities never fall back to upstream.
-const { getTestflightConfig } = require("./testflight/config");
+// FORK(editable): opt personal TestFlight builds in to signed Expo OTA releases.
+const { getTestflightConfig, getTestflightUpdates } = require("./testflight/config");
 const UPSTREAM_EXPO_PROJECT_ID = "0e7f65ce-0367-46c8-a238-2b65963d235a";
 // Expo caches config modules; resolve the variant environment on each call.
 export default () => {
@@ -117,6 +118,8 @@ export default () => {
       name: variant.name,
       slug: testflight?.slug ?? "voice-mobile",
       version: nativeReleaseVersion.appVersion,
+      // FORK(editable): only the personal TestFlight variant opts in to OTA updates.
+      ...getTestflightUpdates(testflight, nativeReleaseVersion.appVersion),
       orientation: "default",
       icon: "./assets/images/icon.png",
       scheme: "paseo",

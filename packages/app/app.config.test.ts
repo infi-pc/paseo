@@ -1,4 +1,7 @@
 import { createRequire } from "node:module";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, relative } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // Load the copies the Expo CLI uses for prebuild, not older hoisted ones.
@@ -15,6 +18,7 @@ interface ManifestEntry {
 
 const originalFdroidFlag = process.env.PASEO_FDROID_BUILD;
 const { getConfig } = requireFromExpo("@expo/config");
+const { IOSConfig } = requireFromExpo("expo/config-plugins");
 
 describe("Personal TestFlight identity", () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -54,6 +58,90 @@ describe("Personal TestFlight identity", () => {
       ios: { bundleIdentifier: "sh.paseo" },
       extra: { eas: { projectId: "0e7f65ce-0367-46c8-a238-2b65963d235a" } },
     });
+  });
+});
+
+// FORK(editable): verify the OTA endpoint and signing settings stay personal.
+describe("Personal TestFlight OTA updates", () => {
+  const url = "https://updates.example.test/ios";
+  const certificate = "/personal/expo-codesign.cert.pem";
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each([
+    ["production", "sh.paseo"],
+    ["development", "sh.paseo.debug"],
+  ])("ignores update settings in %s", (variant, bundleIdentifier) => {
+    vi.stubEnv("APP_VARIANT", variant);
+    vi.stubEnv("PASEO_EXPO_UPDATES_URL", url);
+    vi.stubEnv("PASEO_EXPO_CODE_SIGNING_CERT", certificate);
+
+    const { exp } = getConfig(__dirname);
+    expect(exp.ios.bundleIdentifier).toBe(bundleIdentifier);
+    expect(exp).not.toHaveProperty("updates");
+    expect(exp).not.toHaveProperty("runtimeVersion");
+  });
+
+  it("embeds the signing certificate and app version in personal iOS builds", async () => {
+    const root = await mkdtemp(join(tmpdir(), "paseo-expo-updates-"));
+    const certificatePath = join(root, "expo-codesign.cert.pem");
+    const certificateContents = "Test certificate contents";
+    try {
+      await writeFile(certificatePath, certificateContents);
+      vi.stubEnv("APP_VARIANT", "testflight");
+      vi.stubEnv("PASEO_EXPO_UPDATES_URL", url);
+      vi.stubEnv("PASEO_EXPO_CODE_SIGNING_CERT", certificatePath);
+
+      const { exp } = getConfig(__dirname);
+      expect(exp.ios.bundleIdentifier).toBe("cz.infi.paseo");
+      expect(exp.runtimeVersion).toBe(exp.version);
+      expect(exp.updates).toEqual({
+        enabled: true,
+        url,
+        checkAutomatically: "ON_LOAD",
+        fallbackToCacheTimeout: 0,
+        codeSigningCertificate: relative(__dirname, certificatePath),
+        codeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
+      });
+
+      const plist = await IOSConfig.Updates.setUpdatesConfigAsync(__dirname, exp, {});
+      expect(plist).toMatchObject({
+        EXUpdatesEnabled: true,
+        EXUpdatesURL: url,
+        EXUpdatesRuntimeVersion: exp.version,
+        EXUpdatesCheckOnLaunch: "ALWAYS",
+        EXUpdatesLaunchWaitMs: 0,
+        EXUpdatesCodeSigningCertificate: certificateContents,
+        EXUpdatesCodeSigningMetadata: { keyid: "main", alg: "rsa-v1_5-sha256" },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("supports an endpoint without a signing certificate", () => {
+    vi.stubEnv("APP_VARIANT", "testflight");
+    vi.stubEnv("PASEO_EXPO_UPDATES_URL", url);
+    vi.stubEnv("PASEO_EXPO_CODE_SIGNING_CERT", undefined);
+
+    const { exp } = getConfig(__dirname);
+    expect(exp.runtimeVersion).toBe(exp.version);
+    expect(exp.updates).toEqual({
+      enabled: true,
+      url,
+      checkAutomatically: "ON_LOAD",
+      fallbackToCacheTimeout: 0,
+    });
+  });
+
+  it("leaves updates unconfigured without an endpoint", () => {
+    vi.stubEnv("APP_VARIANT", "testflight");
+    vi.stubEnv("PASEO_EXPO_UPDATES_URL", undefined);
+    vi.stubEnv("PASEO_EXPO_CODE_SIGNING_CERT", undefined);
+
+    const { exp } = getConfig(__dirname);
+    expect(exp).not.toHaveProperty("updates");
+    expect(exp).not.toHaveProperty("runtimeVersion");
   });
 });
 
@@ -111,9 +199,6 @@ it("follows system rotation on Android", async () => {
 }, 30_000);
 
 it("allows all orientations on iPhone and iPad", async () => {
-  const { mkdtemp, rm } = await import("node:fs/promises");
-  const { tmpdir } = await import("node:os");
-  const { join } = await import("node:path");
   const root = await mkdtemp(join(tmpdir(), "paseo-ios-config-"));
   try {
     const { exp } = await getPrebuildConfigAsync(__dirname, { platforms: ["ios"] });

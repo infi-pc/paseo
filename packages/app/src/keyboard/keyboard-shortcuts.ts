@@ -1393,8 +1393,11 @@ export function isShortcutCaptureComplete(bindingId: string, combos: readonly st
   return binding?.payload?.type !== "index" || /(^|\+)(Digit|[1-9])$/.test(lastCombo);
 }
 
-export function buildEffectiveBindings(overrides: ShortcutOverrides): ParsedShortcutBinding[] {
-  return DEFAULT_BINDINGS.map(function (binding) {
+export function buildEffectiveBindings(
+  overrides: ShortcutOverrides,
+  appShortcutsEnabled = true,
+): ParsedShortcutBinding[] {
+  const bindings = DEFAULT_BINDINGS.map(function (binding) {
     const override = overrides[binding.id];
     if (override === UNASSIGNED_COMBO) {
       return { ...binding, combo: "", parsedChord: [] };
@@ -1420,6 +1423,10 @@ export function buildEffectiveBindings(overrides: ShortcutOverrides): ParsedShor
     const { defaultDisplayKeys: _defaultDisplayKeys, ...help } = binding.help;
     return { ...binding, combo: override, parsedChord, when, help };
   });
+  // FORK(editable): route the picker even on the connection screen.
+  return appShortcutsEnabled
+    ? bindings
+    : bindings.filter(({ action }) => action === "editable.pick");
 }
 
 /**

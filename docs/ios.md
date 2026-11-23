@@ -36,6 +36,12 @@ Use a larger positive build number for every upload, even when the repository
 version has not changed. This number is independent of upstream's release
 numbering. The app version still follows `packages/app/package.json`.
 
+Set `PASEO_EXPO_UPDATES_URL` when you want the archive to check an Expo OTA
+endpoint on launch. With a signed endpoint, set `PASEO_EXPO_CODE_SIGNING_CERT`
+to the public PEM certificate path. The publisher must use the app version as
+the OTA runtime version and sign with key ID `main` and algorithm
+`rsa-v1_5-sha256`.
+
 The command regenerates `packages/app/ios` for the personal identity, installs
 Pods, archives a Release build for a physical iOS device, and exports an IPA to
 `artifacts/ios-testflight/2/`. It replaces any generated simulator project in that

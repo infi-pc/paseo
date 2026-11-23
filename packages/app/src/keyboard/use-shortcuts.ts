@@ -1,4 +1,6 @@
 import { goHistory } from "@/navigation/history/replay";
+// FORK(editable): keep the web picker available before a host is configured.
+import { isWeb } from "@/constants/platform";
 import { usesDesktopBindings } from "./internal/conventions";
 import { createKeyboardPipeline } from "./internal/pipeline";
 import { overlays } from "./internal/overlays";
@@ -56,7 +58,8 @@ export function useKeyboardShortcuts({
   const router = useRouter();
   const resetModifiers = useKeyboardShortcutsStore((s) => s.resetModifiers);
   const { overrides } = useKeyboardShortcutOverrides();
-  const bindings = useMemo(() => buildEffectiveBindings(overrides), [overrides]);
+  // FORK(editable): keep the disabled app's binding set limited to the picker.
+  const bindings = useMemo(() => buildEffectiveBindings(overrides, enabled), [overrides, enabled]);
   const isMac = getShortcutOs() === "mac";
   const openProjectPickerAction = useOpenAddProject();
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
@@ -260,7 +263,8 @@ export function useKeyboardShortcuts({
   });
 
   useEffect(() => {
-    if (!enabled) return;
+    // FORK(editable): attach the host keyboard source even on the web connection screen.
+    if (!enabled && !isWeb) return;
     const detach = attachKeyboardSources({
       keyDown: pipeline.keyDown,
       keyUp: handleKeyUp,

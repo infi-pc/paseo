@@ -126,6 +126,13 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 - Wires into: Expo app configuration, its existing test suite, root npm scripts, and the Markdown dependency patch.
 - Uses Michael's Apple identity with local Xcode signing. See [iOS builds](ios.md).
 
+### Editable Paseo
+
+- Commits: `df9f8a96d` and `ee8067326`.
+- Owns: `packages/desktop/src/editable/`, `packages/app/src/editable/`, and `packages/app/babel-editable-source.cjs`.
+- Wires into: Electron main, preload, native menu, renderer recovery, and desktop updater; the Expo app shell, sidebar, keyboard actions, English resources, Babel, PWA manifest, and personal TestFlight configuration.
+- Desktop loads signed renderer releases and keeps a recovery renderer. The app's picker sends source locations to the Workshop agent. Personal TestFlight builds can opt in to Expo OTA updates.
+
 ### Inbox and project navigation
 
 - Owns: `packages/app/src/components/sidebar/navigation/`.
