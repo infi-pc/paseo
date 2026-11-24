@@ -49,8 +49,9 @@ export function useEditablePrompt() {
         busy: "editable.busy",
       } as const;
       setError(t(errors[result.kind]));
-    } catch {
-      setError(t("editable.sendFailed"));
+    } catch (err) {
+      const detail = err instanceof Error ? err.message.trim() : "";
+      setError(detail ? `${t("editable.sendFailed")} (${detail})` : t("editable.sendFailed"));
     }
     reopen();
   }

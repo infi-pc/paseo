@@ -194,6 +194,26 @@ describe("Editable overlay", () => {
     ).toBe("Keep this draft.");
   });
 
+  it("includes the underlying error detail when sending throws", async () => {
+    send.mockRejectedValueOnce(
+      new Error("Workshop directory not found on host: ~/.editable-paseo/repo"),
+    );
+    const { target, shortcut } = setup();
+    shortcut();
+    fireEvent.click(target);
+    fireEvent.change(screen.getByRole("textbox", { name: "Edit this component…" }), {
+      target: { value: "Keep this draft too." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    const error = await screen.findByRole("alert");
+    expect(error.textContent).toBe(
+      "Could not send the edit. Check the Workshop host and repository path, then try again. (Workshop directory not found on host: ~/.editable-paseo/repo)",
+    );
+    expect(
+      (screen.getByRole("textbox", { name: "Edit this component…" }) as HTMLInputElement).value,
+    ).toBe("Keep this draft too.");
+  });
+
   it("acknowledges a signed renderer only after the navigation container is ready", async () => {
     vi.useFakeTimers();
     isReady.mockReturnValue(false);

@@ -17,6 +17,12 @@ function fixture() {
   const client = {
     createAgent: vi.fn().mockResolvedValue({ id: "workshop-agent" }),
     fetchAgent: vi.fn(),
+    getDirectorySuggestions: vi.fn().mockResolvedValue({
+      directories: ["/Users/tester/.editable-paseo/repo"],
+      entries: [{ path: "/Users/tester/.editable-paseo/repo", kind: "directory" }],
+      error: null,
+      requestId: "req-1",
+    }),
     listAvailableProviders: vi.fn().mockResolvedValue({
       providers: [
         { provider: "claude", available: true },
@@ -42,7 +48,11 @@ it("builds the Workshop prompt with the location and no query or extra metadata"
   expect(buildWorkshopPrompt(locatorWithExtra, request)).toBe(
     [
       "Edit Paseo in the dedicated Editable Paseo repository.",
-      "Use ed wip create to isolate the change, ed preview to make it available for review, and ed verify to check it. Use ed ship after the edit is approved.",
+      "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH):",
+      "1. Run `paseo-ed wip create <slug>` and edit inside that worktree.",
+      "2. Run `paseo-ed verify <slug>` to check typecheck and lint.",
+      '3. For UI-only edits, run `paseo-ed ship <slug> --summary "<short summary>" --upload` to land locally, build the signed Electron renderer, and publish to Cloud Shelf (pass `--push` only if explicitly requested).',
+      "4. Tell the user when the signed update is ready so they can run Editable -> Sync from Cloud Shelf.",
       "",
       "Locator context:",
       JSON.stringify({ ...locator, route: "/workspaces" }, null, 2),
@@ -61,12 +71,18 @@ it("asks for a paired Workshop host before looking for a client", async () => {
   expect(input.getClient).not.toHaveBeenCalled();
 });
 
-it("creates the first agent in the dedicated repo on the configured host", async () => {
+it("expands the default tilde repo path on the configured host before creating the agent", async () => {
   const { client, input } = fixture();
   expect(await sendWorkshopEdit(input)).toEqual({ kind: "sent", agentId: "workshop-agent" });
   expect(input.getClient).toHaveBeenCalledExactlyOnceWith("workshop");
+  expect(client.getDirectorySuggestions).toHaveBeenCalledExactlyOnceWith({
+    query: DEFAULT_WORKSHOP_CWD,
+    includeDirectories: true,
+    includeFiles: false,
+    limit: 1,
+  });
   expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
-    cwd: DEFAULT_WORKSHOP_CWD,
+    cwd: "/Users/tester/.editable-paseo/repo",
     provider: "codex",
     title: "Editable Paseo Workshop",
   });
@@ -75,6 +91,35 @@ it("creates the first agent in the dedicated repo on the configured host", async
     "workshop-agent",
     buildWorkshopPrompt(locator, request),
   );
+});
+
+it("passes absolute Workshop paths directly without directory lookup", async () => {
+  const { client, input } = fixture();
+  const target = { ...input.target, workshopCwd: "/srv/paseo-editable/repo" };
+  expect(await sendWorkshopEdit({ ...input, target })).toEqual({
+    kind: "sent",
+    agentId: "workshop-agent",
+  });
+  expect(client.getDirectorySuggestions).not.toHaveBeenCalled();
+  expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
+    cwd: "/srv/paseo-editable/repo",
+    provider: "codex",
+    title: "Editable Paseo Workshop",
+  });
+});
+
+it("rejects when a tilde Workshop directory does not exist on the host", async () => {
+  const { client, input } = fixture();
+  client.getDirectorySuggestions.mockResolvedValueOnce({
+    directories: ["/Users/tester/unrelated/repo"],
+    entries: [{ path: "/Users/tester/unrelated/repo", kind: "directory" }],
+    error: null,
+    requestId: "req-2",
+  });
+  await expect(sendWorkshopEdit(input)).rejects.toThrow(
+    `Workshop directory not found on host: ${DEFAULT_WORKSHOP_CWD}`,
+  );
+  expect(client.createAgent).not.toHaveBeenCalled();
 });
 
 it("reuses the configured agent on its own host and reports disconnection", async () => {
