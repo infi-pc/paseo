@@ -6,6 +6,65 @@ import { EditingTextInput } from "@/components/ui/text-input";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { useEditablePrompt } from "./use-editable-prompt";
 
+function workshopStatusKey(prompt: ReturnType<typeof useEditablePrompt>): string {
+  if (prompt.startingWorkshop) return "editable.workshopStarting";
+  if (prompt.workshopDaemon?.status === "running") {
+    return prompt.isConnected ? "editable.workshopConnected" : "editable.workshopConnecting";
+  }
+  return "editable.workshopAutoStart";
+}
+
+function PromptTargetSection({
+  prompt,
+  showHostPicker,
+}: {
+  prompt: ReturnType<typeof useEditablePrompt>;
+  showHostPicker: () => void;
+}) {
+  const { t } = useTranslation();
+  if (prompt.managedWorkshop) {
+    return (
+      <View style={styles.workshopRow}>
+        <Text style={styles.label}>{t(workshopStatusKey(prompt))}</Text>
+      </View>
+    );
+  }
+  if (prompt.choosingHost) {
+    return (
+      <View style={styles.hosts}>
+        <Text style={styles.label}>
+          {t(prompt.hosts.length ? "editable.selectHost" : "editable.noHosts")}
+        </Text>
+        {prompt.hosts.map((host) => (
+          <WorkshopHostButton
+            key={host.serverId}
+            serverId={host.serverId}
+            label={host.label}
+            select={prompt.chooseHost}
+            disabled={prompt.saving}
+          />
+        ))}
+      </View>
+    );
+  }
+  return (
+    <View style={styles.row}>
+      <Button size="sm" variant="ghost" onPress={showHostPicker} numberOfLines={1}>
+        {prompt.host?.label}
+      </Button>
+      <EditingTextInput
+        accessibilityLabel={t("editable.repoPath")}
+        placeholder={prompt.defaultCwd}
+        style={styles.path}
+        initialValue={prompt.cwd}
+        onChangeText={prompt.setCwd}
+        autoCapitalize="none"
+        autoCorrect={false}
+      />
+    </View>
+  );
+}
+
 export function EditablePrompt({
   prompt,
   onSubmit,
@@ -31,37 +90,7 @@ export function EditablePrompt({
         returnKeyType="send"
         autoFocus={!inSheet}
       />
-      {prompt.choosingHost ? (
-        <View style={styles.hosts}>
-          <Text style={styles.label}>
-            {t(prompt.hosts.length ? "editable.selectHost" : "editable.noHosts")}
-          </Text>
-          {prompt.hosts.map((host) => (
-            <WorkshopHostButton
-              key={host.serverId}
-              serverId={host.serverId}
-              label={host.label}
-              select={prompt.chooseHost}
-              disabled={prompt.saving}
-            />
-          ))}
-        </View>
-      ) : (
-        <View style={styles.row}>
-          <Button size="sm" variant="ghost" onPress={showHostPicker} numberOfLines={1}>
-            {prompt.host?.label}
-          </Button>
-          <EditingTextInput
-            accessibilityLabel={t("editable.repoPath")}
-            placeholder={prompt.defaultCwd}
-            style={styles.path}
-            initialValue={prompt.cwd}
-            onChangeText={prompt.setCwd}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </View>
-      )}
+      <PromptTargetSection prompt={prompt} showHostPicker={showHostPicker} />
       {prompt.error ? (
         <Text accessibilityRole="alert" style={styles.error}>
           {prompt.error}
@@ -128,6 +157,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 12,
   },
   hosts: { flexDirection: "row", flexWrap: "wrap", gap: 4, alignItems: "center" },
+  workshopRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 2 },
   row: { flexDirection: "row", gap: 4 },
   label: { color: theme.colors.foregroundMuted, fontSize: 12 },
   actions: { justifyContent: "flex-end", flexDirection: "row", gap: 4 },

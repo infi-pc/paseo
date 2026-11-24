@@ -497,7 +497,14 @@ async function resolveRequestedReleaseChannel(
 // IPC registration
 // ---------------------------------------------------------------------------
 
-export function createDaemonCommandHandlers(): Record<string, DesktopCommandHandler> {
+export interface DaemonManagerOptions {
+  // FORK(editable): authorize the isolated local Workshop daemon when managed by desktop.
+  readWorkshopLocalCredential?: (listen: string) => Promise<string | null>;
+}
+
+export function createDaemonCommandHandlers(
+  options: DaemonManagerOptions = {},
+): Record<string, DesktopCommandHandler> {
   return {
     ...createDesktopSettingsCommandHandlers({ settingsStore: getDesktopSettingsStore() }),
     desktop_get_runtime_info: () => ({
@@ -506,9 +513,13 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
     }),
     desktop_daemon_status: () => resolveDesktopDaemonStatus(),
     desktop_local_credential: async (args) => {
+      if (typeof args?.listen !== "string") return null;
       const instance = await readDaemonInstance(getPaseoHome());
-      if (!instance?.desktopManaged || typeof args?.listen !== "string") return null;
-      return readLocalCredentialForTarget(getPaseoHome(), args.listen);
+      if (instance?.desktopManaged) {
+        const credential = readLocalCredentialForTarget(getPaseoHome(), args.listen);
+        if (credential) return credential;
+      }
+      return (await options.readWorkshopLocalCredential?.(args.listen)) ?? null;
     },
     start_desktop_daemon: () => startDaemon(),
     stop_desktop_daemon: (args) =>
@@ -574,8 +585,8 @@ export function createDaemonCommandHandlers(): Record<string, DesktopCommandHand
   };
 }
 
-export function registerDaemonManager(): void {
-  const handlers = createDaemonCommandHandlers();
+export function registerDaemonManager(options?: DaemonManagerOptions): void {
+  const handlers = createDaemonCommandHandlers(options);
 
   ipcMain.handle(
     "paseo:invoke",

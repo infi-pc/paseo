@@ -21,6 +21,7 @@ import {
 import { EditableReleaseStore, type RendererRelease } from "./release-store.js";
 import { watchRendererHealth } from "./renderer-health.js";
 import { loadRendererDocument } from "./renderer-navigation.js";
+import type { EditableWorkshopDaemonManager } from "./workshop-daemon.js";
 
 interface LoadAttempt {
   release: RendererRelease;
@@ -33,7 +34,7 @@ interface LoadAttempt {
 
 export class EditableDesktopRuntime {
   private readonly home = resolveEditableHome();
-  private cloudSync: Promise<void> | undefined;
+  private cloudSync: Promise<boolean> | undefined;
   private readonly store: EditableReleaseStore;
   private readonly windows = new Map<number, BrowserWindow>();
   private readonly previews = new Set<BrowserWindow>();
@@ -47,6 +48,7 @@ export class EditableDesktopRuntime {
       isPackaged: boolean;
       devServerUrl: string;
       cloudShelfHome?: string;
+      workshopDaemon?: EditableWorkshopDaemonManager;
       openNewWindow: () => Promise<void>;
       warn: (error: unknown) => void;
     },
@@ -110,6 +112,27 @@ export class EditableDesktopRuntime {
       if (this.attempts.get(win)?.ready && isEditableAppUrl(new URL(event.senderFrame!.url))) {
         if (this.store.reportHealthy(win.id, digest)) this.updateHealthWatch.get(win)?.();
       }
+    });
+    ipcMain.handle("paseo:editable:syncFromCloudShelf", async (event) => {
+      this.requireWindow(event);
+      try {
+        const updated = await this.syncFromCloudShelf();
+        return { ok: true, updated };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+    ipcMain.handle("paseo:editable:getWorkshopStatus", async (event) => {
+      this.requireWindow(event);
+      if (!this.options.workshopDaemon) return null;
+      return this.options.workshopDaemon.getStatus();
+    });
+    ipcMain.handle("paseo:editable:startWorkshopDaemon", async (event) => {
+      this.requireWindow(event);
+      if (!this.options.workshopDaemon) {
+        throw new Error("Workshop daemon management is not enabled in this build");
+      }
+      return this.options.workshopDaemon.start();
     });
   }
 
@@ -222,7 +245,7 @@ export class EditableDesktopRuntime {
     await this.navigateFromMenu(this.store.reloadChannel({ fromMenu: true }));
   }
 
-  async syncFromCloudShelf(): Promise<void> {
+  async syncFromCloudShelf(): Promise<boolean> {
     if (this.store.safe) throw new Error("Editable renderer is disabled in safe renderer mode");
     this.cloudSync ??= syncFromCloudShelf({
       home: this.home,
@@ -230,7 +253,10 @@ export class EditableDesktopRuntime {
       publicKey: () => this.store.publicKey(),
       shouldInstall: (candidate) => this.store.shouldInstallCloudChannel(candidate),
     })
-      .then((installed) => (installed ? this.reloadLatestRenderer() : undefined))
+      .then(async (installed) => {
+        if (installed) await this.reloadLatestRenderer();
+        return installed;
+      })
       .finally(() => {
         this.cloudSync = undefined;
       });

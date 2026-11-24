@@ -19,6 +19,7 @@ import {
 // FORK(editable): select the dev identity before logging, shell import, or the instance lock.
 import { applyDevInstanceProfile } from "./editable/dev-profile.js";
 import { resolveEditableHome } from "./editable/constants.js";
+import { EditableWorkshopDaemonManager } from "./editable/workshop-daemon.js";
 
 const cloudShelfHome = resolveEditableHome();
 const devProfile = applyDevInstanceProfile();
@@ -982,9 +983,11 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
 
   // FORK(editable): serve the verified or built-in renderer on the shared app origin.
+  const workshopDaemon = new EditableWorkshopDaemonManager({ configHome: cloudShelfHome });
   editableRuntime = new EditableDesktopRuntime({
     builtInDistDir: getAppDistDir(),
     cloudShelfHome: devProfile ? cloudShelfHome : undefined,
+    workshopDaemon,
     isPackaged: app.isPackaged,
     devServerUrl: DEV_SERVER_URL,
     openNewWindow: () => desktopWindowOwner.openAdditional(),
@@ -998,7 +1001,11 @@ async function bootstrap(): Promise<void> {
     editable: {
       useRecoveryRenderer: () => editableRuntime.useRecoveryRenderer(),
       reloadLatestRenderer: () => editableRuntime.reloadLatestRenderer(),
-      syncFromCloudShelf: devProfile ? () => editableRuntime.syncFromCloudShelf() : undefined,
+      syncFromCloudShelf: devProfile
+        ? async () => {
+            await editableRuntime.syncFromCloudShelf();
+          }
+        : undefined,
       exitPreviewMode: () => editableRuntime.exitPreviewMode(),
     },
     onNewWindow: () => {
@@ -1008,7 +1015,9 @@ async function bootstrap(): Promise<void> {
     },
   });
   ensureNotificationCenterRegistration();
-  registerDaemonManager();
+  registerDaemonManager({
+    readWorkshopLocalCredential: (listen) => workshopDaemon.readLocalCredential(listen),
+  });
   registerWindowManager({ mode: DESKTOP_WINDOW_CHROME_MODE });
   registerDialogHandlers();
   registerNotificationHandlers();
