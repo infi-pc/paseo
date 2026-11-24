@@ -57,6 +57,7 @@ export function parseReleaseManifest(payload: unknown) {
     sourceSha,
     archiveSha256,
     archiveBytes,
+    summary: manifest.summary,
     files,
   };
 }

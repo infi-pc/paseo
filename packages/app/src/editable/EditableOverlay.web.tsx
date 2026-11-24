@@ -18,43 +18,71 @@ import { useEditablePrompt } from "./use-editable-prompt";
 const FRAME_GAP = 8;
 const PROMPT_WIDTH = 320;
 
-export function EditableOverlay() {
-  const { t } = useTranslation();
-  const route = usePathname();
-  const { bridge, status } = useEditableDesktop();
-  const prompt = useEditablePrompt();
-  const [picking, setPicking] = useState(false);
-  const [selected, setSelected] = useState<EditableTarget | null>(null);
-  const currentRoute = useRef(route);
-  currentRoute.current = route;
+function useOptionHoldPicking(enabled: boolean): [boolean, () => void] {
+  const [altPicking, setAltPicking] = useState(false);
+  const clear = useCallback(() => setAltPicking(false), []);
 
-  const close = useCallback(() => {
-    setSelected(null);
-    setPicking(false);
-  }, []);
-  useEffect(close, [route, close]);
-
-  const active = picking || !!selected;
-  const layer = useGlobalOverlayLayer("floating", active);
-  useKeyboardActionHandler({
-    handlerId: "editable.pick",
-    actions: ["editable.pick"],
-    enabled: isWeb && prompt.config?.enabled === true && !prompt.sending,
-    priority: 100,
-    handle: () => {
-      if (active) close();
-      else {
-        prompt.reset();
-        setPicking(true);
+  useEffect(() => {
+    if (!isWeb || !enabled) {
+      setAltPicking(false);
+      return;
+    }
+    const cancelAlt = () => setAltPicking(false);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Alt") {
+        if (!event.ctrlKey && !event.metaKey && !event.shiftKey) setAltPicking(true);
+        return;
       }
-      return true;
-    },
-  });
-  const setScope = useOverlayRegistration({
+      // Pressing another key while holding Option (e.g. Option+Arrow or Option+Shift+F8) cancels hold-pick.
+      setAltPicking(false);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Alt") setAltPicking(false);
+    };
+    const onVisibility = () => {
+      if (document.hidden) setAltPicking(false);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("blur", cancelAlt);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("blur", cancelAlt);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [enabled]);
+
+  return [altPicking, clear];
+}
+
+function usePointerPositionRef() {
+  const pointerPos = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!isWeb) return;
+    const onPointerMove = (event: PointerEvent) => {
+      pointerPos.current = { x: event.clientX, y: event.clientY };
+    };
+    window.addEventListener("pointermove", onPointerMove, { capture: true, passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove, true);
+    };
+  }, []);
+  return pointerPos;
+}
+
+function useEditableEscape(
+  active: boolean,
+  layer: number,
+  manageFocus: boolean,
+  close: () => void,
+) {
+  return useOverlayRegistration({
     active,
     layer,
     keys: ["Escape"],
-    manageFocus: !!selected,
+    manageFocus,
     onKeyDown(event) {
       if (event.key !== "Escape") return false;
       event.preventDefault();
@@ -62,12 +90,107 @@ export function EditableOverlay() {
       return true;
     },
   });
+}
 
-  const onPick = useCallback((target: EditableTarget) => {
-    setSelected(target);
+function PickingHint({ visible, layer }: { visible: boolean; layer: number }) {
+  const { t } = useTranslation();
+  const hintStyle = useMemo(
+    () =>
+      ({
+        ...pillStyle,
+        position: "fixed",
+        left: 12,
+        bottom: 52,
+        zIndex: layer,
+        pointerEvents: "none",
+      }) as const,
+    [layer],
+  );
+  if (!visible) return null;
+  return (
+    <div role="status" data-ed-overlay="true" style={hintStyle}>
+      {t("editable.pickHint")}
+    </div>
+  );
+}
+
+function shouldRenderOverlay({
+  active,
+  enabled,
+  hasBridge,
+  editing,
+}: {
+  active: boolean;
+  enabled: boolean;
+  hasBridge: boolean;
+  editing: boolean;
+}): boolean {
+  if (!isWeb || typeof document === "undefined") return false;
+  return active || enabled || hasBridge || editing;
+}
+
+export function EditableOverlay() {
+  const { t } = useTranslation();
+  const route = usePathname();
+  const { bridge, status, workshopDaemon, refresh } = useEditableDesktop();
+  const prompt = useEditablePrompt({ bridge, workshopDaemon, refreshDesktop: refresh });
+  const [picking, setPicking] = useState(false);
+  const [selected, setSelected] = useState<EditableTarget | null>(null);
+  const pointerPos = usePointerPositionRef();
+  const canPick = isWeb && prompt.config?.enabled === true && !prompt.sending;
+  const [altPicking, clearAltPicking] = useOptionHoldPicking(canPick && !selected);
+  const currentRoute = useRef(route);
+  currentRoute.current = route;
+
+  const close = useCallback(() => {
+    setSelected(null);
     setPicking(false);
-  }, []);
-  const hover = useHoveredTarget(picking, route, status?.releaseDigest ?? null, onPick);
+    clearAltPicking();
+  }, [clearAltPicking]);
+  useEffect(close, [route, close]);
+
+  const isPickingMode = picking || altPicking;
+  const active = isPickingMode || !!selected;
+  const layer = useGlobalOverlayLayer("floating", active);
+
+  const startPick = useCallback(() => {
+    if (!canPick) return;
+    prompt.reset();
+    setSelected(null);
+    clearAltPicking();
+    setPicking(true);
+  }, [canPick, clearAltPicking, prompt]);
+
+  useKeyboardActionHandler({
+    handlerId: "editable.pick",
+    actions: ["editable.pick"],
+    enabled: canPick,
+    priority: 100,
+    handle: () => {
+      if (active) close();
+      else startPick();
+      return true;
+    },
+  });
+
+  const setScope = useEditableEscape(active, layer, !!selected, close);
+
+  const onPick = useCallback(
+    (target: EditableTarget) => {
+      setSelected(target);
+      setPicking(false);
+      clearAltPicking();
+    },
+    [clearAltPicking],
+  );
+  const hover = useHoveredTarget({
+    picking,
+    altPicking,
+    pointerPos,
+    route,
+    releaseDigest: status?.releaseDigest ?? null,
+    onPick,
+  });
   const target = selected ?? hover;
   const rect = useTargetRect(target?.element);
   const onSubmit = useStableEvent(() => {
@@ -76,29 +199,21 @@ export function EditableOverlay() {
       if (currentRoute.current === route) setSelected(selected);
     });
   });
-  const hintStyle = useMemo(
-    () =>
-      ({
-        ...pillStyle,
-        position: "fixed",
-        left: 12,
-        bottom: 12,
-        zIndex: layer,
-        pointerEvents: "none",
-      }) as const,
-    [layer],
-  );
 
-  if (!isWeb || typeof document === "undefined") return null;
-  if (!active && !bridge && !prompt.editing) return null;
+  if (
+    !shouldRenderOverlay({
+      active,
+      enabled: prompt.config?.enabled === true,
+      hasBridge: !!bridge,
+      editing: prompt.editing,
+    })
+  ) {
+    return null;
+  }
 
   return createPortal(
     <>
-      {picking ? (
-        <div role="status" data-ed-overlay="true" style={hintStyle}>
-          {t("editable.pickHint")}
-        </div>
-      ) : null}
+      <PickingHint visible={isPickingMode} layer={layer} />
       {target && rect ? <PickerHighlight rect={rect} target={target} layer={layer} /> : null}
       {selected ? (
         <InlinePopover
@@ -110,27 +225,56 @@ export function EditableOverlay() {
           <EditablePrompt prompt={prompt} onClose={close} onSubmit={onSubmit} />
         </InlinePopover>
       ) : null}
-      <EditableStatusPill bridge={bridge} status={status} editing={prompt.editing} layer={layer} />
+      <EditableStatusPill
+        bridge={bridge}
+        status={status}
+        workshopDaemon={workshopDaemon}
+        workshop={prompt}
+        onPick={startPick}
+        onRefresh={refresh}
+        layer={layer}
+      />
     </>,
     getOverlayRoot(),
   );
 }
 
-function useHoveredTarget(
-  picking: boolean,
-  route: string,
-  releaseDigest: string | null,
-  onPick: (target: EditableTarget) => void,
-) {
+function useHoveredTarget({
+  picking,
+  altPicking,
+  pointerPos,
+  route,
+  releaseDigest,
+  onPick,
+}: {
+  picking: boolean;
+  altPicking: boolean;
+  pointerPos: React.RefObject<{ x: number; y: number } | null>;
+  route: string;
+  releaseDigest: string | null;
+  onPick: (target: EditableTarget) => void;
+}) {
   const [hover, setHover] = useState<EditableTarget | null>(null);
+  const active = picking || altPicking;
 
   useEffect(() => {
-    if (!isWeb || !picking) return;
+    if (!isWeb || !active) return;
     const context: EditableRouteContext = {
       route,
       releaseDigest,
       platform: getIsElectron() ? "electron" : "web",
     };
+
+    // Immediately highlight whatever sits under the cursor when Option is pressed.
+    const pos = pointerPos.current;
+    if (pos && typeof document.elementFromPoint === "function") {
+      const under = document.elementFromPoint(pos.x, pos.y);
+      if (under && !under.closest('[data-ed-overlay="true"]')) {
+        const initial = locateEditableTarget(under, context);
+        if (initial) setHover(initial);
+      }
+    }
+
     const onMove = (event: PointerEvent) => {
       const candidate = locateEditableTarget(event.target, context);
       setHover((previous) => (previous?.element === candidate?.element ? previous : candidate));
@@ -138,13 +282,14 @@ function useHoveredTarget(
     const clearHover = () => setHover(null);
     const isPageTarget = (event: MouseEvent) =>
       event.target instanceof Element && !event.target.closest('[data-ed-overlay="true"]');
+    const matchesClickMode = (event: MouseEvent) => picking || (altPicking && event.altKey);
     const onPointerDown = (event: PointerEvent) => {
-      if (event.button !== 0 || !isPageTarget(event)) return;
+      if (event.button !== 0 || !isPageTarget(event) || !matchesClickMode(event)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
     };
     const onClick = (event: MouseEvent) => {
-      if (!isPageTarget(event)) return;
+      if (!isPageTarget(event) || !matchesClickMode(event)) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       const target = locateEditableTarget(event.target, context);
@@ -163,9 +308,9 @@ function useHoveredTarget(
       window.removeEventListener("click", onClick, true);
       clearHover();
     };
-  }, [picking, route, releaseDigest, onPick]);
+  }, [active, picking, altPicking, pointerPos, route, releaseDigest, onPick]);
 
-  return picking ? hover : null;
+  return active ? hover : null;
 }
 
 function PickerHighlight({

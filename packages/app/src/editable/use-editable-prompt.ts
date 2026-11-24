@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { EditableLocatorContext } from "./types";
-import { useWorkshop } from "./use-workshop";
+import { useWorkshop, type UseWorkshopOptions } from "./use-workshop";
 import { DEFAULT_WORKSHOP_CWD } from "./workshop-client";
 
-export function useEditablePrompt() {
+export function useEditablePrompt(options: UseWorkshopOptions = {}) {
   const { t } = useTranslation();
-  const workshop = useWorkshop();
+  const workshop = useWorkshop(options);
   const [draft, setDraft] = useState("");
   const [cwd, setCwd] = useState("");
   const [error, setError] = useState("");
@@ -30,7 +30,12 @@ export function useEditablePrompt() {
     }
   }
 
-  const canSend = !!workshop.host && !workshop.saving && !workshop.sending && !!draft.trim();
+  const canSend =
+    (workshop.managedWorkshop || !!workshop.host) &&
+    !workshop.saving &&
+    !workshop.sending &&
+    !workshop.startingWorkshop &&
+    !!draft.trim();
 
   async function submit(context: EditableLocatorContext, close: () => void, reopen: () => void) {
     if (!canSend) return;
@@ -62,9 +67,9 @@ export function useEditablePrompt() {
     setDraft,
     cwd,
     setCwd,
-    defaultCwd: DEFAULT_WORKSHOP_CWD,
+    defaultCwd: workshop.workshopDaemon?.repoDir ?? DEFAULT_WORKSHOP_CWD,
     error,
-    choosingHost: choosingHost || !workshop.host,
+    choosingHost: !workshop.managedWorkshop && (choosingHost || !workshop.host),
     setChoosingHost,
     chooseHost,
     canSend,

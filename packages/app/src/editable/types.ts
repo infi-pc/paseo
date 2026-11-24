@@ -8,6 +8,17 @@ export interface EditableLocatorContext {
   platform: "electron" | "web" | "ios" | "android";
 }
 
+export interface EditableWorkshopDaemonStatus {
+  status: "running" | "starting" | "stopped" | "errored";
+  serverId: string | null;
+  listen: string;
+  pid: number | null;
+  home: string;
+  repoDir: string;
+  worktrees: string[];
+  error: string | null;
+}
+
 export interface EditableDesktopStatus {
   runtimeVersion: string;
   activeDigest: string | null;
@@ -18,6 +29,7 @@ export interface EditableDesktopStatus {
   previewUrl: string | null;
   activeGeneration: number;
   safeRenderer: boolean;
+  releaseSummary?: string | null;
 }
 
 export interface EditableDesktopBridge {
@@ -27,6 +39,9 @@ export interface EditableDesktopBridge {
   setPreviewUrl(url: string | null): Promise<void>;
   openPreviewWindow(url: string): Promise<void>;
   reportHealthy(releaseDigest: string): Promise<void>;
+  syncFromCloudShelf?: () => Promise<{ ok: boolean; updated?: boolean; error?: string }>;
+  getWorkshopStatus?: () => Promise<EditableWorkshopDaemonStatus | null>;
+  startWorkshopDaemon?: () => Promise<EditableWorkshopDaemonStatus>;
 }
 
 declare module "@/desktop/host" {
@@ -39,6 +54,7 @@ export interface EditableWorkshopConfig {
   workshopHostId: string | null;
   workshopCwd: string | null;
   workshopAgentId: string | null;
+  lastRequest?: string | null;
   enabled: boolean;
 }
 

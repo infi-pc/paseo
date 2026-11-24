@@ -5,6 +5,7 @@ import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js
 import type { DesktopWindowChromeMode } from "./window/chrome.js";
 // FORK(editable): status typing is erased from the sandboxed preload.
 import type { EditableDesktopStatus } from "./editable/release-store.js";
+import type { EditableWorkshopDaemonStatus } from "./editable/workshop-daemon.js";
 
 // This preload runs in Electron's sandbox and is tsc-compiled (not bundled), so it MUST
 // NOT emit any runtime module load other than "electron" — a require() of a local or
@@ -63,6 +64,12 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:editable:openPreviewWindow", url),
     reportHealthy: (digest: string): Promise<void> =>
       ipcRenderer.invoke("paseo:editable:reportHealthy", digest),
+    syncFromCloudShelf: (): Promise<{ ok: boolean; updated?: boolean; error?: string }> =>
+      ipcRenderer.invoke("paseo:editable:syncFromCloudShelf"),
+    getWorkshopStatus: (): Promise<EditableWorkshopDaemonStatus | null> =>
+      ipcRenderer.invoke("paseo:editable:getWorkshopStatus"),
+    startWorkshopDaemon: (): Promise<EditableWorkshopDaemonStatus> =>
+      ipcRenderer.invoke("paseo:editable:startWorkshopDaemon"),
   },
   events: {
     on: (event: string, handler: EventHandler): Promise<() => void> => {

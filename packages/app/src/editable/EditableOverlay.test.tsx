@@ -11,13 +11,19 @@ import { routeKeyboardShortcut } from "@/keyboard/route-shortcut";
 import { EditableOverlay } from "./EditableOverlay.web";
 import type { EditableDesktopBridge, EditableDesktopStatus } from "./types";
 
-const { isReady, send } = vi.hoisted(() => ({
+const { isReady, push, send, startWorkshop } = vi.hoisted(() => ({
   isReady: vi.fn(() => true),
+  push: vi.fn(),
   send: vi.fn().mockResolvedValue({ kind: "sent", agentId: "agent-1" }),
+  startWorkshop: vi.fn().mockResolvedValue({ serverId: "workshop", repoDir: "/repo" }),
 }));
 vi.mock("expo-router", () => {
   const navigation = { isReady };
-  return { usePathname: () => "/workspaces", useNavigationContainerRef: () => navigation };
+  return {
+    usePathname: () => "/workspaces",
+    useNavigationContainerRef: () => navigation,
+    useRouter: () => ({ push }),
+  };
 });
 vi.mock("react-i18next", async () => {
   const { en } = await import("@/i18n/resources/en");
@@ -28,13 +34,23 @@ vi.mock("react-i18next", async () => {
   };
 });
 vi.mock("./use-workshop", () => ({
-  useWorkshop: () => ({
+  useWorkshop: (options?: { bridge?: EditableDesktopBridge; workshopDaemon?: unknown }) => ({
     config: { enabled: true },
     hosts: [{ serverId: "workshop", label: "Workshop" }],
     host: { serverId: "workshop", label: "Workshop" },
+    hostId: "workshop",
+    agentId: "agent-1",
+    agentStatus: "idle",
+    lastRequest: "Make header red",
+    isConnected: true,
+    managedWorkshop: Boolean(options?.bridge?.startWorkshopDaemon),
+    workshopDaemon: options?.workshopDaemon ?? null,
+    startingWorkshop: false,
+    workshopError: null,
     saving: false,
     sending: false,
     editing: false,
+    startWorkshop,
     send,
   }),
 }));
@@ -117,7 +133,9 @@ afterEach(() => {
   cleanup();
   delete window.paseoDesktop;
   isReady.mockReturnValue(true);
+  push.mockClear();
   send.mockClear();
+  startWorkshop.mockClear();
   vi.useRealTimers();
 });
 
@@ -128,14 +146,67 @@ describe("Editable overlay", () => {
     ).toEqual(["editable.pick"]);
     const { shortcut } = setup();
     shortcut();
-    expect(screen.getByRole("status").textContent).toBe(
-      "Click a component to edit it. Esc to cancel.",
-    );
+    expect(screen.getByText("Click a component to edit it. Esc to cancel.")).toBeTruthy();
     shortcut();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText("Click a component to edit it. Esc to cancel.")).toBeNull();
     shortcut();
     fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByText("Click a component to edit it. Esc to cancel.")).toBeNull();
+  });
+
+  it("reveals boundaries while holding Option/Alt and opens the prompt on Option+Click", () => {
+    const { target, pageClick } = setup();
+    fireEvent.keyDown(window, { key: "Alt", code: "AltLeft", altKey: true });
+    fireEvent.pointerMove(target);
+    expect(screen.getByText("WorkspaceHeader · Header.tsx:42")).toBeTruthy();
+
+    fireEvent.keyUp(window, { key: "Alt", code: "AltLeft", altKey: false });
+    expect(screen.queryByText("WorkspaceHeader · Header.tsx:42")).toBeNull();
+
+    fireEvent.keyDown(window, { key: "Alt", code: "AltLeft", altKey: true });
+    fireEvent.click(target, { altKey: true });
+    expect(pageClick).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Edit this component…" })).toBeTruthy();
+  });
+
+  it("opens the bottom-left status popover with version, in-progress info, and Workshop status", async () => {
+    const syncFromCloudShelf = vi.fn().mockResolvedValue({ ok: true, updated: false });
+    const getWorkshopStatus = vi.fn().mockResolvedValue({
+      status: "running",
+      serverId: "workshop",
+      listen: "127.0.0.1:6769",
+      pid: 1234,
+      home: "/Users/tester/.paseo-workshop",
+      repoDir: "/Users/tester/.editable-paseo/repo",
+      worktrees: ["red-row"],
+      error: null,
+    });
+    const bridge = {
+      getStatus: vi.fn().mockResolvedValue({ ...status, releaseSummary: "Make settings red" }),
+      reportHealthy: vi.fn().mockResolvedValue(undefined),
+      syncFromCloudShelf,
+      getWorkshopStatus,
+      startWorkshopDaemon: vi.fn(),
+    } satisfies Partial<EditableDesktopBridge>;
+    window.paseoDesktop = { editable: bridge as unknown as EditableDesktopBridge };
+    setup();
+
+    const trigger = await screen.findByRole("button", { name: "Editable Paseo status" });
+    fireEvent.click(trigger);
+
+    const popover = await screen.findByRole("dialog", { name: "Editable Paseo" });
+    expect(popover.textContent).toContain("Gen 1");
+    expect(popover.textContent).toContain("Make settings red");
+    expect(popover.textContent).toContain("ed/wip/red-row");
+    expect(popover.textContent).toContain("Running · Connected");
+    expect(popover.textContent).toContain("127.0.0.1:6769");
+
+    fireEvent.click(screen.getByRole("button", { name: "Sync Cloud" }));
+    await waitFor(() => expect(syncFromCloudShelf).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("Already on the latest release.")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Workshop chat" }));
+    expect(push).toHaveBeenCalledWith("/h/workshop/agent/agent-1");
   });
 
   it("intercepts a component click, closes on Escape and submits an edit from Enter", async () => {

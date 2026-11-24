@@ -21,6 +21,7 @@ export interface RendererRelease {
   releaseDigest: string | null;
   distDir: string;
   files: ReadonlyMap<string, Integrity> | null;
+  summary?: string | null;
 }
 
 export interface EditableDesktopStatus {
@@ -33,6 +34,7 @@ export interface EditableDesktopStatus {
   previewUrl: string | null;
   activeGeneration: number;
   safeRenderer: boolean;
+  releaseSummary?: string | null;
 }
 
 export interface RendererFile {
@@ -147,6 +149,7 @@ export class EditableReleaseStore {
     return {
       distDir,
       releaseDigest,
+      summary: manifest.summary,
       files: new Map(
         manifest.files.map(({ path: relative, bytes, sha256 }) => [relative, { bytes, sha256 }]),
       ),
@@ -169,16 +172,19 @@ export class EditableReleaseStore {
 
   getStatus(windowId: number): EditableDesktopStatus {
     const { previewUrl, activeGeneration, lastKnownGoodDigest, quarantinedDigests } = this.state;
+    const pinned = this.windowReleaseRegistry.get(windowId);
+    const releaseSummary = pinned?.summary ?? this.active.summary ?? null;
     return {
       runtimeVersion: DESKTOP_RUNTIME_VERSION,
       activeDigest: this.active.releaseDigest,
-      releaseDigest: this.windowReleaseRegistry.get(windowId)?.releaseDigest ?? null,
+      releaseDigest: pinned?.releaseDigest ?? null,
       availableDigest: this.availableChannelRelease()?.digest ?? null,
       lastKnownGoodDigest,
       quarantinedDigests: [...quarantinedDigests],
       previewUrl,
       activeGeneration,
       safeRenderer: this.safe,
+      ...(releaseSummary !== null ? { releaseSummary } : {}),
     };
   }
 
