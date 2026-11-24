@@ -236,7 +236,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   tileTitle: {
-    color: theme.colors.foreground,
+    color: theme.colors.statusDanger,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
   },
