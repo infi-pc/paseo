@@ -13,7 +13,7 @@ import {
   verifySignedEnvelope,
 } from "./crypto.js";
 import { parseReleaseManifest } from "./release-manifest.js";
-import { channelManifestSchema } from "./schema.js";
+import { channelManifestSchema, wipIndexSchema, type WipBranchPointer } from "./schema.js";
 
 const run = promisify(execFile);
 const MAX_JSON_BYTES = 4 * 1024 * 1024;
@@ -236,4 +236,228 @@ export async function syncFromCloudShelf({
   } finally {
     await rm(staging, { recursive: true, force: true });
   }
+}
+
+export interface ChannelSyncResult {
+  updated: boolean;
+  digest: string;
+  generation: number;
+  summary: string;
+}
+
+async function readCachedChannelMeta(
+  channelDest: string,
+  trustedKey: string,
+): Promise<{ generation: number; digest: string | null }> {
+  try {
+    const existingRaw = JSON.parse(await readFile(channelDest, "utf8")) as unknown;
+    if (verifySignedEnvelope(existingRaw, trustedKey)) {
+      const existingParsed = channelManifestSchema.parse(existingRaw.payload);
+      return {
+        generation: existingParsed.generation,
+        digest: existingParsed.surfaces["electron-web"]?.releaseDigest ?? null,
+      };
+    }
+  } catch {
+    // Missing or unreadable channel file
+  }
+  return { generation: 0, digest: null };
+}
+
+async function installReleaseFromCloud(input: {
+  request: (url: string) => Promise<Response>;
+  base: string;
+  pointer: { releaseDigest: string; sourceSha: string };
+  trustedKey: string;
+  surface: string;
+  staging: string;
+}): Promise<void> {
+  const releaseUrl = `${input.base}/releases/electron-web/${input.pointer.releaseDigest}`;
+  const { manifestEnvelope, manifest, archiveBytes } = await downloadRelease(
+    input.request,
+    releaseUrl,
+    input.pointer,
+    input.trustedKey,
+  );
+  const archive = path.join(input.staging, "archive.tar.gz");
+  const extracted = path.join(input.staging, "release");
+  const target = path.join(input.surface, input.pointer.releaseDigest);
+  await writeFile(archive, archiveBytes);
+  await mkdir(extracted);
+  await extractArchive(archive, extracted, new Set(manifest.files.map((file) => file.path)));
+  verifyReleaseDirectory(extracted, manifestEnvelope, input.trustedKey, DESKTOP_RUNTIME_VERSION);
+  await writeFile(path.join(extracted, "manifest.json"), JSON.stringify(manifestEnvelope), {
+    flag: "wx",
+  });
+  try {
+    renameSync(extracted, target);
+  } catch (error) {
+    if (!["EEXIST", "ENOTEMPTY"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+      throw error;
+    }
+  }
+}
+
+function buildShelfRequest(
+  cloudShelfUrl: string,
+  readToken: string | undefined,
+  fetchImpl: typeof fetch,
+) {
+  const shelfUrl = new URL(cloudShelfUrl);
+  if (shelfUrl.username || shelfUrl.password || shelfUrl.search || shelfUrl.hash) {
+    throw new Error("Cloud Shelf URL must be an HTTPS base URL");
+  }
+  const base = shelfUrl.href.replace(/\/+$/, "");
+  const request = (url: string) =>
+    fetchImpl(url, {
+      headers: readToken ? { Authorization: `Bearer ${readToken}` } : {},
+      redirect: "error",
+      signal: AbortSignal.timeout(60_000),
+    });
+  return { base, request };
+}
+
+/**
+ * Downloads & verifies a signed channel (`prod` or `wip-<slug>`) from Cloud Shelf
+ * into `home` without automatically reloading any window.
+ */
+export async function syncChannelFromCloudShelf({
+  home,
+  configHome,
+  channel,
+  publicKey,
+  minGeneration = 0,
+  isQuarantined = () => false,
+  hasInstalledRelease = () => false,
+  fetchImpl = fetch,
+}: {
+  home: string;
+  configHome: string;
+  channel: string;
+  publicKey: () => string;
+  minGeneration?: number;
+  isQuarantined?: (digest: string) => boolean;
+  hasInstalledRelease?: (digest: string) => boolean;
+  fetchImpl?: typeof fetch;
+}): Promise<ChannelSyncResult | null> {
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(channel)) {
+    throw new Error(`Invalid Cloud Shelf channel name: ${channel}`);
+  }
+  const { cloudShelfUrl, readToken } = await readShelfConfig(configHome);
+  const { base, request } = buildShelfRequest(cloudShelfUrl, readToken, fetchImpl);
+  const trustedKey = publicKey();
+  const chanRes = await request(`${base}/channels/${channel}.json`);
+  if (chanRes.status === 404) return null;
+  const channelEnvelope = await readDownloadJson(chanRes);
+  if (!verifySignedEnvelope(channelEnvelope, trustedKey)) {
+    throw new Error("Invalid Cloud Shelf channel signature");
+  }
+  const payload = channelManifestSchema.parse(channelEnvelope.payload);
+  if (payload.channel !== channel) throw new Error("Cloud Shelf channel name mismatch");
+  const pointer = payload.surfaces["electron-web"];
+  if (!pointer || pointer.runtimeVersion !== DESKTOP_RUNTIME_VERSION) return null;
+  if (payload.generation < minGeneration || isQuarantined(pointer.releaseDigest)) return null;
+
+  const surface = await prepareReleaseStore(home);
+  const channelsDir = path.join(surface, "channels");
+  await mkdir(channelsDir, { recursive: true, mode: 0o700 });
+  const channelDest =
+    channel === "prod"
+      ? path.join(surface, "channel.json")
+      : path.join(channelsDir, `${channel}.json`);
+
+  const cached = await readCachedChannelMeta(channelDest, trustedKey);
+  if (payload.generation < cached.generation) return null;
+
+  const alreadyInstalled = hasInstalledRelease(pointer.releaseDigest);
+  if (
+    payload.generation === cached.generation &&
+    pointer.releaseDigest === cached.digest &&
+    alreadyInstalled
+  ) {
+    return {
+      updated: false,
+      digest: pointer.releaseDigest,
+      generation: payload.generation,
+      summary: pointer.summary,
+    };
+  }
+
+  const staging = await mkdtemp(path.join(surface, ".cloud-"));
+  try {
+    if (!alreadyInstalled) {
+      await installReleaseFromCloud({ request, base, pointer, trustedKey, surface, staging });
+    }
+    const channelTmp = path.join(staging, "channel.json");
+    writeFileSync(channelTmp, JSON.stringify(channelEnvelope) + "\n");
+    renameSync(channelTmp, channelDest);
+    return {
+      updated: true,
+      digest: pointer.releaseDigest,
+      generation: payload.generation,
+      summary: pointer.summary,
+    };
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
+}
+
+export async function syncWipIndexFromCloudShelf({
+  home,
+  configHome,
+  publicKey,
+  fetchImpl = fetch,
+}: {
+  home: string;
+  configHome: string;
+  publicKey: () => string;
+  fetchImpl?: typeof fetch;
+}): Promise<WipBranchPointer[]> {
+  const { cloudShelfUrl, readToken } = await readShelfConfig(configHome);
+  const shelfUrl = new URL(cloudShelfUrl);
+  if (shelfUrl.username || shelfUrl.password || shelfUrl.search || shelfUrl.hash) {
+    throw new Error("Cloud Shelf URL must be an HTTPS base URL");
+  }
+  const base = shelfUrl.href.replace(/\/+$/, "");
+  const response = await fetchImpl(`${base}/channels/wip-index.json`, {
+    headers: readToken ? { Authorization: `Bearer ${readToken}` } : {},
+    redirect: "error",
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (response.status === 404) return [];
+
+  const trustedKey = publicKey();
+  const envelope = await readDownloadJson(response);
+  if (!verifySignedEnvelope(envelope, trustedKey)) {
+    throw new Error("Invalid Cloud Shelf wip-index signature");
+  }
+  const payload = wipIndexSchema.parse(envelope.payload);
+
+  const surface = await prepareReleaseStore(home);
+  const channelsDir = path.join(surface, "channels");
+  await mkdir(channelsDir, { recursive: true, mode: 0o700 });
+  const dest = path.join(channelsDir, "wip-index.json");
+
+  let prevGen = 0;
+  try {
+    const existing = JSON.parse(await readFile(dest, "utf8")) as unknown;
+    if (verifySignedEnvelope(existing, trustedKey)) {
+      prevGen = wipIndexSchema.parse(existing.payload).generation;
+    }
+  } catch {
+    // No previous wip-index
+  }
+  if (payload.generation < prevGen) {
+    return [];
+  }
+
+  const staging = await mkdtemp(path.join(surface, ".wipidx-"));
+  try {
+    const tmp = path.join(staging, "wip-index.json");
+    writeFileSync(tmp, JSON.stringify(envelope) + "\n");
+    renameSync(tmp, dest);
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
+  return payload.branches;
 }

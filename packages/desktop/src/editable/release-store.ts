@@ -35,6 +35,17 @@ export interface EditableDesktopStatus {
   activeGeneration: number;
   safeRenderer: boolean;
   releaseSummary?: string | null;
+  activeChannel?: string;
+  availableSummary?: string | null;
+}
+
+export interface ChannelReleasePointer {
+  channel: string;
+  digest: string;
+  generation: number;
+  sourceSha: string;
+  summary: string;
+  updatedAt: string;
 }
 
 export interface RendererFile {
@@ -59,6 +70,7 @@ function initialState(): DeviceState {
 
 export class EditableReleaseStore {
   readonly windowReleaseRegistry = new Map<number, RendererRelease>();
+  readonly windowChannelRegistry = new Map<number, string>();
   readonly builtIn: RendererRelease;
   readonly safe: boolean;
   private readonly home: string;
@@ -128,7 +140,75 @@ export class EditableReleaseStore {
   }
 
   private manifestPath(digest: string): string | null {
-    return resolveRegularFile(this.home, `releases/electron-web/${digest}/manifest.json`);
+    return (
+      resolveRegularFile(this.home, `releases/electron-web/${digest}/manifest.json`) ??
+      (this.publicKeyHome !== this.home
+        ? resolveRegularFile(this.publicKeyHome, `releases/electron-web/${digest}/manifest.json`)
+        : null)
+    );
+  }
+
+  hasInstalledRelease(digest: string): boolean {
+    return this.manifestPath(digest) !== null;
+  }
+
+  isQuarantined(digest: string): boolean {
+    return this.state.quarantinedDigests.includes(digest);
+  }
+
+  get activeChannel(): string {
+    return this.state.activeChannel ?? "prod";
+  }
+
+  getWindowChannel(windowId: number): string {
+    return this.windowChannelRegistry.get(windowId) ?? this.activeChannel;
+  }
+
+  getWindowRelease(windowId: number): RendererRelease | undefined {
+    return this.windowReleaseRegistry.get(windowId);
+  }
+
+  private readChannelPointerFromHome(home: string, channel: string): ChannelReleasePointer | null {
+    const rel =
+      channel === "prod"
+        ? "releases/electron-web/channel.json"
+        : `releases/electron-web/channels/${channel}.json`;
+    const filename = resolveRegularFile(home, rel);
+    if (!filename) return null;
+    try {
+      const envelope = readJson(filename);
+      if (!verifySignedEnvelope(envelope, this.publicKey())) return null;
+      const parsed = channelManifestSchema.parse(envelope.payload);
+      if (parsed.channel !== channel) return null;
+      const target = parsed.surfaces["electron-web"];
+      if (!target || target.runtimeVersion !== DESKTOP_RUNTIME_VERSION) return null;
+      return {
+        channel: parsed.channel,
+        digest: target.releaseDigest,
+        generation: parsed.generation,
+        sourceSha: target.sourceSha,
+        summary: target.summary,
+        updatedAt: target.updatedAt,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  getChannelPointer(channel: string): ChannelReleasePointer | null {
+    if (this.safe || !this.stateReadable) return null;
+    const local = this.readChannelPointerFromHome(this.home, channel);
+    const shared =
+      this.publicKeyHome !== this.home
+        ? this.readChannelPointerFromHome(this.publicKeyHome, channel)
+        : null;
+    let best: ChannelReleasePointer | null = local;
+    if (shared && (!best || shared.generation > best.generation)) {
+      best = shared;
+    }
+    if (!best) return null;
+    if (channel === "prod" && best.generation < this.state.activeGeneration) return null;
+    return best;
   }
 
   private loadRelease(digest: unknown): RendererRelease {
@@ -173,19 +253,33 @@ export class EditableReleaseStore {
   getStatus(windowId: number): EditableDesktopStatus {
     const { previewUrl, activeGeneration, lastKnownGoodDigest, quarantinedDigests } = this.state;
     const pinned = this.windowReleaseRegistry.get(windowId);
+    const activeChannel = this.getWindowChannel(windowId);
     const releaseSummary = pinned?.summary ?? this.active.summary ?? null;
+    const channelCandidate =
+      activeChannel === "prod"
+        ? this.availableChannelRelease()
+        : this.availableForChannel(activeChannel);
     return {
       runtimeVersion: DESKTOP_RUNTIME_VERSION,
       activeDigest: this.active.releaseDigest,
       releaseDigest: pinned?.releaseDigest ?? null,
-      availableDigest: this.availableChannelRelease()?.digest ?? null,
+      availableDigest: channelCandidate?.digest ?? null,
       lastKnownGoodDigest,
       quarantinedDigests: [...quarantinedDigests],
       previewUrl,
       activeGeneration,
       safeRenderer: this.safe,
       ...(releaseSummary !== null ? { releaseSummary } : {}),
+      ...(activeChannel !== "prod" ? { activeChannel } : {}),
+      ...(channelCandidate?.summary ? { availableSummary: channelCandidate.summary } : {}),
     };
+  }
+
+  private availableForChannel(channel: string): ChannelReleasePointer | null {
+    if (this.safe || !this.stateReadable) return null;
+    const ptr = this.getChannelPointer(channel);
+    if (!ptr || this.state.quarantinedDigests.includes(ptr.digest)) return null;
+    return this.manifestPath(ptr.digest) ? ptr : null;
   }
 
   private readChannelRelease({ fromMenu = false } = {}) {
@@ -210,7 +304,11 @@ export class EditableReleaseStore {
     ) {
       throw new Error("Renderer channel generation has already been superseded");
     }
-    return { digest: target.releaseDigest, generation: channel.generation };
+    return {
+      digest: target.releaseDigest,
+      generation: channel.generation,
+      summary: target.summary,
+    };
   }
 
   private availableChannelRelease() {
@@ -221,7 +319,11 @@ export class EditableReleaseStore {
       // The publisher must install the immutable directory before advertising it.
       return this.manifestPath(candidate.digest) ? candidate : null;
     } catch {
-      return null;
+      const shared = this.getChannelPointer("prod");
+      if (!shared || this.state.quarantinedDigests.includes(shared.digest)) return null;
+      return this.manifestPath(shared.digest)
+        ? { digest: shared.digest, generation: shared.generation, summary: shared.summary }
+        : null;
     }
   }
 
@@ -260,12 +362,38 @@ export class EditableReleaseStore {
   switchRelease(digest: unknown): RendererRelease {
     this.requireEditable();
     const release = digest === null ? this.builtIn : this.loadRelease(digest);
-    const candidate = this.availableChannelRelease();
+    const currentChannel = this.activeChannel;
+    const candidate =
+      currentChannel === "prod"
+        ? this.availableChannelRelease()
+        : this.availableForChannel(currentChannel);
     const activeGeneration =
-      candidate?.digest === release.releaseDigest
-        ? candidate.generation
+      currentChannel === "prod" && candidate?.digest === release.releaseDigest
+        ? Math.max(this.state.activeGeneration, candidate.generation)
         : this.state.activeGeneration;
-    this.save({ ...this.state, activeDigest: release.releaseDigest, activeGeneration });
+    this.save({
+      ...this.state,
+      activeDigest: release.releaseDigest,
+      activeGeneration,
+      activeChannel: currentChannel,
+    });
+    this.active = release;
+    return release;
+  }
+
+  switchToChannel(channel: string, digest: string | null, generation?: number): RendererRelease {
+    this.requireEditable();
+    const release = digest === null ? this.builtIn : this.loadRelease(digest);
+    const activeGeneration =
+      channel === "prod" && typeof generation === "number"
+        ? Math.max(this.state.activeGeneration, generation)
+        : this.state.activeGeneration;
+    this.save({
+      ...this.state,
+      activeDigest: release.releaseDigest,
+      activeGeneration,
+      activeChannel: channel,
+    });
     this.active = release;
     return release;
   }
@@ -287,12 +415,14 @@ export class EditableReleaseStore {
     if (!this.stateReadable) throw new Error("Cannot read editable renderer device state");
   }
 
-  pin(windowId: number, release: RendererRelease): void {
+  pin(windowId: number, release: RendererRelease, channel?: string): void {
     this.windowReleaseRegistry.set(windowId, release);
+    if (channel !== undefined) this.windowChannelRegistry.set(windowId, channel);
   }
 
   unpin(windowId: number): void {
     this.windowReleaseRegistry.delete(windowId);
+    this.windowChannelRegistry.delete(windowId);
   }
 
   reportHealthy(windowId: number, digest: unknown): boolean {

@@ -65,6 +65,29 @@ function PromptTargetSection({
   );
 }
 
+function BranchTargetToggle({ prompt }: { prompt: ReturnType<typeof useEditablePrompt> }) {
+  const { t } = useTranslation();
+  const selectCurrent = useStableEvent(() => prompt.setTargetNewBranch(false));
+  const selectNew = useStableEvent(() => prompt.setTargetNewBranch(true));
+  if (!prompt.loadedWipSlug) return null;
+  return (
+    <View style={styles.targetRow}>
+      <Text style={styles.label}>{t("editable.targetOn")}</Text>
+      <Button
+        size="sm"
+        variant={prompt.targetNewBranch ? "ghost" : "default"}
+        onPress={selectCurrent}
+        numberOfLines={1}
+      >
+        {prompt.loadedWipSlug}
+      </Button>
+      <Button size="sm" variant={prompt.targetNewBranch ? "default" : "ghost"} onPress={selectNew}>
+        {t("editable.newBranch")}
+      </Button>
+    </View>
+  );
+}
+
 export function EditablePrompt({
   prompt,
   onSubmit,
@@ -90,6 +113,7 @@ export function EditablePrompt({
         returnKeyType="send"
         autoFocus={!inSheet}
       />
+      <BranchTargetToggle prompt={prompt} />
       <PromptTargetSection prompt={prompt} showHostPicker={showHostPicker} />
       {prompt.error ? (
         <Text accessibilityRole="alert" style={styles.error}>
@@ -157,6 +181,7 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 12,
   },
   hosts: { flexDirection: "row", flexWrap: "wrap", gap: 4, alignItems: "center" },
+  targetRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, alignItems: "center" },
   workshopRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 2 },
   row: { flexDirection: "row", gap: 4 },
   label: { color: theme.colors.foregroundMuted, fontSize: 12 },

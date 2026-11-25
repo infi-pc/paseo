@@ -4,19 +4,28 @@ import type { EditableLocatorContext } from "./types";
 import { useWorkshop, type UseWorkshopOptions } from "./use-workshop";
 import { DEFAULT_WORKSHOP_CWD } from "./workshop-client";
 
-export function useEditablePrompt(options: UseWorkshopOptions = {}) {
+export interface UseEditablePromptOptions extends UseWorkshopOptions {
+  loadedChannel?: string;
+}
+
+export function useEditablePrompt(options: UseEditablePromptOptions = {}) {
   const { t } = useTranslation();
   const workshop = useWorkshop(options);
+  const loadedWipSlug = options.loadedChannel?.startsWith("wip-")
+    ? options.loadedChannel.slice(4)
+    : null;
   const [draft, setDraft] = useState("");
   const [cwd, setCwd] = useState("");
   const [error, setError] = useState("");
   const [choosingHost, setChoosingHost] = useState(false);
+  const [targetNewBranch, setTargetNewBranch] = useState(false);
 
   function reset() {
     setDraft("");
     setCwd(workshop.config?.workshopCwd ?? "");
     setError("");
     setChoosingHost(false);
+    setTargetNewBranch(false);
   }
 
   async function chooseHost(serverId: string) {
@@ -42,7 +51,13 @@ export function useEditablePrompt(options: UseWorkshopOptions = {}) {
     close();
     setError("");
     try {
-      const result = await workshop.send(context, draft, cwd);
+      const followUp = Boolean(loadedWipSlug && !targetNewBranch);
+      const result = await workshop.send(
+        context,
+        draft,
+        cwd,
+        followUp ? { slug: loadedWipSlug, isFollowUp: true } : { isFollowUp: false },
+      );
       if (result.kind === "sent") {
         reset();
         return;
@@ -69,6 +84,9 @@ export function useEditablePrompt(options: UseWorkshopOptions = {}) {
     setCwd,
     defaultCwd: workshop.workshopDaemon?.repoDir ?? DEFAULT_WORKSHOP_CWD,
     error,
+    loadedWipSlug,
+    targetNewBranch,
+    setTargetNewBranch,
     choosingHost: !workshop.managedWorkshop && (choosingHost || !workshop.host),
     setChoosingHost,
     chooseHost,

@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import type {
+  EditableBranchAgentRecord,
+  EditableBranchEntry,
+  EditableBranchesSnapshot,
   EditableDesktopBridge,
   EditableDesktopStatus,
   EditableWorkshopDaemonStatus,
@@ -13,10 +16,10 @@ import type {
 export const pillStyle = {
   borderRadius: 6,
   padding: "4px 8px",
-  background: "rgba(24, 28, 36, 0.94)",
+  background: "#161a22",
   color: "#f8fafc",
-  border: "1px solid rgba(255, 255, 255, 0.14)",
-  boxShadow: "0 4px 14px rgba(0, 0, 0, 0.32)",
+  border: "1px solid rgba(255, 255, 255, 0.16)",
+  boxShadow: "0 6px 18px rgba(0, 0, 0, 0.42)",
   font: "500 11px/16px system-ui, -apple-system, sans-serif",
   whiteSpace: "nowrap",
 } as const;
@@ -30,13 +33,19 @@ export interface EditableStatusWorkshopInfo {
   host?: { serverId: string; label: string } | undefined;
   isConnected?: boolean;
   agentId?: string | null;
-  agentStatus?: string | null;
+  branchAgents?: Record<string, EditableBranchAgentRecord>;
+  agentStatuses?: Record<string, string>;
+  runningSlugs?: string[];
   lastRequest?: string | null;
   workshopError?: string | null;
   startWorkshop?: () => Promise<unknown>;
+  clearBranchAgent?: (slug: string) => void;
 }
 
 type StatusTone = "green" | "blue" | "amber" | "red" | "gray";
+
+const PULSE_CSS =
+  "@keyframes paseoEdBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(245,158,11,0.75)}50%{opacity:0.4;box-shadow:0 0 0 5px rgba(245,158,11,0)}}@keyframes paseoEdWork{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(65,145,251,0.7)}50%{opacity:0.45;box-shadow:0 0 0 4px rgba(65,145,251,0)}}";
 
 const dotBaseStyle = {
   width: 7,
@@ -54,7 +63,21 @@ const DOT_STYLES: Record<StatusTone, React.CSSProperties> = {
   gray: { ...dotBaseStyle, background: "#64748b" },
 };
 
-function StatusDot({ tone }: { tone: StatusTone }) {
+const BLINK_DOT_STYLE: React.CSSProperties = {
+  ...dotBaseStyle,
+  background: "#f59e0b",
+  animation: "paseoEdBlink 1.3s ease-in-out infinite",
+};
+
+const WORK_DOT_STYLE: React.CSSProperties = {
+  ...dotBaseStyle,
+  background: "#4191fb",
+  animation: "paseoEdWork 1.4s ease-in-out infinite",
+};
+
+function StatusDot({ tone, pulse }: { tone: StatusTone; pulse?: "update" | "work" | null }) {
+  if (pulse === "update") return <span data-ed-blink="true" style={BLINK_DOT_STYLE} />;
+  if (pulse === "work") return <span style={WORK_DOT_STYLE} />;
   return <span style={DOT_STYLES[tone]} />;
 }
 
@@ -89,152 +112,464 @@ function useDismissPopover(
   }, [open, rootRef, onClose]);
 }
 
-function VersionSection({
-  bridge,
-  status,
-  versionText,
-  update,
-  preview,
-  recovery,
+interface MergedBranchRow {
+  slug: string;
+  channel: string;
+  isMain: boolean;
+  status: "ready" | "working" | "shipping" | "failed";
+  summary: string | null;
+  generation: number | null;
+  releaseDigest: string | null;
+  behindMain: boolean;
+  canFastForward: boolean;
+  requiresDaemon: boolean;
+  hasUpdate: boolean;
+  loaded: boolean;
+  agentId: string | null;
+  error: string | null;
+}
+
+function buildMainRow(
+  status: EditableDesktopStatus | null,
+  branches: EditableBranchesSnapshot | null,
+  loadedChannel: string,
+  safe: boolean,
+  statusUpdate: string | null,
+): MergedBranchRow {
+  const b = branches?.main;
+  return {
+    slug: "main",
+    channel: "prod",
+    isMain: true,
+    status: "ready",
+    summary: b?.summary ?? status?.releaseSummary ?? null,
+    generation: b?.generation ?? (status?.activeGeneration || null),
+    releaseDigest: b?.releaseDigest ?? status?.releaseDigest ?? null,
+    behindMain: false,
+    canFastForward: false,
+    requiresDaemon: false,
+    hasUpdate: Boolean(b?.hasUpdate) || (loadedChannel === "prod" && !!statusUpdate),
+    loaded: b ? b.loaded : !safe && loadedChannel === "prod",
+    agentId: null,
+    error: null,
+  };
+}
+
+function buildPendingWipRow(rec: EditableBranchAgentRecord): MergedBranchRow {
+  return {
+    slug: rec.slug,
+    channel: `wip-${rec.slug}`,
+    isMain: false,
+    status: "working",
+    summary: rec.request,
+    generation: null,
+    releaseDigest: null,
+    behindMain: false,
+    canFastForward: false,
+    requiresDaemon: false,
+    hasUpdate: false,
+    loaded: false,
+    agentId: rec.agentId,
+    error: null,
+  };
+}
+
+function mergeWipEntryRow(
+  b: EditableBranchEntry,
+  clientAgent: EditableBranchAgentRecord | undefined,
+  liveStatus: string | undefined,
+  shippingSlugs: Set<string>,
+  statusUpdate: string | null,
+): MergedBranchRow {
+  const isAgentRunning = liveStatus === "running" || liveStatus === "initializing";
+  let mergedStatus: MergedBranchRow["status"] = b.status;
+  if (shippingSlugs.has(b.slug) || b.status === "shipping") mergedStatus = "shipping";
+  else if (isAgentRunning) mergedStatus = "working";
+
+  return {
+    slug: b.slug,
+    channel: b.channel,
+    isMain: false,
+    status: mergedStatus,
+    summary: b.summary ?? clientAgent?.request ?? null,
+    generation: b.generation,
+    releaseDigest: b.releaseDigest,
+    behindMain: b.behindMain,
+    canFastForward: b.canFastForward,
+    requiresDaemon: b.requiresDaemon,
+    hasUpdate: b.hasUpdate || (b.loaded && Boolean(statusUpdate)),
+    loaded: b.loaded,
+    agentId: clientAgent?.agentId ?? b.agentId,
+    error: b.error,
+  };
+}
+
+function resolveLoadedContext(
+  status: EditableDesktopStatus | null,
+  branches: EditableBranchesSnapshot | null,
+) {
+  const loadedChannel = branches?.loadedChannel ?? status?.activeChannel ?? "prod";
+  const safe = Boolean(branches?.safeRenderer ?? status?.safeRenderer);
+  const candidate = status?.availableDigest ?? status?.activeDigest ?? null;
+  const statusUpdate = !safe && candidate !== status?.releaseDigest ? candidate : null;
+  return { loadedChannel, safe, statusUpdate };
+}
+
+function buildBranchRows(
+  status: EditableDesktopStatus | null,
+  branches: EditableBranchesSnapshot | null,
+  workshop: EditableStatusWorkshopInfo,
+  shippingSlugs: Set<string>,
+): { main: MergedBranchRow; wips: MergedBranchRow[] } {
+  const { loadedChannel, safe, statusUpdate } = resolveLoadedContext(status, branches);
+  const main = buildMainRow(status, branches, loadedChannel, safe, statusUpdate);
+  const agentStatuses = workshop.agentStatuses ?? {};
+  const clientAgents = workshop.branchAgents ?? {};
+  const bySlug = new Map<string, MergedBranchRow>();
+
+  for (const b of branches?.branches ?? []) {
+    bySlug.set(
+      b.slug,
+      mergeWipEntryRow(b, clientAgents[b.slug], agentStatuses[b.slug], shippingSlugs, statusUpdate),
+    );
+  }
+
+  for (const rec of Object.values(clientAgents)) {
+    if (bySlug.has(rec.slug)) continue;
+    const st = agentStatuses[rec.slug];
+    if (st === "running" || st === "initializing") bySlug.set(rec.slug, buildPendingWipRow(rec));
+  }
+
+  return { main, wips: Array.from(bySlug.values()) };
+}
+
+function rowTone(row: MergedBranchRow): { tone: StatusTone; pulse: "update" | "work" | null } {
+  if (row.hasUpdate) return { tone: "amber", pulse: "update" };
+  if (row.status === "working" || row.status === "shipping") return { tone: "blue", pulse: "work" };
+  if (row.status === "failed") return { tone: "red", pulse: null };
+  if (row.loaded || row.status === "ready") return { tone: "green", pulse: null };
+  return { tone: "gray", pulse: null };
+}
+
+function MainBranchRow({
+  row,
   busy,
-  syncMessage,
-  onSyncCloud,
-  onApply,
-  onExitPreview,
-  onRecover,
+  hasLoadBranch,
+  onLoad,
+  onReload,
 }: {
-  bridge: EditableDesktopBridge | undefined;
-  status: EditableDesktopStatus | null;
-  versionText: string;
-  update: string | null;
-  preview: boolean;
-  recovery: boolean;
+  row: MergedBranchRow;
   busy: boolean;
-  syncMessage: string | null;
-  onSyncCloud: () => void;
-  onApply: () => void;
-  onExitPreview: () => void;
-  onRecover: () => void;
+  hasLoadBranch: boolean;
+  onLoad: (channel: string) => void;
+  onReload: () => void;
 }) {
   const { t } = useTranslation();
-  const shortDigest = status?.releaseDigest ? status.releaseDigest.slice(0, 8) : null;
+  const { tone, pulse } = rowTone(row);
+  const handleLoad = useStableEvent(() => onLoad("prod"));
+
   return (
-    <div style={sectionStyle}>
-      <div style={sectionLabelStyle}>{t("editable.versionLabel")}</div>
+    <div style={row.loaded ? branchRowActiveStyle : branchRowStyle}>
       <div style={rowBetweenStyle}>
-        <span style={versionValueStyle}>
-          {versionText}
-          {shortDigest ? ` · ${shortDigest}` : ""}
-        </span>
-        {status?.runtimeVersion ? <span style={mutedStyle}>{status.runtimeVersion}</span> : null}
+        <div style={titleRowStyle}>
+          <StatusDot tone={tone} pulse={pulse} />
+          <span style={branchNameStyle}>main</span>
+          {row.generation ? <span style={mutedBadgeStyle}>v{row.generation}</span> : null}
+        </div>
+        <div style={inlineActionsStyle}>
+          {row.loaded && row.hasUpdate ? (
+            <Button size="sm" disabled={busy} onPress={onReload}>
+              {hasLoadBranch ? t("editable.reloadRelease") : t("editable.applyRelease")}
+            </Button>
+          ) : null}
+          {row.loaded && !row.hasUpdate ? (
+            <span style={loadedBadgeStyle}>{t("editable.loadedBadge")}</span>
+          ) : null}
+          {!row.loaded && hasLoadBranch ? (
+            <Button size="sm" variant="ghost" disabled={busy} onPress={handleLoad}>
+              {t("editable.loadBranch")}
+            </Button>
+          ) : null}
+        </div>
       </div>
-      {status?.releaseSummary ? (
-        <div style={mutedStyle}>{truncate(status.releaseSummary, 90)}</div>
-      ) : null}
-      <div style={actionsRowStyle}>
-        {bridge?.syncFromCloudShelf ? (
-          <Button size="sm" variant="ghost" disabled={busy} onPress={onSyncCloud}>
-            {busy ? t("editable.syncing") : t("editable.syncCloud")}
-          </Button>
-        ) : null}
-        {bridge && update && !preview ? (
-          <Button size="sm" disabled={busy} onPress={onApply}>
-            {t("editable.applyRelease")}
-          </Button>
-        ) : null}
-        {bridge && preview ? (
-          <Button size="sm" disabled={busy} onPress={onExitPreview}>
-            {t("editable.exitPreview")}
-          </Button>
-        ) : null}
-        {bridge && !recovery ? (
-          <Button size="sm" variant="ghost" disabled={busy} onPress={onRecover}>
-            {t("editable.recovery")}
-          </Button>
-        ) : null}
-      </div>
-      {syncMessage ? <div style={mutedStyle}>{syncMessage}</div> : null}
+      {row.summary ? <div style={summaryStyle}>{truncate(row.summary, 84)}</div> : null}
     </div>
   );
 }
 
-function InProgressSection({
-  workshop,
-  worktrees,
+function WipBranchStatusBadge({ row }: { row: MergedBranchRow }) {
+  const { t } = useTranslation();
+  if (row.loaded) return <span style={loadedBadgeStyle}>{t("editable.loadedBadge")}</span>;
+  if (row.status === "shipping") {
+    return (
+      <span style={workingBadgeStyle}>
+        {row.behindMain ? t("editable.updatingBranch") : t("editable.shippingBranch")}
+      </span>
+    );
+  }
+  if (row.status === "working") {
+    return <span style={workingBadgeStyle}>{t("editable.workingBadge")}</span>;
+  }
+  if (row.status === "failed") {
+    return <span style={failedBadgeStyle}>{t("editable.failedBadge")}</span>;
+  }
+  return <span style={readyBadgeStyle}>{t("editable.readyBadge")}</span>;
+}
+
+function WipBranchRow({
+  row,
+  busy,
+  canOpenChat,
+  canManage,
+  onLoad,
+  onShip,
+  onDiscard,
   onOpenChat,
 }: {
-  workshop: EditableStatusWorkshopInfo;
-  worktrees: string[];
-  onOpenChat: () => void;
+  row: MergedBranchRow;
+  busy: boolean;
+  canOpenChat: boolean;
+  canManage: boolean;
+  onLoad: (channel: string) => void;
+  onShip: (slug: string) => void;
+  onDiscard: (slug: string) => void;
+  onOpenChat: (agentId: string) => void;
 }) {
   const { t } = useTranslation();
-  const inProgressText = formatInProgressText({
-    startingWorkshop: !!workshop.startingWorkshop,
-    editing: workshop.editing,
-    lastRequest: workshop.lastRequest ?? null,
-    t,
+  const { tone, pulse } = rowTone(row);
+  const handleLoad = useStableEvent(() => onLoad(row.channel));
+  const handleShip = useStableEvent(() => onShip(row.slug));
+  const handleDiscard = useStableEvent(() => onDiscard(row.slug));
+  const handleChat = useStableEvent(() => {
+    if (row.agentId) onOpenChat(row.agentId);
   });
+
+  const isBusyRow = busy || row.status === "shipping";
+  const canLoad = canManage && Boolean(row.releaseDigest) && (!row.loaded || row.hasUpdate);
+  const canShip = canManage && row.status === "ready";
+  const shipLabel = row.canFastForward ? t("editable.shipBranch") : t("editable.updateToMain");
+
   return (
-    <div style={sectionStyle}>
-      <div style={sectionLabelStyle}>{t("editable.inProgressLabel")}</div>
-      <div>{inProgressText}</div>
-      {worktrees.length > 0 ? (
-        <div style={chipRowStyle}>
-          {worktrees.map((slug) => (
-            <span key={slug} style={chipStyle}>
-              ed/wip/{slug}
-            </span>
-          ))}
+    <div style={row.loaded ? branchRowActiveStyle : branchRowStyle}>
+      <div style={rowBetweenStyle}>
+        <div style={titleRowStyle}>
+          <StatusDot tone={tone} pulse={pulse} />
+          <span style={branchNameStyle}>{row.slug}</span>
         </div>
-      ) : null}
-      {workshop.hostId && workshop.agentId ? (
-        <div style={actionsRowStyle}>
-          <Button size="sm" variant="ghost" onPress={onOpenChat}>
-            {t("editable.openWorkshopChat")}
+        <div style={inlineActionsStyle}>
+          {row.requiresDaemon ? <span style={warnTagStyle}>{t("editable.daemonTag")}</span> : null}
+          {row.behindMain ? <span style={mutedBadgeStyle}>{t("editable.behindMain")}</span> : null}
+          <WipBranchStatusBadge row={row} />
+        </div>
+      </div>
+
+      {row.summary ? <div style={summaryStyle}>{truncate(row.summary, 84)}</div> : null}
+      {row.error ? <div style={errorTextStyle}>{truncate(row.error, 100)}</div> : null}
+
+      <div style={actionsRowStyle}>
+        {canLoad ? (
+          <Button
+            size="sm"
+            variant={row.hasUpdate ? "default" : "ghost"}
+            disabled={isBusyRow}
+            onPress={handleLoad}
+          >
+            {row.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
           </Button>
-        </div>
-      ) : null}
+        ) : null}
+        {canShip ? (
+          <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={handleShip}>
+            {shipLabel}
+          </Button>
+        ) : null}
+        {canOpenChat && row.agentId ? (
+          <Button size="sm" variant="ghost" onPress={handleChat}>
+            {t("editable.openChatShort")}
+          </Button>
+        ) : null}
+        {canManage && row.status !== "shipping" ? (
+          <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={handleDiscard}>
+            ×
+          </Button>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function WorkshopSection({
+function WorkshopFooter({
+  bridge,
   workshop,
   workshopDaemon,
   workshopState,
+  recovery,
   busy,
   onStartWorkshop,
+  onSync,
+  onRecover,
 }: {
+  bridge: EditableDesktopBridge | undefined;
   workshop: EditableStatusWorkshopInfo;
   workshopDaemon: EditableWorkshopDaemonStatus | null;
   workshopState: { label: string; tone: StatusTone; ready: boolean };
+  recovery: boolean;
   busy: boolean;
   onStartWorkshop: () => void;
+  onSync: () => void;
+  onRecover: () => void;
 }) {
   const { t } = useTranslation();
   const showStart = workshop.managedWorkshop && workshopDaemon?.status !== "running";
   return (
-    <div style={sectionStyle}>
-      <div style={sectionLabelStyle}>{t("editable.workshopLabel")}</div>
+    <div style={footerStyle}>
       <div style={rowBetweenStyle}>
         <div style={titleRowStyle}>
           <StatusDot tone={workshopState.tone} />
-          <span>{workshopState.label}</span>
+          <span style={mutedStyle}>{workshopState.label}</span>
         </div>
-        {workshopDaemon?.listen ? <span style={mutedStyle}>{workshopDaemon.listen}</span> : null}
+        <div style={inlineActionsStyle}>
+          {showStart ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy || !!workshop.startingWorkshop}
+              onPress={onStartWorkshop}
+            >
+              {t("editable.startWorkshop")}
+            </Button>
+          ) : null}
+          {bridge?.syncNow || bridge?.syncFromCloudShelf ? (
+            <Button size="sm" variant="ghost" disabled={busy} onPress={onSync}>
+              {busy ? t("editable.syncing") : t("editable.syncCloud")}
+            </Button>
+          ) : null}
+          {bridge && !recovery ? (
+            <Button size="sm" variant="ghost" disabled={busy} onPress={onRecover}>
+              {t("editable.fallbackUi")}
+            </Button>
+          ) : null}
+        </div>
       </div>
-      {showStart ? (
-        <div style={actionsRowStyle}>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy || !!workshop.startingWorkshop}
-            onPress={onStartWorkshop}
-          >
-            {workshop.startingWorkshop
-              ? t("editable.workshopStarting")
-              : t("editable.startWorkshop")}
+    </div>
+  );
+}
+
+function StatusPopover({
+  bridge,
+  main,
+  wips,
+  workshop,
+  workshopDaemon,
+  workshopState,
+  dotTone,
+  dotPulse,
+  preview,
+  recovery,
+  busy,
+  syncMessage,
+  errorText,
+  onPick,
+  onLoadBranch,
+  onReloadLoaded,
+  onShipBranch,
+  onDiscardBranch,
+  onOpenChat,
+  onStartWorkshop,
+  onSync,
+  onExitPreview,
+  onRecover,
+}: {
+  bridge: EditableDesktopBridge | undefined;
+  main: MergedBranchRow;
+  wips: MergedBranchRow[];
+  workshop: EditableStatusWorkshopInfo;
+  workshopDaemon: EditableWorkshopDaemonStatus | null;
+  workshopState: { label: string; tone: StatusTone; ready: boolean };
+  dotTone: StatusTone;
+  dotPulse: "update" | "work" | null;
+  preview: boolean;
+  recovery: boolean;
+  busy: boolean;
+  syncMessage: string | null;
+  errorText: string | null;
+  onPick: () => void;
+  onLoadBranch: (channel: string) => void;
+  onReloadLoaded: () => void;
+  onShipBranch: (slug: string) => void;
+  onDiscardBranch: (slug: string) => void;
+  onOpenChat: (agentId: string) => void;
+  onStartWorkshop: () => void;
+  onSync: () => void;
+  onExitPreview: () => void;
+  onRecover: () => void;
+}) {
+  const { t } = useTranslation();
+  const canOpenChat = Boolean(workshop.hostId);
+  const canManage = Boolean(bridge?.loadBranch);
+
+  return (
+    <div role="dialog" aria-label={t("editable.statusTitle")} style={popoverStyle}>
+      <div style={rowBetweenStyle}>
+        <div style={titleRowStyle}>
+          <StatusDot tone={dotTone} pulse={dotPulse} />
+          <strong style={titleTextStyle}>{t("editable.statusTitle")}</strong>
+        </div>
+        <Button size="sm" variant="ghost" onPress={onPick}>
+          {t("editable.pickButton")}
+        </Button>
+      </div>
+
+      {preview && bridge ? (
+        <div style={previewBannerStyle}>
+          <span>{t("editable.preview")}</span>
+          <Button size="sm" disabled={busy} onPress={onExitPreview}>
+            {t("editable.exitPreview")}
           </Button>
+        </div>
+      ) : null}
+
+      <div style={sectionStyle}>
+        <div style={sectionLabelStyle}>{t("editable.branchesLabel")}</div>
+        <div style={branchListStyle}>
+          <MainBranchRow
+            row={main}
+            busy={busy}
+            hasLoadBranch={canManage}
+            onLoad={onLoadBranch}
+            onReload={onReloadLoaded}
+          />
+          {wips.map((row) => (
+            <WipBranchRow
+              key={row.slug}
+              row={row}
+              busy={busy}
+              canOpenChat={canOpenChat}
+              canManage={canManage}
+              onLoad={onLoadBranch}
+              onShip={onShipBranch}
+              onDiscard={onDiscardBranch}
+              onOpenChat={onOpenChat}
+            />
+          ))}
+        </div>
+        {syncMessage ? <div style={mutedStyle}>{syncMessage}</div> : null}
+      </div>
+
+      <WorkshopFooter
+        bridge={bridge}
+        workshop={workshop}
+        workshopDaemon={workshopDaemon}
+        workshopState={workshopState}
+        recovery={recovery}
+        busy={busy}
+        onStartWorkshop={onStartWorkshop}
+        onSync={onSync}
+        onRecover={onRecover}
+      />
+
+      {errorText ? (
+        <div role="alert" style={errorTextStyle}>
+          {errorText}
         </div>
       ) : null}
     </div>
@@ -244,23 +579,29 @@ function WorkshopSection({
 function StatusTriggerBar({
   open,
   dotTone,
+  dotPulse,
   pillLabel,
+  badgeText,
   showExitPreview,
-  showApply,
+  showReload,
+  reloadLabel,
   busy,
   onToggle,
   onExitPreview,
-  onApply,
+  onReload,
 }: {
   open: boolean;
   dotTone: StatusTone;
+  dotPulse: "update" | "work" | null;
   pillLabel: string;
+  badgeText: string | null;
   showExitPreview: boolean;
-  showApply: boolean;
+  showReload: boolean;
+  reloadLabel: string;
   busy: boolean;
   onToggle: () => void;
   onExitPreview: () => void;
-  onApply: () => void;
+  onReload: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -272,7 +613,7 @@ function StatusTriggerBar({
         onClick={onToggle}
         style={triggerButtonStyle}
       >
-        <StatusDot tone={dotTone} />
+        <StatusDot tone={dotTone} pulse={dotPulse} />
         <svg
           width="13"
           height="13"
@@ -288,121 +629,36 @@ function StatusTriggerBar({
           <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4Z" />
         </svg>
         <span role="status">{pillLabel}</span>
+        {badgeText ? <span style={pillBadgeStyle}>{badgeText}</span> : null}
       </button>
       {showExitPreview ? (
         <Button size="sm" disabled={busy} onPress={onExitPreview}>
           {t("editable.exitPreview")}
         </Button>
       ) : null}
-      {showApply ? (
-        <Button size="sm" disabled={busy} onPress={onApply}>
-          {t("editable.applyRelease")}
+      {showReload ? (
+        <Button size="sm" disabled={busy} onPress={onReload}>
+          {reloadLabel}
         </Button>
       ) : null}
     </div>
   );
 }
 
-function StatusPopover({
+function useBranchActions({
   bridge,
   status,
-  workshopDaemon,
-  workshop,
-  versionText,
-  dotTone,
-  workshopState,
-  update,
-  preview,
-  recovery,
-  busy,
-  syncMessage,
-  errorText,
-  onPick,
-  onSyncCloud,
-  onApply,
-  onExitPreview,
-  onRecover,
-  onOpenChat,
-  onStartWorkshop,
-}: {
-  bridge: EditableDesktopBridge | undefined;
-  status: EditableDesktopStatus | null;
-  workshopDaemon: EditableWorkshopDaemonStatus | null;
-  workshop: EditableStatusWorkshopInfo;
-  versionText: string;
-  dotTone: StatusTone;
-  workshopState: { label: string; tone: StatusTone; ready: boolean };
-  update: string | null;
-  preview: boolean;
-  recovery: boolean;
-  busy: boolean;
-  syncMessage: string | null;
-  errorText: string | null;
-  onPick: () => void;
-  onSyncCloud: () => void;
-  onApply: () => void;
-  onExitPreview: () => void;
-  onRecover: () => void;
-  onOpenChat: () => void;
-  onStartWorkshop: () => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div role="dialog" aria-label={t("editable.statusTitle")} style={popoverStyle}>
-      <div style={rowBetweenStyle}>
-        <div style={titleRowStyle}>
-          <StatusDot tone={dotTone} />
-          <strong style={titleTextStyle}>{t("editable.statusTitle")}</strong>
-        </div>
-        <Button size="sm" variant="ghost" onPress={onPick}>
-          {t("editable.pickButton")}
-        </Button>
-      </div>
-      <VersionSection
-        bridge={bridge}
-        status={status}
-        versionText={versionText}
-        update={update}
-        preview={preview}
-        recovery={recovery}
-        busy={busy}
-        syncMessage={syncMessage}
-        onSyncCloud={onSyncCloud}
-        onApply={onApply}
-        onExitPreview={onExitPreview}
-        onRecover={onRecover}
-      />
-      <InProgressSection
-        workshop={workshop}
-        worktrees={workshopDaemon?.worktrees ?? []}
-        onOpenChat={onOpenChat}
-      />
-      <WorkshopSection
-        workshop={workshop}
-        workshopDaemon={workshopDaemon}
-        workshopState={workshopState}
-        busy={busy}
-        onStartWorkshop={onStartWorkshop}
-      />
-      {errorText ? (
-        <div role="alert" style={errorTextStyle}>
-          {errorText}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function useEditableStatusActions({
-  bridge,
-  update,
+  loadedChannel,
+  updateDigest,
   workshop,
   onPick,
   onRefresh,
   closePopover,
 }: {
   bridge: EditableDesktopBridge | undefined;
-  update: string | null;
+  status: EditableDesktopStatus | null;
+  loadedChannel: string;
+  updateDigest: string | null;
   workshop: EditableStatusWorkshopInfo;
   onPick: () => void;
   onRefresh?: () => Promise<void>;
@@ -413,6 +669,7 @@ function useEditableStatusActions({
   const [failed, setFailed] = useState<string | null>(null);
   const [syncMessage, setSyncMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [shippingSlugs, setShippingSlugs] = useState<Set<string>>(() => new Set());
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -427,43 +684,104 @@ function useEditableStatusActions({
     }
   }
 
+  const loadBranch = useStableEvent((channel: string) => {
+    if (!bridge?.loadBranch) return;
+    void run(async () => {
+      const res = await bridge.loadBranch!(channel);
+      if (!res.ok) throw new Error(res.error ?? t("editable.desktopFailed"));
+      await onRefresh?.();
+    });
+  });
+
+  const reloadLoaded = useStableEvent(() => {
+    if (!bridge) return;
+    if (bridge.loadBranch) {
+      loadBranch(loadedChannel);
+      return;
+    }
+    const digest = updateDigest ?? status?.availableDigest ?? status?.activeDigest;
+    if (!digest) return;
+    void run(async () => {
+      const res = await bridge.switchRelease(digest);
+      if (!res.ok) throw new Error(res.error);
+    });
+  });
+
+  const shipBranch = useStableEvent((slug: string) => {
+    if (!bridge?.shipBranch) return;
+    setFailed(null);
+    setSyncMessage(null);
+    setShippingSlugs((prev) => new Set(prev).add(slug));
+    void (async () => {
+      try {
+        const res = await bridge.shipBranch!(slug);
+        if (!res.ok) throw new Error(res.error ?? t("editable.desktopFailed"));
+        workshop.clearBranchAgent?.(slug);
+        await onRefresh?.();
+        if (!res.autoLoaded) {
+          setSyncMessage(t("editable.updateReady"));
+        }
+      } catch (error) {
+        setFailed(error instanceof Error ? error.message : t("editable.desktopFailed"));
+      } finally {
+        setShippingSlugs((prev) => {
+          const next = new Set(prev);
+          next.delete(slug);
+          return next;
+        });
+      }
+    })();
+  });
+
+  const discardBranch = useStableEvent((slug: string) => {
+    if (!bridge?.discardBranch) return;
+    void run(async () => {
+      const res = await bridge.discardBranch!(slug);
+      if (!res.ok) throw new Error(res.error ?? t("editable.desktopFailed"));
+      workshop.clearBranchAgent?.(slug);
+      await onRefresh?.();
+    });
+  });
+
+  const sync = useStableEvent(() => {
+    const syncFn = bridge?.syncNow ?? bridge?.syncFromCloudShelf;
+    if (!syncFn) return;
+    void run(async () => {
+      const res = await syncFn();
+      if (!res.ok) throw new Error(res.error ?? t("editable.desktopFailed"));
+      await onRefresh?.();
+      if (!res.updated) setSyncMessage(t("editable.upToDate"));
+    });
+  });
+
+  const openChat = useStableEvent((agentId: string) => {
+    if (!workshop.hostId) return;
+    closePopover();
+    router.push(buildHostAgentDetailRoute(workshop.hostId, agentId) as never);
+  });
+
   return {
     failed,
     syncMessage,
     busy,
+    shippingSlugs,
+    loadBranch,
+    reloadLoaded,
+    shipBranch,
+    discardBranch,
+    sync,
+    openChat,
     exitPreview: useStableEvent(() => {
       if (bridge) void run(() => bridge.setPreviewUrl(null));
     }),
     recover: useStableEvent(() => {
       if (bridge) void run(() => bridge.useRecoveryRenderer());
     }),
-    apply: useStableEvent(() => {
-      if (bridge && update) {
-        void run(async () => {
-          const result = await bridge.switchRelease(update);
-          if (!result.ok) throw new Error(result.error);
-        });
-      }
-    }),
-    syncCloud: useStableEvent(() => {
-      if (!bridge?.syncFromCloudShelf) return;
-      void run(async () => {
-        const result = await bridge.syncFromCloudShelf!();
-        if (!result.ok) throw new Error(result.error ?? t("editable.desktopFailed"));
-        await onRefresh?.();
-        if (!result.updated) setSyncMessage(t("editable.upToDate"));
-      });
-    }),
     startWorkshop: useStableEvent(() => {
       if (!workshop.startWorkshop) return;
       void run(async () => {
         await workshop.startWorkshop!();
       });
-    }),
-    openChat: useStableEvent(() => {
-      if (!workshop.hostId || !workshop.agentId) return;
-      closePopover();
-      router.push(buildHostAgentDetailRoute(workshop.hostId, workshop.agentId) as never);
     }),
     pickFromPopover: useStableEvent(() => {
       closePopover();
@@ -472,24 +790,72 @@ function useEditableStatusActions({
   };
 }
 
-function derivePillPresentation({
+function resolvePillDot(input: {
+  hasError: boolean;
+  recovery: boolean;
+  loadedHasUpdate: boolean;
+  working: boolean;
+  preview: boolean;
+  workshopReady: boolean;
+}): { dotTone: StatusTone; dotPulse: "update" | "work" | null } {
+  if (input.hasError || input.recovery) return { dotTone: "red", dotPulse: null };
+  if (input.loadedHasUpdate) return { dotTone: "amber", dotPulse: "update" };
+  if (input.working) return { dotTone: "blue", dotPulse: "work" };
+  if (input.preview) return { dotTone: "amber", dotPulse: null };
+  return { dotTone: input.workshopReady ? "green" : "gray", dotPulse: null };
+}
+
+function resolvePillLabel(input: {
+  failed: string | null;
+  preview: boolean;
+  recovery: boolean;
+  loadedWip: MergedBranchRow | null;
+  status: EditableDesktopStatus | null;
+  main: MergedBranchRow;
+  t: (key: string) => string;
+}): string {
+  if (input.failed) return input.t("editable.desktopFailed");
+  if (input.preview) return input.t("editable.preview");
+  if (input.recovery) return input.t("editable.fallbackUi");
+  if (input.loadedWip) return truncate(input.loadedWip.slug, 22);
+  return formatMainPill(input.status, input.main, input.t);
+}
+
+function resolveBadgeText(workingCount: number, readyBackgroundCount: number): string | null {
+  if (workingCount > 0) return `${workingCount} working`;
+  if (readyBackgroundCount > 0) return `${readyBackgroundCount} ready`;
+  return null;
+}
+
+function resolveUpdateDigest(status: EditableDesktopStatus | null): string | null {
+  if (!status || status.safeRenderer) return null;
+  const candidate = status.availableDigest ?? status.activeDigest ?? null;
+  return candidate !== status.releaseDigest ? candidate : null;
+}
+
+function deriveSummaryState({
+  main,
+  wips,
   status,
-  workshopDaemon,
   workshop,
+  workshopDaemon,
   failed,
   t,
 }: {
+  main: MergedBranchRow;
+  wips: MergedBranchRow[];
   status: EditableDesktopStatus | null;
-  workshopDaemon: EditableWorkshopDaemonStatus | null;
   workshop: EditableStatusWorkshopInfo;
+  workshopDaemon: EditableWorkshopDaemonStatus | null;
   failed: string | null;
   t: (key: string) => string;
 }) {
-  const candidate = status?.availableDigest ?? status?.activeDigest ?? null;
-  const update = !status?.safeRenderer && candidate !== status?.releaseDigest ? candidate : null;
+  const loadedWip = wips.find((w) => w.loaded) ?? null;
+  const loadedHasUpdate = main.hasUpdate || wips.some((w) => w.loaded && w.hasUpdate);
+  const workingCount = wips.filter((w) => w.status === "working" || w.status === "shipping").length;
+  const readyBackgroundCount = wips.filter((w) => !w.loaded && w.status === "ready").length;
   const preview = !!status?.previewUrl;
   const recovery = !!status?.safeRenderer;
-  const versionText = formatVersionLabel(status, t);
   const workshopState = describeWorkshopState({
     managed: !!workshop.managedWorkshop,
     daemon: workshopDaemon,
@@ -498,31 +864,34 @@ function derivePillPresentation({
     hostLabel: workshop.host?.label ?? null,
     t,
   });
-  const dotTone = pickDotTone({
-    failed: !!failed || !!workshop.workshopError || workshopDaemon?.status === "errored",
+  const { dotTone, dotPulse } = resolvePillDot({
+    hasError: Boolean(failed || workshop.workshopError || workshopDaemon?.status === "errored"),
     recovery,
+    loadedHasUpdate,
+    working: workingCount > 0 || workshop.editing,
     preview,
-    update: !!update,
-    editing: workshop.editing,
     workshopReady: workshopState.ready,
   });
-  const pillLabel = compactPillLabel({
-    failed: !!failed,
+  const pillLabel = resolvePillLabel({ failed, preview, recovery, loadedWip, status, main, t });
+  const badgeText = resolveBadgeText(workingCount, readyBackgroundCount);
+
+  return {
+    loadedHasUpdate,
     preview,
-    update: !!update,
     recovery,
-    startingWorkshop: !!workshop.startingWorkshop,
-    editing: workshop.editing,
-    versionText,
-    t,
-  });
-  return { update, preview, recovery, versionText, workshopState, dotTone, pillLabel };
+    workshopState,
+    dotTone,
+    dotPulse,
+    pillLabel,
+    badgeText,
+  };
 }
 
 export function EditableStatusPill({
   bridge,
   status,
   workshopDaemon,
+  branches = null,
   workshop,
   onPick,
   onRefresh,
@@ -531,6 +900,7 @@ export function EditableStatusPill({
   bridge: EditableDesktopBridge | undefined;
   status: EditableDesktopStatus | null;
   workshopDaemon: EditableWorkshopDaemonStatus | null;
+  branches?: EditableBranchesSnapshot | null;
   workshop: EditableStatusWorkshopInfo;
   onPick: () => void;
   onRefresh?: () => Promise<void>;
@@ -542,27 +912,37 @@ export function EditableStatusPill({
   const closePopover = useStableEvent(() => setOpen(false));
   useDismissPopover(open, rootRef, closePopover);
 
-  const candidate = status?.availableDigest ?? status?.activeDigest ?? null;
-  const updateCandidate =
-    !status?.safeRenderer && candidate !== status?.releaseDigest ? candidate : null;
-  const actions = useEditableStatusActions({
+  const loadedChannel = branches?.loadedChannel ?? status?.activeChannel ?? "prod";
+  const actions = useBranchActions({
     bridge,
-    update: updateCandidate,
+    status,
+    loadedChannel,
+    updateDigest: resolveUpdateDigest(status),
     workshop,
     onPick,
     onRefresh,
     closePopover,
   });
 
+  const { main, wips } = useMemo(
+    () => buildBranchRows(status, branches, workshop, actions.shippingSlugs),
+    [status, branches, workshop, actions.shippingSlugs],
+  );
+  const summary = deriveSummaryState({
+    main,
+    wips,
+    status,
+    workshop,
+    workshopDaemon,
+    failed: actions.failed,
+    t,
+  });
   const toggleOpen = useStableEvent(() => {
     setOpen((wasOpen) => {
       if (!wasOpen) void onRefresh?.();
       return !wasOpen;
     });
   });
-
-  const { update, preview, recovery, versionText, workshopState, dotTone, pillLabel } =
-    derivePillPresentation({ status, workshopDaemon, workshop, failed: actions.failed, t });
   const containerStyle = useMemo(
     () =>
       ({
@@ -578,43 +958,51 @@ export function EditableStatusPill({
       }) as const,
     [layer],
   );
+  const reloadLabel = bridge?.loadBranch ? t("editable.reloadRelease") : t("editable.applyRelease");
 
   return (
     <div ref={rootRef} data-ed-overlay="true" style={containerStyle}>
+      <style>{PULSE_CSS}</style>
       {open ? (
         <StatusPopover
           bridge={bridge}
-          status={status}
-          workshopDaemon={workshopDaemon}
+          main={main}
+          wips={wips}
           workshop={workshop}
-          versionText={versionText}
-          dotTone={dotTone}
-          workshopState={workshopState}
-          update={update}
-          preview={preview}
-          recovery={recovery}
+          workshopDaemon={workshopDaemon}
+          workshopState={summary.workshopState}
+          dotTone={summary.dotTone}
+          dotPulse={summary.dotPulse}
+          preview={summary.preview}
+          recovery={summary.recovery}
           busy={actions.busy}
           syncMessage={actions.syncMessage}
           errorText={actions.failed ?? workshop.workshopError ?? null}
           onPick={actions.pickFromPopover}
-          onSyncCloud={actions.syncCloud}
-          onApply={actions.apply}
-          onExitPreview={actions.exitPreview}
-          onRecover={actions.recover}
+          onLoadBranch={actions.loadBranch}
+          onReloadLoaded={actions.reloadLoaded}
+          onShipBranch={actions.shipBranch}
+          onDiscardBranch={actions.discardBranch}
           onOpenChat={actions.openChat}
           onStartWorkshop={actions.startWorkshop}
+          onSync={actions.sync}
+          onExitPreview={actions.exitPreview}
+          onRecover={actions.recover}
         />
       ) : null}
       <StatusTriggerBar
         open={open}
-        dotTone={dotTone}
-        pillLabel={pillLabel}
-        showExitPreview={!!bridge && preview}
-        showApply={!!bridge && !!update && !preview}
+        dotTone={summary.dotTone}
+        dotPulse={summary.dotPulse}
+        pillLabel={summary.pillLabel}
+        badgeText={summary.badgeText}
+        showExitPreview={!!bridge && summary.preview}
+        showReload={!!bridge && summary.loadedHasUpdate && !summary.preview}
+        reloadLabel={reloadLabel}
         busy={actions.busy}
         onToggle={toggleOpen}
         onExitPreview={actions.exitPreview}
-        onApply={actions.apply}
+        onReload={actions.reloadLoaded}
       />
     </div>
   );
@@ -624,67 +1012,15 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-function formatInProgressText({
-  startingWorkshop,
-  editing,
-  lastRequest,
-  t,
-}: {
-  startingWorkshop: boolean;
-  editing: boolean;
-  lastRequest: string | null;
-  t: (key: string) => string;
-}): string {
-  if (startingWorkshop) return t("editable.workshopStarting");
-  if (editing) {
-    return lastRequest
-      ? `${t("editable.editing")} "${truncate(lastRequest, 60)}"`
-      : t("editable.editing");
-  }
-  if (lastRequest) return `${t("editable.lastEdit")}: "${truncate(lastRequest, 60)}"`;
-  return t("editable.nothingInProgress");
-}
-
-function formatVersionLabel(
+function formatMainPill(
   status: EditableDesktopStatus | null,
+  main: MergedBranchRow,
   t: (key: string) => string,
 ): string {
   if (!status) return t("editable.webVersion");
-  if (status.safeRenderer) return t("editable.recovery");
-  if (status.previewUrl) return t("editable.preview");
-  if (status.releaseDigest && status.activeGeneration > 0) {
-    return `Gen ${status.activeGeneration}`;
-  }
-  if (status.releaseDigest) return t("editable.signedVersion");
+  if (main.generation && status.releaseDigest) return `main · v${main.generation}`;
+  if (status.releaseDigest) return "main";
   return t("editable.builtInVersion");
-}
-
-function compactPillLabel({
-  failed,
-  preview,
-  update,
-  recovery,
-  startingWorkshop,
-  editing,
-  versionText,
-  t,
-}: {
-  failed: boolean;
-  preview: boolean;
-  update: boolean;
-  recovery: boolean;
-  startingWorkshop: boolean;
-  editing: boolean;
-  versionText: string;
-  t: (key: string) => string;
-}): string {
-  if (failed) return t("editable.desktopFailed");
-  if (preview) return t("editable.preview");
-  if (update) return t("editable.updateReady");
-  if (recovery) return t("editable.recovery");
-  if (startingWorkshop) return t("editable.workshopStarting");
-  if (editing) return t("editable.editing");
-  return versionText;
 }
 
 function describeWorkshopState({
@@ -707,8 +1043,9 @@ function describeWorkshopState({
       return { label: t("editable.workshopStarting"), tone: "blue", ready: false };
     }
     if (daemon?.status === "running") {
+      const port = daemon.listen.split(":").at(-1);
       return isConnected
-        ? { label: t("editable.workshopConnected"), tone: "green", ready: true }
+        ? { label: `Workshop :${port ?? "6769"}`, tone: "green", ready: true }
         : { label: t("editable.workshopConnecting"), tone: "amber", ready: false };
     }
     if (daemon?.status === "errored") {
@@ -724,27 +1061,6 @@ function describeWorkshopState({
   return { label: t("editable.workshopNotConfigured"), tone: "gray", ready: false };
 }
 
-function pickDotTone({
-  failed,
-  recovery,
-  preview,
-  update,
-  editing,
-  workshopReady,
-}: {
-  failed: boolean;
-  recovery: boolean;
-  preview: boolean;
-  update: boolean;
-  editing: boolean;
-  workshopReady: boolean;
-}): StatusTone {
-  if (failed || recovery) return "red";
-  if (editing) return "blue";
-  if (update || preview) return "amber";
-  return workshopReady ? "green" : "gray";
-}
-
 const barStyle = {
   ...pillStyle,
   display: "flex",
@@ -756,14 +1072,14 @@ const barStyle = {
 } as const;
 
 const popoverStyle = {
-  width: 310,
+  width: 348,
   maxWidth: "calc(100vw - 24px)",
-  background: "rgba(22, 26, 34, 0.97)",
+  background: "#161a22",
   color: "#f8fafc",
-  border: "1px solid rgba(255, 255, 255, 0.14)",
+  border: "1px solid rgba(255, 255, 255, 0.16)",
   borderRadius: 10,
   padding: 12,
-  boxShadow: "0 12px 32px rgba(0, 0, 0, 0.45)",
+  boxShadow: "0 14px 36px rgba(0, 0, 0, 0.6)",
   font: "400 12px/18px system-ui, -apple-system, sans-serif",
   display: "flex",
   flexDirection: "column",
@@ -783,8 +1099,16 @@ const triggerButtonStyle = {
   font: "inherit",
 } as const;
 
+const pillBadgeStyle = {
+  fontSize: 10,
+  padding: "0px 5px",
+  borderRadius: 999,
+  background: "rgba(65, 145, 251, 0.22)",
+  color: "#93c5fd",
+} as const;
+
 const titleTextStyle = { fontSize: 13, fontWeight: 600 } as const;
-const versionValueStyle = { fontWeight: 600 } as const;
+const branchNameStyle = { fontWeight: 600, fontSize: 12 } as const;
 const errorTextStyle = { color: "#f87171", fontSize: 11 } as const;
 
 const rowBetweenStyle = {
@@ -798,6 +1122,14 @@ const titleRowStyle = {
   display: "flex",
   alignItems: "center",
   gap: 6,
+  minWidth: 0,
+} as const;
+
+const inlineActionsStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: 4,
+  flexShrink: 0,
 } as const;
 
 const sectionStyle = {
@@ -805,7 +1137,12 @@ const sectionStyle = {
   paddingTop: 8,
   display: "flex",
   flexDirection: "column",
-  gap: 4,
+  gap: 6,
+} as const;
+
+const footerStyle = {
+  borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+  paddingTop: 8,
 } as const;
 
 const sectionLabelStyle = {
@@ -816,29 +1153,108 @@ const sectionLabelStyle = {
   color: "#94a3b8",
 } as const;
 
+const branchListStyle = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  maxHeight: 280,
+  overflowY: "auto",
+} as const;
+
+const branchRowStyle = {
+  padding: "8px 9px",
+  borderRadius: 8,
+  background: "#1d222d",
+  border: "1px solid rgba(255, 255, 255, 0.08)",
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+} as const;
+
+const branchRowActiveStyle = {
+  ...branchRowStyle,
+  background: "#1c2838",
+  border: "1px solid rgba(65, 145, 251, 0.55)",
+} as const;
+
+const summaryStyle = {
+  color: "#cbd5e1",
+  fontSize: 11,
+  lineHeight: "15px",
+} as const;
+
 const mutedStyle = {
   color: "#94a3b8",
+  fontSize: 11,
+} as const;
+
+const mutedBadgeStyle = {
+  fontSize: 10,
+  padding: "1px 5px",
+  borderRadius: 4,
+  background: "rgba(148, 163, 184, 0.14)",
+  color: "#94a3b8",
+} as const;
+
+const loadedBadgeStyle = {
+  fontSize: 10,
+  fontWeight: 600,
+  padding: "1px 6px",
+  borderRadius: 4,
+  background: "rgba(34, 197, 94, 0.18)",
+  color: "#4ade80",
+} as const;
+
+const readyBadgeStyle = {
+  fontSize: 10,
+  fontWeight: 500,
+  padding: "1px 6px",
+  borderRadius: 4,
+  background: "rgba(34, 197, 94, 0.12)",
+  color: "#86efac",
+} as const;
+
+const workingBadgeStyle = {
+  fontSize: 10,
+  fontWeight: 500,
+  padding: "1px 6px",
+  borderRadius: 4,
+  background: "rgba(65, 145, 251, 0.18)",
+  color: "#93c5fd",
+} as const;
+
+const failedBadgeStyle = {
+  fontSize: 10,
+  fontWeight: 600,
+  padding: "1px 6px",
+  borderRadius: 4,
+  background: "rgba(239, 68, 68, 0.18)",
+  color: "#fca5a5",
+} as const;
+
+const warnTagStyle = {
+  fontSize: 10,
+  padding: "1px 5px",
+  borderRadius: 4,
+  background: "rgba(245, 158, 11, 0.18)",
+  color: "#fcd34d",
+} as const;
+
+const previewBannerStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "6px 8px",
+  borderRadius: 6,
+  background: "rgba(245, 158, 11, 0.14)",
+  border: "1px solid rgba(245, 158, 11, 0.35)",
+  color: "#fcd34d",
   fontSize: 11,
 } as const;
 
 const actionsRowStyle = {
   display: "flex",
   flexWrap: "wrap",
-  gap: 6,
-  marginTop: 4,
-} as const;
-
-const chipRowStyle = {
-  display: "flex",
-  flexWrap: "wrap",
   gap: 4,
   marginTop: 2,
-} as const;
-
-const chipStyle = {
-  fontSize: 10,
-  padding: "1px 6px",
-  borderRadius: 4,
-  background: "rgba(65, 145, 251, 0.16)",
-  color: "#93c5fd",
 } as const;

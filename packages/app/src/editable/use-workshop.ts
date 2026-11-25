@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { z } from "zod";
 import {
   getHostRuntimeStore,
@@ -8,23 +8,33 @@ import {
   useHosts,
 } from "@/runtime/host-runtime";
 import type {
+  EditableBranchAgentRecord,
+  EditableBranchesSnapshot,
   EditableDesktopBridge,
   EditableLocatorContext,
   EditableWorkshopConfig,
   EditableWorkshopDaemonStatus,
 } from "./types";
-import { sendWorkshopEdit } from "./workshop-client";
+import { sendWorkshopEdit, slugifyEditRequest } from "./workshop-client";
 
 const STORAGE_KEY = "paseo.editable.workshop";
 const WORKSHOP_HOST_LABEL = "Editable Workshop";
 const WORKSHOP_START_TIMEOUT_MS = 45_000;
 const WORKSHOP_CONNECT_TIMEOUT_MS = 15_000;
 
+const branchAgentSchema = z.object({
+  slug: z.string(),
+  agentId: z.string(),
+  request: z.string(),
+  createdAt: z.string(),
+});
+
 const schema = z.object({
   workshopHostId: z.string().nullable().default(null),
   workshopCwd: z.string().nullable().default(null),
   workshopAgentId: z.string().nullable().default(null),
   lastRequest: z.string().nullable().optional().default(null),
+  branchAgents: z.record(z.string(), branchAgentSchema).optional().default({}),
   enabled: z.boolean().default(true),
 });
 const defaults = schema.parse({});
@@ -32,6 +42,7 @@ const defaults = schema.parse({});
 export interface UseWorkshopOptions {
   bridge?: EditableDesktopBridge;
   workshopDaemon?: EditableWorkshopDaemonStatus | null;
+  branches?: EditableBranchesSnapshot | null;
   refreshDesktop?: () => Promise<void>;
 }
 
@@ -57,8 +68,30 @@ async function waitForHostOnline(serverId: string, timeoutMs: number): Promise<b
   return waiting;
 }
 
+function resolveBranchSendTarget(input: {
+  config: EditableWorkshopConfig;
+  branches: EditableBranchesSnapshot | null;
+  request: string;
+  branchTarget?: { slug?: string | null; isFollowUp?: boolean };
+}): { slug: string; isFollowUp: boolean; followUpAgentId: string | null } {
+  const existingSlugs = new Set<string>([
+    ...Object.keys(input.config.branchAgents ?? {}),
+    ...(input.branches?.branches.map((b) => b.slug) ?? []),
+  ]);
+  const isFollowUp = Boolean(input.branchTarget?.isFollowUp && input.branchTarget.slug);
+  const slug = isFollowUp
+    ? input.branchTarget!.slug!
+    : slugifyEditRequest(input.request, existingSlugs);
+  const followUpAgentId = isFollowUp
+    ? (input.config.branchAgents?.[slug]?.agentId ??
+      input.branches?.branches.find((b) => b.slug === slug)?.agentId ??
+      null)
+    : null;
+  return { slug, isFollowUp, followUpAgentId };
+}
+
 export function useWorkshop(options: UseWorkshopOptions = {}) {
-  const { bridge, workshopDaemon = null, refreshDesktop } = options;
+  const { bridge, workshopDaemon = null, branches = null, refreshDesktop } = options;
   const managedWorkshop = Boolean(bridge?.startWorkshopDaemon);
   const hosts = useHosts();
   const [config, setConfig] = useState<EditableWorkshopConfig | null>(null);
@@ -66,9 +99,9 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
   const [sending, setSending] = useState(false);
   const [startingWorkshop, setStartingWorkshop] = useState(false);
   const [workshopError, setWorkshopError] = useState<string | null>(null);
-  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
-  const [agentStatus, setAgentStatus] = useState<string | null>(null);
+  const [agentStatuses, setAgentStatuses] = useState<Record<string, string>>({});
   const locked = useRef(false);
+  const prevRunningRef = useRef<Set<string>>(new Set());
   const configRef = useRef<EditableWorkshopConfig | null>(null);
   configRef.current = config;
 
@@ -79,6 +112,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
   const agentId = config?.workshopAgentId ?? null;
   const isConnected = useHostRuntimeIsConnected(effectiveHostId ?? "");
   const host = hosts.find((entry) => entry.serverId === effectiveHostId);
+  const branchAgents = useMemo(() => config?.branchAgents ?? {}, [config?.branchAgents]);
 
   useEffect(() => {
     let mounted = true;
@@ -97,7 +131,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     };
   }, []);
 
-  // When the dedicated desktop Workshop daemon is running, ensure it is paired and selected.
+  // Auto-pair the isolated desktop Workshop daemon when running.
   useEffect(() => {
     if (!managedWorkshop || !workshopDaemon || workshopDaemon.status !== "running") return;
     const serverId = workshopDaemon.serverId;
@@ -131,10 +165,23 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     }
   }, [managedWorkshop, workshopDaemon]);
 
+  // Poll all active branch agents in parallel and immediately trigger sync when any finishes.
+  const trackedEntries = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of Object.values(branchAgents)) {
+      map.set(entry.slug, entry.agentId);
+    }
+    for (const branch of branches?.branches ?? []) {
+      if (branch.agentId && !map.has(branch.slug)) {
+        map.set(branch.slug, branch.agentId);
+      }
+    }
+    return Array.from(map.entries());
+  }, [branchAgents, branches]);
+
   useEffect(() => {
-    if (!effectiveHostId || !agentId || !config?.enabled || !isConnected) {
-      setActiveAgentId(null);
-      setAgentStatus(null);
+    if (!effectiveHostId || !config?.enabled || !isConnected || trackedEntries.length === 0) {
+      setAgentStatuses({});
       return;
     }
     const client = getHostRuntimeStore().getClient(effectiveHostId);
@@ -143,11 +190,28 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout>;
     const sample = async () => {
-      const result = await client.fetchAgent({ agentId, timeout: 5000 }).catch(() => null);
+      const nextStatuses: Record<string, string> = {};
+      const nextRunning = new Set<string>();
+      await Promise.all(
+        trackedEntries.map(async ([slug, id]) => {
+          const result = await client.fetchAgent({ agentId: id, timeout: 5000 }).catch(() => null);
+          const status = result?.agent.status;
+          if (status) nextStatuses[slug] = status;
+          if (status === "initializing" || status === "running") nextRunning.add(slug);
+        }),
+      );
       if (stopped) return;
-      const status = result?.agent.status ?? null;
-      setAgentStatus(status);
-      setActiveAgentId(status === "initializing" || status === "running" ? agentId : null);
+      setAgentStatuses(nextStatuses);
+
+      // If any branch agent just finished its turn, sync Cloud Shelf + local branches immediately.
+      let finishedAny = false;
+      for (const prevSlug of prevRunningRef.current) {
+        if (!nextRunning.has(prevSlug)) finishedAny = true;
+      }
+      prevRunningRef.current = nextRunning;
+      if (finishedAny) {
+        void bridge?.syncNow?.().finally(() => void refreshDesktop?.());
+      }
       timer = setTimeout(sample, 3000);
     };
     void sample();
@@ -155,7 +219,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
       stopped = true;
       clearTimeout(timer);
     };
-  }, [effectiveHostId, agentId, config?.enabled, isConnected]);
+  }, [effectiveHostId, config?.enabled, isConnected, trackedEntries, bridge, refreshDesktop]);
 
   const ensureManagedWorkshopReady = useCallback(async () => {
     if (!bridge?.startWorkshopDaemon) {
@@ -201,6 +265,17 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     }
   }, [bridge, refreshDesktop]);
 
+  const clearBranchAgent = useCallback((slug: string) => {
+    setConfig((prev) => {
+      if (!prev?.branchAgents?.[slug]) return prev;
+      const nextAgents = { ...prev.branchAgents };
+      delete nextAgents[slug];
+      const next = { ...prev, branchAgents: nextAgents };
+      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
+      return next;
+    });
+  }, []);
+
   async function chooseHost(serverId: string) {
     if (!config || locked.current || !hosts.some((entry) => entry.serverId === serverId)) return;
     if (config.workshopHostId === serverId) return;
@@ -221,30 +296,57 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     }
   }
 
-  async function send(locator: EditableLocatorContext, request: string, cwd: string) {
+  function recordBranchAgent(
+    base: EditableWorkshopConfig,
+    slug: string,
+    createdAgentId: string,
+    trimmedRequest: string,
+  ): EditableWorkshopConfig {
+    const record: EditableBranchAgentRecord = {
+      slug,
+      agentId: createdAgentId,
+      request: trimmedRequest,
+      createdAt: new Date().toISOString(),
+    };
+    return {
+      ...base,
+      workshopAgentId: createdAgentId,
+      branchAgents: { ...configRef.current?.branchAgents, [slug]: record },
+    };
+  }
+
+  async function send(
+    locator: EditableLocatorContext,
+    request: string,
+    cwd: string,
+    branchTarget?: { slug?: string | null; isFollowUp?: boolean },
+  ) {
     if (!config || locked.current) return { kind: "busy" } as const;
     locked.current = true;
     setSending(true);
     try {
       let targetHostId = host?.serverId ?? null;
       let targetCwd = cwd.trim() || null;
-      let targetAgentId = targetCwd === config.workshopCwd ? config.workshopAgentId : null;
 
       if (managedWorkshop) {
         const ready = await ensureManagedWorkshopReady();
-        const sameHost = config.workshopHostId === ready.serverId;
         targetHostId = ready.serverId;
         targetCwd = targetCwd ?? ready.repoDir;
-        targetAgentId =
-          sameHost && targetCwd === config.workshopCwd ? config.workshopAgentId : null;
       }
+
+      const { slug, isFollowUp, followUpAgentId } = resolveBranchSendTarget({
+        config,
+        branches,
+        request,
+        branchTarget,
+      });
 
       const trimmedRequest = request.trim();
       const target: EditableWorkshopConfig = {
         ...config,
         workshopHostId: targetHostId,
         workshopCwd: targetCwd,
-        workshopAgentId: targetAgentId,
+        workshopAgentId: followUpAgentId,
         lastRequest: trimmedRequest,
       };
       const runtime = getHostRuntimeStore();
@@ -252,22 +354,24 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         target,
         locator,
         request,
+        slug,
+        isFollowUp,
         getClient: (serverId) =>
           isHostRuntimeConnected(runtime.getSnapshot(serverId))
             ? runtime.getClient(serverId)
             : null,
-        rememberAgent: async (workshopAgentId) => {
-          const next = { ...target, workshopAgentId };
+        rememberAgent: async (createdAgentId, createdSlug) => {
+          const next = recordBranchAgent(target, createdSlug, createdAgentId, trimmedRequest);
           setConfig(next);
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
         },
       });
       if (result.kind === "sent") {
-        const next = { ...target, workshopAgentId: result.agentId };
+        const next = recordBranchAgent(target, result.slug, result.agentId, trimmedRequest);
         setConfig(next);
         void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
-        setActiveAgentId(result.agentId);
-        setAgentStatus("running");
+        prevRunningRef.current.add(result.slug);
+        setAgentStatuses((prev) => ({ ...prev, [result.slug]: "running" }));
       }
       return result;
     } finally {
@@ -276,13 +380,23 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     }
   }
 
+  const runningSlugs = useMemo(
+    () =>
+      Object.entries(agentStatuses)
+        .filter(([, st]) => st === "running" || st === "initializing")
+        .map(([slug]) => slug),
+    [agentStatuses],
+  );
+
   return {
     config,
     hosts,
     host,
     hostId: effectiveHostId,
     agentId,
-    agentStatus,
+    branchAgents,
+    agentStatuses,
+    runningSlugs,
     lastRequest: config?.lastRequest ?? null,
     isConnected,
     managedWorkshop,
@@ -291,9 +405,10 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     workshopError,
     saving,
     sending,
-    editing: sending || startingWorkshop || (isConnected && !!agentId && activeAgentId === agentId),
+    editing: sending || startingWorkshop || runningSlugs.length > 0,
     chooseHost,
     startWorkshop: ensureManagedWorkshopReady,
+    clearBranchAgent,
     send,
   };
 }

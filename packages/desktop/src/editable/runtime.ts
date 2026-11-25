@@ -7,6 +7,7 @@ import {
   session,
   type IpcMainInvokeEvent,
 } from "electron";
+import { EditableBranchManager } from "./branches.js";
 import { syncFromCloudShelf } from "./cloud-sync.js";
 import { EDITABLE_APP_SCHEME, resolveEditableHome } from "./constants.js";
 import { validatePreviewUrl } from "./preview.js";
@@ -23,8 +24,11 @@ import { watchRendererHealth } from "./renderer-health.js";
 import { loadRendererDocument } from "./renderer-navigation.js";
 import type { EditableWorkshopDaemonManager } from "./workshop-daemon.js";
 
+const AUTO_SYNC_INTERVAL_MS = 12_000;
+
 interface LoadAttempt {
   release: RendererRelease;
+  channel: string;
   route: string;
   ready: boolean;
   loaded: Promise<void>;
@@ -36,6 +40,8 @@ export class EditableDesktopRuntime {
   private readonly home = resolveEditableHome();
   private cloudSync: Promise<boolean> | undefined;
   private readonly store: EditableReleaseStore;
+  private readonly branchManager: EditableBranchManager | null;
+  private autoSyncTimer: ReturnType<typeof setInterval> | null = null;
   private readonly windows = new Map<number, BrowserWindow>();
   private readonly previews = new Set<BrowserWindow>();
   private readonly attempts = new WeakMap<BrowserWindow, LoadAttempt>();
@@ -58,6 +64,13 @@ export class EditableDesktopRuntime {
       home: this.home,
       publicKeyHome: options.cloudShelfHome,
     });
+    this.branchManager = options.cloudShelfHome
+      ? new EditableBranchManager({
+          home: this.home,
+          configHome: options.cloudShelfHome,
+          store: this.store,
+        })
+      : null;
     this.useExportedRenderer =
       options.isPackaged || this.store.safe || this.store.activeRelease.releaseDigest !== null;
   }
@@ -134,6 +147,105 @@ export class EditableDesktopRuntime {
       }
       return this.options.workshopDaemon.start();
     });
+    ipcMain.handle("paseo:editable:getBranches", async (event) => {
+      const win = this.requireWindow(event);
+      if (!this.branchManager) return null;
+      return this.branchManager.getSnapshot({
+        loadedChannel: this.store.getWindowChannel(win.id),
+        loadedDigest: this.store.getWindowRelease(win.id)?.releaseDigest ?? null,
+        safeRenderer: this.store.safe,
+      });
+    });
+    ipcMain.handle("paseo:editable:syncNow", async (event) => {
+      const win = this.requireWindow(event);
+      if (!this.branchManager) return { ok: false, error: "Branch sync unavailable" };
+      try {
+        const res = await this.branchManager.syncAll({
+          loadedChannel: this.store.getWindowChannel(win.id),
+        });
+        return { ok: true, updated: res.updated };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+    ipcMain.handle("paseo:editable:loadBranch", async (event, channel: unknown) => {
+      const win = this.requireWindow(event);
+      if (!this.branchManager || typeof channel !== "string") {
+        return { ok: false, error: "Invalid branch channel" };
+      }
+      try {
+        const { release, channel: resolvedChannel } = await this.branchManager.loadBranch(channel);
+        setImmediate(
+          () =>
+            void this.navigate(win, release, undefined, resolvedChannel).catch(this.options.warn),
+        );
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
+    ipcMain.handle("paseo:editable:shipBranch", async (event, slug: unknown) => {
+      const win = this.requireWindow(event);
+      if (!this.branchManager || typeof slug !== "string") {
+        return { ok: false, error: "Invalid branch slug" };
+      }
+      const loadedChannel = this.store.getWindowChannel(win.id);
+      const result = await this.branchManager.shipBranch(slug, { loadedChannel });
+      if (!result.ok) return result;
+      if (result.shouldAutoLoad) {
+        try {
+          const { release } = await this.branchManager.loadBranch("prod");
+          setImmediate(
+            () => void this.navigate(win, release, undefined, "prod").catch(this.options.warn),
+          );
+          return { ...result, autoLoaded: true };
+        } catch (error) {
+          return {
+            ...result,
+            autoLoaded: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+      return { ...result, autoLoaded: false };
+    });
+    ipcMain.handle("paseo:editable:discardBranch", async (event, slug: unknown) => {
+      const win = this.requireWindow(event);
+      if (!this.branchManager || typeof slug !== "string") {
+        return { ok: false, error: "Invalid branch slug" };
+      }
+      const loadedChannel = this.store.getWindowChannel(win.id);
+      const result = await this.branchManager.discardBranch(slug);
+      if (result.ok && loadedChannel === `wip-${slug}`) {
+        try {
+          const { release } = await this.branchManager.loadBranch("prod");
+          setImmediate(
+            () => void this.navigate(win, release, undefined, "prod").catch(this.options.warn),
+          );
+        } catch (error) {
+          this.options.warn(error);
+        }
+      }
+      return result;
+    });
+
+    this.startAutoSync();
+  }
+
+  private startAutoSync(): void {
+    if (!this.branchManager || this.store.safe || this.autoSyncTimer) return;
+    const tick = () => {
+      if (!this.branchManager || this.windows.size === 0) return;
+      const activeWin = BrowserWindow.getFocusedWindow() ?? this.windows.values().next().value;
+      const loadedChannel = activeWin
+        ? this.store.getWindowChannel(activeWin.id)
+        : this.store.activeChannel;
+      void this.branchManager.syncAll({ loadedChannel }).catch(this.options.warn);
+    };
+    // Run an initial silent sync shortly after boot, then poll every 12s without auto-reloading.
+    setTimeout(tick, 3_000).unref();
+    this.autoSyncTimer = setInterval(tick, AUTO_SYNC_INTERVAL_MS);
+    this.autoSyncTimer.unref();
   }
 
   private requireWindow(event: IpcMainInvokeEvent): BrowserWindow {
@@ -238,11 +350,11 @@ export class EditableDesktopRuntime {
   }
 
   useRecoveryRenderer(): Promise<void> {
-    return this.navigateFromMenu(this.store.useRecoveryRenderer());
+    return this.navigateFromMenu(this.store.useRecoveryRenderer(), "builtin");
   }
 
   async reloadLatestRenderer(): Promise<void> {
-    await this.navigateFromMenu(this.store.reloadChannel({ fromMenu: true }));
+    await this.navigateFromMenu(this.store.reloadChannel({ fromMenu: true }), "prod");
   }
 
   async syncFromCloudShelf(): Promise<boolean> {
@@ -263,14 +375,14 @@ export class EditableDesktopRuntime {
     return this.cloudSync;
   }
 
-  private async navigateFromMenu(release: RendererRelease): Promise<void> {
+  private async navigateFromMenu(release: RendererRelease, channel?: string): Promise<void> {
     const focused = BrowserWindow.getFocusedWindow();
     const win =
       focused && this.windows.has(focused.webContents.id)
         ? focused
         : this.windows.values().next().value;
     this.useExportedRenderer = true;
-    if (win) await this.navigate(win, release);
+    if (win) await this.navigate(win, release, undefined, channel);
     else await this.options.openNewWindow();
   }
 
@@ -284,20 +396,27 @@ export class EditableDesktopRuntime {
     return rendererRoute(new URL(current));
   }
 
-  private navigate(win: BrowserWindow, release: RendererRelease, route?: string): Promise<void> {
+  private navigate(
+    win: BrowserWindow,
+    release: RendererRelease,
+    route?: string,
+    channel?: string,
+  ): Promise<void> {
     if (win.isDestroyed()) return Promise.resolve();
     this.useExportedRenderer = true;
     const nextRoute = route ?? this.currentRoute(win);
+    const nextChannel = channel ?? this.store.getWindowChannel(win.id);
     const url = rendererNavigationUrl(nextRoute, release);
     const attempt: LoadAttempt = {
       release,
+      channel: nextChannel,
       route: nextRoute,
       ready: false,
       loaded: Promise.resolve(),
       controller: new AbortController(),
     };
     this.attempts.get(win)?.controller.abort();
-    this.store.pin(win.id, release);
+    this.store.pin(win.id, release, nextChannel);
     this.attempts.set(win, attempt);
     attempt.loaded = loadRendererDocument(win, url, release, attempt.controller.signal)
       .then(() => {

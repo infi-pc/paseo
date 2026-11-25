@@ -51,8 +51,7 @@ it("builds the Workshop prompt with the location and no query or extra metadata"
       "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH):",
       "1. Run `paseo-ed wip create <slug>` and edit inside that worktree.",
       "2. Run `paseo-ed verify <slug>` to check typecheck and lint.",
-      '3. For UI-only edits, run `paseo-ed ship <slug> --summary "<short summary>" --upload` to land locally, build the signed Electron renderer, and publish to Cloud Shelf (pass `--push` only if explicitly requested).',
-      "4. Tell the user when the signed update is ready so they can run Editable -> Sync from Cloud Shelf.",
+      '3. Run `paseo-ed stage <slug> --summary "<short summary>" --upload` to build the signed branch preview and publish to Cloud Shelf. Do NOT merge to main or run `paseo-ed ship` unless explicitly asked.',
       "",
       "Locator context:",
       JSON.stringify({ ...locator, route: "/workspaces" }, null, 2),
@@ -73,7 +72,11 @@ it("asks for a paired Workshop host before looking for a client", async () => {
 
 it("expands the default tilde repo path on the configured host before creating the agent", async () => {
   const { client, input } = fixture();
-  expect(await sendWorkshopEdit(input)).toEqual({ kind: "sent", agentId: "workshop-agent" });
+  expect(await sendWorkshopEdit(input)).toEqual({
+    kind: "sent",
+    agentId: "workshop-agent",
+    slug: "use-a-smaller-label",
+  });
   expect(input.getClient).toHaveBeenCalledExactlyOnceWith("workshop");
   expect(client.getDirectorySuggestions).toHaveBeenCalledExactlyOnceWith({
     query: DEFAULT_WORKSHOP_CWD,
@@ -86,7 +89,10 @@ it("expands the default tilde repo path on the configured host before creating t
     provider: "codex",
     title: "Editable Paseo Workshop",
   });
-  expect(input.rememberAgent).toHaveBeenCalledExactlyOnceWith("workshop-agent");
+  expect(input.rememberAgent).toHaveBeenCalledExactlyOnceWith(
+    "workshop-agent",
+    "use-a-smaller-label",
+  );
   expect(client.sendAgentMessage).toHaveBeenCalledExactlyOnceWith(
     "workshop-agent",
     buildWorkshopPrompt(locator, request),
@@ -99,6 +105,7 @@ it("passes absolute Workshop paths directly without directory lookup", async () 
   expect(await sendWorkshopEdit({ ...input, target })).toEqual({
     kind: "sent",
     agentId: "workshop-agent",
+    slug: "use-a-smaller-label",
   });
   expect(client.getDirectorySuggestions).not.toHaveBeenCalled();
   expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
@@ -129,6 +136,7 @@ it("reuses the configured agent on its own host and reports disconnection", asyn
   expect(await sendWorkshopEdit({ ...input, target })).toEqual({
     kind: "sent",
     agentId: "saved-agent",
+    slug: "use-a-smaller-label",
   });
   expect(client.createAgent).not.toHaveBeenCalled();
   expect(client.sendAgentMessage).toHaveBeenCalledExactlyOnceWith(
@@ -137,4 +145,21 @@ it("reuses the configured agent on its own host and reports disconnection", asyn
   );
   input.getClient.mockReturnValue(null);
   expect(await sendWorkshopEdit({ ...input, target })).toEqual({ kind: "offline" });
+});
+
+it("spawns a parallel agent when isFollowUp is false even if an earlier agent exists", async () => {
+  const { client, input } = fixture();
+  const target = { ...input.target, workshopAgentId: "existing-agent" };
+  expect(
+    await sendWorkshopEdit({ ...input, target, slug: "compact-sidebar", isFollowUp: false }),
+  ).toEqual({
+    kind: "sent",
+    agentId: "workshop-agent",
+    slug: "compact-sidebar",
+  });
+  expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
+    cwd: "/Users/tester/.editable-paseo/repo",
+    provider: "codex",
+    title: "Editable: compact-sidebar",
+  });
 });
