@@ -3,7 +3,6 @@ import { useMemo, useState } from "react";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import type {
   SidebarProjectEntry,
   SidebarWorkspaceEntry,
@@ -16,7 +15,6 @@ import {
   sessionIsVisible,
   workspaceSections,
   retainSessionKeys,
-  type InboxSection,
   type SidebarSession,
 } from "./model";
 import { useSidebarNavigationStore } from "./store";
@@ -27,7 +25,6 @@ export function useSidebarNavigation(
 ) {
   const projectKey = useSidebarNavigationStore((state) => state.projectKey);
   const inboxVisit = useSidebarNavigationStore((state) => state.inboxVisit);
-  const collapsed = useSidebarCollapsedSectionsStore((state) => state.collapsedProjectKeys);
   const lastFocused = useWorkspaceLayoutStore((state) => state.lastFocusedAgentByWorkspace);
   const serverIds = useMemo(
     () => [...new Set(projects.flatMap((project) => project.hosts.map((host) => host.serverId)))],
@@ -82,10 +79,6 @@ export function useSidebarNavigation(
     () =>
       (["running", "inbox", "snoozed"] as const).map((id) => ({
         id,
-        collapsed:
-          id === "snoozed"
-            ? !collapsed.has("inbox:snoozed:expanded")
-            : collapsed.has(`inbox:${id}`),
         workspaces: sorted
           .filter((workspace) =>
             workspaceSections(workspace, sessions.get(workspace.workspaceKey) ?? []).includes(id),
@@ -97,7 +90,7 @@ export function useSidebarNavigation(
               : 0,
           ),
       })),
-    [sorted, sessions, collapsed],
+    [sorted, sessions],
   );
   const rows = useMemo(
     () =>
@@ -105,7 +98,7 @@ export function useSidebarNavigation(
         ? groupMainFolderWorkspaces(
             sorted.filter((workspace) => workspace.projectViewKey === selectedProject.viewKey),
           )
-        : sections.flatMap((section) => (section.collapsed ? [] : section.workspaces)),
+        : sections.flatMap((section) => section.workspaces),
     [selectedProject, sorted, sections],
   );
   const unreadByProject = useMemo(() => {
@@ -120,10 +113,6 @@ export function useSidebarNavigation(
     () => ({ rows, selectedProject, unreadByProject, sessions: visibleSessions, sections }),
     [rows, selectedProject, unreadByProject, visibleSessions, sections],
   );
-}
-
-export function sectionPreferenceKey(id: InboxSection): string {
-  return id === "snoozed" ? "inbox:snoozed:expanded" : `inbox:${id}`;
 }
 
 function blockedPriority(rows: SidebarSession[] | undefined): number {

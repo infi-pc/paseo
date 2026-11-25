@@ -74,7 +74,7 @@ test.describe("Archive workspace shortcut", () => {
     }
   });
 
-  test("archives the active workspace while its Inbox section is collapsed", async ({ page }) => {
+  test("archives the active workspace from the Inbox view", async ({ page }) => {
     const workspace = await seedWorkspace({ repoPrefix: "archive-shortcut-status-" });
 
     try {
@@ -83,8 +83,7 @@ test.describe("Archive workspace shortcut", () => {
       await selectSidebarInbox(page);
       const inbox = page.getByTestId("sidebar-flat-workspaces");
       await expect(workspaceRow(page, workspace.workspaceId)).toBeVisible({ timeout: 30_000 });
-      await inbox.getByTestId("sidebar-section-inbox").click();
-      await expect(workspaceRow(page, workspace.workspaceId)).toHaveCount(0);
+      await expect(inbox.getByTestId("sidebar-section-inbox").getByRole("heading")).toBeVisible();
 
       await pressArchiveShortcut(page);
 
