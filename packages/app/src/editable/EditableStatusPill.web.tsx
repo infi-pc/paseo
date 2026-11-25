@@ -567,12 +567,12 @@ export function EditableStatusPill({
     () =>
       ({
         position: "fixed",
-        left: 12,
+        right: 12,
         bottom: 12,
         zIndex: layer,
         display: "flex",
         flexDirection: "column",
-        alignItems: "flex-start",
+        alignItems: "flex-end",
         gap: 8,
         pointerEvents: "none",
       }) as const,
