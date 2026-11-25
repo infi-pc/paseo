@@ -99,7 +99,7 @@ function PickingHint({ visible, layer }: { visible: boolean; layer: number }) {
       ({
         ...pillStyle,
         position: "fixed",
-        left: 12,
+        right: 12,
         bottom: 52,
         zIndex: layer,
         pointerEvents: "none",

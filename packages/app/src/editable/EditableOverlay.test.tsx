@@ -169,7 +169,7 @@ describe("Editable overlay", () => {
     expect(screen.getByRole("dialog", { name: "Edit this component…" })).toBeTruthy();
   });
 
-  it("opens the bottom-left status popover with version, in-progress info, and Workshop status", async () => {
+  it("opens the bottom-right status popover with version, in-progress info, and Workshop status", async () => {
     const syncFromCloudShelf = vi.fn().mockResolvedValue({ ok: true, updated: false });
     const getWorkshopStatus = vi.fn().mockResolvedValue({
       status: "running",
