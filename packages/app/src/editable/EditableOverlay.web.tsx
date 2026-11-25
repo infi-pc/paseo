@@ -10,9 +10,18 @@ import { getOverlayRoot, useGlobalOverlayLayer } from "@/lib/overlay-root";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { EditableChatView, type EditableChatDraftControls } from "./EditableChatView.web";
 import { EditableStatusPill, pillStyle } from "./EditableStatusPill.web";
+import {
+  captureEditableElementSnapshot,
+  installEditableInspector,
+  recordEditableRoute,
+} from "./inspector";
 import { locateEditableTarget } from "./locator";
 import type { EditableTarget } from "./locator.ts";
-import type { EditableRouteContext } from "./types";
+import type {
+  EditableElementSnapshot,
+  EditableRouteContext,
+  EditableScreenshotAttachment,
+} from "./types";
 import { useEditableDesktop } from "./use-editable-desktop.web";
 import { useEditablePrompt } from "./use-editable-prompt";
 
@@ -257,6 +266,141 @@ function SelectedElementChat({
   );
 }
 
+function useEditableInspectorLifecycle(enabled: boolean, route: string) {
+  useEffect(() => {
+    if (!isWeb || !enabled) return;
+    return installEditableInspector();
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!isWeb || !enabled) return;
+    recordEditableRoute(route);
+  }, [enabled, route]);
+}
+
+function captureElementClickContext(
+  target: EditableTarget,
+  bridge: ReturnType<typeof useEditableDesktop>["bridge"],
+  onReady: (
+    snapshot: EditableElementSnapshot | null,
+    screenshot: EditableScreenshotAttachment | null,
+  ) => void,
+) {
+  const snapshot = captureEditableElementSnapshot(target.element);
+  if (!bridge?.captureScreenshot) {
+    onReady(snapshot, null);
+    return;
+  }
+  const bounds = target.element.getBoundingClientRect();
+  void (async () => {
+    try {
+      const shot = await bridge.captureScreenshot!({
+        rect: { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height },
+        padding: 140,
+      });
+      const image: EditableScreenshotAttachment | null =
+        shot.ok && shot.dataBase64 && shot.mimeType
+          ? { data: shot.dataBase64, mimeType: shot.mimeType }
+          : null;
+      onReady(snapshot, image);
+    } catch {
+      onReady(snapshot, null);
+    }
+  })();
+}
+
+function useEditablePickState({
+  canPick,
+  bridge,
+  prompt,
+  route,
+}: {
+  canPick: boolean;
+  bridge: ReturnType<typeof useEditableDesktop>["bridge"];
+  prompt: ReturnType<typeof useEditablePrompt>;
+  route: string;
+}) {
+  const [picking, setPicking] = useState(false);
+  const [selected, setSelected] = useState<EditableTarget | null>(null);
+  const [inlineChat, setInlineChat] = useState<{ slug: string; agentId: string } | null>(null);
+  const selectedSnapshotRef = useRef<EditableElementSnapshot | null>(null);
+  const selectedScreenshotRef = useRef<EditableScreenshotAttachment | null>(null);
+  const [altPicking, clearAltPicking] = useOptionHoldPicking(canPick && !selected);
+  const currentRoute = useRef(route);
+  currentRoute.current = route;
+
+  const clearSelection = useCallback(() => {
+    setSelected(null);
+    setInlineChat(null);
+    selectedSnapshotRef.current = null;
+    selectedScreenshotRef.current = null;
+  }, []);
+
+  const close = useCallback(() => {
+    clearSelection();
+    setPicking(false);
+    clearAltPicking();
+  }, [clearAltPicking, clearSelection]);
+  useEffect(close, [route, close]);
+
+  const startPick = useCallback(() => {
+    if (!canPick) return;
+    prompt.reset();
+    clearSelection();
+    clearAltPicking();
+    setPicking(true);
+  }, [canPick, clearAltPicking, clearSelection, prompt]);
+
+  const onPick = useCallback(
+    (target: EditableTarget) => {
+      setInlineChat(null);
+      setPicking(false);
+      clearAltPicking();
+      captureElementClickContext(target, bridge, (snapshot, screenshot) => {
+        selectedSnapshotRef.current = snapshot;
+        selectedScreenshotRef.current = screenshot;
+        setSelected(target);
+      });
+    },
+    [bridge, clearAltPicking],
+  );
+
+  const onSubmitDraft = useStableEvent(() => {
+    if (!selected) return;
+    const snapshot = selectedSnapshotRef.current;
+    const screenshot = selectedScreenshotRef.current;
+    void (async () => {
+      const sent = await prompt.submitInPlace(selected.context, {
+        snapshot,
+        images: screenshot ? [screenshot] : undefined,
+      });
+      if (sent && currentRoute.current === route) setInlineChat(sent);
+    })();
+  });
+
+  const isPickingMode = picking || altPicking;
+  const active = isPickingMode || !!selected;
+  const togglePick = useCallback(() => {
+    if (active) close();
+    else startPick();
+    return true;
+  }, [active, close, startPick]);
+
+  return {
+    picking,
+    altPicking,
+    isPickingMode,
+    active,
+    selected,
+    inlineChat,
+    close,
+    startPick,
+    togglePick,
+    onPick,
+    onSubmitDraft,
+  };
+}
+
 export function EditableOverlay() {
   const route = usePathname();
   const router = useRouter();
@@ -269,89 +413,44 @@ export function EditableOverlay() {
     loadedChannel,
     refreshDesktop: refresh,
   });
-  const [picking, setPicking] = useState(false);
-  const [selected, setSelected] = useState<EditableTarget | null>(null);
-  const [inlineChat, setInlineChat] = useState<{ slug: string; agentId: string } | null>(null);
   const pointerPos = usePointerPositionRef();
-  const canPick = isWeb && prompt.config?.enabled === true && !prompt.sending;
-  const [altPicking, clearAltPicking] = useOptionHoldPicking(canPick && !selected);
-  const currentRoute = useRef(route);
-  currentRoute.current = route;
-
-  const close = useCallback(() => {
-    setSelected(null);
-    setInlineChat(null);
-    setPicking(false);
-    clearAltPicking();
-  }, [clearAltPicking]);
-  useEffect(close, [route, close]);
-
-  const isPickingMode = picking || altPicking;
-  const active = isPickingMode || !!selected;
-  const layer = useGlobalOverlayLayer("floating", active);
-
-  const startPick = useCallback(() => {
-    if (!canPick) return;
-    prompt.reset();
-    setSelected(null);
-    setInlineChat(null);
-    clearAltPicking();
-    setPicking(true);
-  }, [canPick, clearAltPicking, prompt]);
+  const enabled = prompt.config?.enabled === true;
+  useEditableInspectorLifecycle(enabled || Boolean(bridge), route);
+  const canPick = isWeb && enabled && !prompt.sending;
+  const pick = useEditablePickState({ canPick, bridge, prompt, route });
+  const layer = useGlobalOverlayLayer("floating", pick.active);
 
   useKeyboardActionHandler({
     handlerId: "editable.pick",
     actions: ["editable.pick"],
     enabled: canPick,
     priority: 100,
-    handle: () => {
-      if (active) close();
-      else startPick();
-      return true;
-    },
+    handle: pick.togglePick,
   });
 
-  const setScope = useEditableEscape(active, layer, !!selected, close);
-
-  const onPick = useCallback(
-    (target: EditableTarget) => {
-      setSelected(target);
-      setInlineChat(null);
-      setPicking(false);
-      clearAltPicking();
-    },
-    [clearAltPicking],
-  );
+  const setScope = useEditableEscape(pick.active, layer, Boolean(pick.selected), pick.close);
   const hover = useHoveredTarget({
-    picking,
-    altPicking,
+    picking: pick.picking,
+    altPicking: pick.altPicking,
     pointerPos,
     route,
     releaseDigest: status?.releaseDigest ?? null,
-    onPick,
+    onPick: pick.onPick,
   });
-  const target = selected ?? hover;
+  const target = pick.selected ?? hover;
   const rect = useTargetRect(target?.element);
-
-  const onSubmitDraft = useStableEvent(() => {
-    if (!selected) return;
-    void (async () => {
-      const sent = await prompt.submitInPlace(selected.context);
-      if (sent && currentRoute.current === route) setInlineChat(sent);
-    })();
-  });
 
   const onPopOutChat = useStableEvent((agentId: string) => {
     if (!prompt.hostId) return;
-    close();
+    pick.close();
     router.push(buildHostAgentDetailRoute(prompt.hostId, agentId) as never);
   });
 
   if (
     !shouldRenderOverlay({
-      active,
-      enabled: prompt.config?.enabled === true,
-      hasBridge: !!bridge,
+      active: pick.active,
+      enabled,
+      hasBridge: Boolean(bridge),
       editing: prompt.editing,
     })
   ) {
@@ -360,12 +459,12 @@ export function EditableOverlay() {
 
   return createPortal(
     <>
-      <PickingHint visible={isPickingMode} layer={layer} />
+      <PickingHint visible={pick.isPickingMode} layer={layer} />
       {target && rect ? <PickerHighlight rect={rect} target={target} layer={layer} /> : null}
-      {selected ? (
+      {pick.selected ? (
         <SelectedElementChat
-          selected={selected}
-          inlineChat={inlineChat}
+          selected={pick.selected}
+          inlineChat={pick.inlineChat}
           rect={rect}
           layer={layer}
           setScope={setScope}
@@ -373,8 +472,8 @@ export function EditableOverlay() {
           bridge={bridge}
           branches={branches}
           refresh={refresh}
-          onClose={close}
-          onSubmitDraft={onSubmitDraft}
+          onClose={pick.close}
+          onSubmitDraft={pick.onSubmitDraft}
           onPopOutChat={onPopOutChat}
         />
       ) : null}
@@ -384,7 +483,7 @@ export function EditableOverlay() {
         workshopDaemon={workshopDaemon}
         branches={branches}
         workshop={prompt}
-        onPick={startPick}
+        onPick={pick.startPick}
         onRefresh={refresh}
         layer={layer}
       />

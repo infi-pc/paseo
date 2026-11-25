@@ -1,3 +1,68 @@
+export interface EditableHealthDigest {
+  recentErrors: number;
+  latestError: string | null;
+  recentWarnings: number;
+  recentFailedRequests: number;
+  recentLongTasks: number;
+  maxLongTaskMs: number | null;
+}
+
+export interface EditableElementSnapshot {
+  react: Array<{
+    name: string;
+    source: string | null;
+    props: Record<string, unknown>;
+    hooks: unknown[];
+  }>;
+  dom: {
+    tag: string;
+    role: string | null;
+    rect: { x: number; y: number; width: number; height: number };
+    overflow: {
+      horizontal: boolean;
+      vertical: boolean;
+      scrollWidth: number;
+      clientWidth: number;
+      scrollHeight: number;
+      clientHeight: number;
+    };
+    styles: Record<string, string>;
+    text: string | null;
+    ancestors: Array<{
+      tag: string;
+      comp: string | null;
+      src: string | null;
+      rect: { x: number; y: number; width: number; height: number };
+      styles: Record<string, string>;
+    }>;
+    children: unknown[];
+  };
+  viewport: {
+    width: number;
+    height: number;
+    dpr: number;
+    scrollX: number;
+    scrollY: number;
+  };
+  theme: string | null;
+  density: string | null;
+  health?: EditableHealthDigest;
+}
+
+export interface EditableScreenshotAttachment {
+  data: string;
+  mimeType: "image/png";
+}
+
+export interface EditableScreenshotResult {
+  ok: boolean;
+  dataBase64?: string;
+  mimeType?: "image/png";
+  width?: number;
+  height?: number;
+  error?: string;
+}
+
 export interface EditableLocatorContext {
   file: string;
   line: number | null;
@@ -99,6 +164,11 @@ export interface EditableDesktopBridge {
     agentId?: string;
   }) => Promise<EditableCreateBranchResult>;
   attachBranchAgent?: (slug: string, agentId: string) => Promise<{ ok: boolean; error?: string }>;
+  captureScreenshot?: (input?: {
+    rect?: { x: number; y: number; width: number; height: number } | null;
+    full?: boolean;
+    padding?: number;
+  }) => Promise<EditableScreenshotResult>;
   discardBranch?: (slug: string) => Promise<{ ok: boolean; error?: string }>;
   getWorkshopStatus?: () => Promise<EditableWorkshopDaemonStatus | null>;
   startWorkshopDaemon?: () => Promise<EditableWorkshopDaemonStatus>;

@@ -50,6 +50,8 @@ const {
 }));
 vi.mock("@/runtime/host-runtime", () => ({
   getHostRuntimeStore: () => ({
+    getHosts: () => [],
+    getSnapshot: () => null,
     getClient: () => ({
       fetchAgentTimeline,
       subscribeAgentTimeline,
@@ -71,6 +73,7 @@ vi.mock("expo-router", () => {
 vi.mock("react-i18next", async () => {
   const { en } = await import("@/i18n/resources/en");
   return {
+    initReactI18next: { type: "3rdParty", init: () => {} },
     useTranslation: () => ({
       t: (key: string) => en.editable[key.split(".")[1] as keyof typeof en.editable],
     }),
@@ -250,7 +253,12 @@ describe("Editable overlay", () => {
       },
       "Use a smaller label.",
       "",
-      { isFollowUp: false },
+      expect.objectContaining({
+        isFollowUp: false,
+        snapshot: expect.objectContaining({
+          dom: expect.objectContaining({ tag: "button", text: "Page action" }),
+        }),
+      }),
     );
 
     // Follow-up reply stays in the same popover and Escape docks it cleanly
@@ -490,7 +498,7 @@ describe("Editable overlay", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
-    expect(send.mock.calls[0]?.[3]).toEqual({ isFollowUp: false });
+    expect(send.mock.calls[0]?.[3]).toMatchObject({ isFollowUp: false });
   });
 
   it("acknowledges a signed renderer only after the navigation container is ready", async () => {

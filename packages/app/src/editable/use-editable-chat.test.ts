@@ -25,6 +25,49 @@ describe("parseWorkshopUserMessage", () => {
       text: "What do you think about making this header static?",
       locatorLabel: "WorkspaceHeader · Header.tsx:42",
     });
+
+    const withSnapshot = buildWorkshopPrompt(
+      {
+        file: "packages/app/src/components/Header.tsx",
+        line: 42,
+        column: 5,
+        componentName: "WorkspaceHeader",
+        route: "/workspaces",
+        releaseDigest: null,
+        platform: "electron",
+      },
+      "Why is this clipped?",
+      {
+        slug: "header-clip",
+        snapshot: {
+          react: [],
+          dom: {
+            tag: "div",
+            role: null,
+            rect: { x: 0, y: 0, width: 100, height: 24 },
+            overflow: {
+              horizontal: true,
+              vertical: false,
+              scrollWidth: 140,
+              clientWidth: 100,
+              scrollHeight: 24,
+              clientHeight: 24,
+            },
+            styles: {},
+            text: "Title",
+            ancestors: [],
+            children: [],
+          },
+          viewport: { width: 1200, height: 800, dpr: 2, scrollX: 0, scrollY: 0 },
+          theme: "dark",
+          density: null,
+        },
+      },
+    );
+    expect(parseWorkshopUserMessage(withSnapshot)).toEqual({
+      text: "Why is this clipped?",
+      locatorLabel: "WorkspaceHeader · Header.tsx:42",
+    });
   });
 
   it("leaves plain follow-up messages untouched", () => {

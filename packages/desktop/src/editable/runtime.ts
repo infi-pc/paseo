@@ -1,4 +1,5 @@
 import {
+  app,
   BrowserWindow,
   ipcMain,
   net,
@@ -10,6 +11,12 @@ import {
 import { EditableBranchManager } from "./branches.js";
 import { syncFromCloudShelf } from "./cloud-sync.js";
 import { EDITABLE_APP_SCHEME, resolveEditableHome } from "./constants.js";
+import {
+  EditableInspectorServer,
+  asInspectorWindow,
+  captureWindowScreenshot,
+  type ScreenshotRectInput,
+} from "./inspector-server.js";
 import { validatePreviewUrl } from "./preview.js";
 import {
   createEditableProtocolHandler,
@@ -41,6 +48,7 @@ export class EditableDesktopRuntime {
   private cloudSync: Promise<boolean> | undefined;
   private readonly store: EditableReleaseStore;
   private readonly branchManager: EditableBranchManager | null;
+  private readonly inspectorServer: EditableInspectorServer | null;
   private autoSyncTimer: ReturnType<typeof setInterval> | null = null;
   private readonly windows = new Map<number, BrowserWindow>();
   private readonly previews = new Set<BrowserWindow>();
@@ -69,6 +77,28 @@ export class EditableDesktopRuntime {
           home: this.home,
           configHome: options.cloudShelfHome,
           store: this.store,
+        })
+      : null;
+    this.inspectorServer = options.cloudShelfHome
+      ? new EditableInspectorServer({
+          home: this.home,
+          configHome: options.cloudShelfHome,
+          getActiveWindow: () => {
+            const win = this.resolveActiveWindow();
+            return win ? asInspectorWindow(win) : null;
+          },
+          getDesktopStatus: () => {
+            const win = this.resolveActiveWindow();
+            return win ? this.store.getStatus(win.id) : null;
+          },
+          getProcessMetrics: () =>
+            app.getAppMetrics().map((m) => ({
+              type: m.type,
+              pid: m.pid,
+              cpuPercent: Math.round(m.cpu.percentCPUUsage * 10) / 10,
+              memoryMb: Math.round((m.memory.workingSetSize / 1024) * 10) / 10,
+            })),
+          warn: options.warn,
         })
       : null;
     this.useExportedRenderer =
@@ -234,6 +264,30 @@ export class EditableDesktopRuntime {
         return this.branchManager.attachBranchAgent(slug, agentId);
       },
     );
+    ipcMain.handle("paseo:editable:captureScreenshot", async (event, input: unknown) => {
+      const win = this.requireWindow(event);
+      try {
+        const opts = (input && typeof input === "object" ? input : {}) as {
+          rect?: ScreenshotRectInput | null;
+          full?: boolean;
+          padding?: number;
+        };
+        const shot = await captureWindowScreenshot(asInspectorWindow(win), {
+          rect: opts.rect ?? null,
+          full: Boolean(opts.full),
+          padding: typeof opts.padding === "number" ? opts.padding : undefined,
+        });
+        return {
+          ok: true,
+          dataBase64: shot.png.toString("base64"),
+          mimeType: "image/png" as const,
+          width: shot.width,
+          height: shot.height,
+        };
+      } catch (error) {
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      }
+    });
     ipcMain.handle("paseo:editable:discardBranch", async (event, slug: unknown) => {
       const win = this.requireWindow(event);
       if (!this.branchManager || typeof slug !== "string") {
@@ -255,6 +309,21 @@ export class EditableDesktopRuntime {
     });
 
     this.startAutoSync();
+    if (this.inspectorServer) {
+      void this.inspectorServer.start().catch(this.options.warn);
+      app.once("will-quit", () => this.inspectorServer?.close());
+    }
+  }
+
+  private resolveActiveWindow(): BrowserWindow | null {
+    const focused = BrowserWindow.getFocusedWindow();
+    if (focused && this.windows.has(focused.webContents.id) && !focused.isDestroyed()) {
+      return focused;
+    }
+    for (const win of this.windows.values()) {
+      if (!win.isDestroyed()) return win;
+    }
+    return null;
   }
 
   private startAutoSync(): void {
@@ -307,6 +376,12 @@ export class EditableDesktopRuntime {
         attempt.ready = true;
       }
     });
+    if (this.inspectorServer) {
+      const inspector = this.inspectorServer;
+      win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+        inspector.recordConsoleMessage(level, message, line, sourceId);
+      });
+    }
     this.updateHealthWatch.set(
       win,
       watchRendererHealth(win, {
