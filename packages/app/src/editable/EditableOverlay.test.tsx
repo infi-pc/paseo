@@ -146,12 +146,12 @@ describe("Editable overlay", () => {
     ).toEqual(["editable.pick"]);
     const { shortcut } = setup();
     shortcut();
-    expect(screen.getByText("Click a component to edit it. Esc to cancel.")).toBeTruthy();
+    expect(screen.getByText("Click a component to ask or edit. Esc to cancel.")).toBeTruthy();
     shortcut();
-    expect(screen.queryByText("Click a component to edit it. Esc to cancel.")).toBeNull();
+    expect(screen.queryByText("Click a component to ask or edit. Esc to cancel.")).toBeNull();
     shortcut();
     fireEvent.keyDown(window, { key: "Escape", code: "Escape" });
-    expect(screen.queryByText("Click a component to edit it. Esc to cancel.")).toBeNull();
+    expect(screen.queryByText("Click a component to ask or edit. Esc to cancel.")).toBeNull();
   });
 
   it("reveals boundaries while holding Option/Alt and opens the prompt on Option+Click", () => {
@@ -166,7 +166,7 @@ describe("Editable overlay", () => {
     fireEvent.keyDown(window, { key: "Alt", code: "AltLeft", altKey: true });
     fireEvent.click(target, { altKey: true });
     expect(pageClick).not.toHaveBeenCalled();
-    expect(screen.getByRole("dialog", { name: "Edit this component…" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Ask or edit this component…" })).toBeTruthy();
   });
 
   it("intercepts a component click, closes on Escape and submits an edit from Enter", async () => {
@@ -178,7 +178,7 @@ describe("Editable overlay", () => {
     );
     fireEvent.click(target);
     expect(pageClick).not.toHaveBeenCalled();
-    const label = "Edit this component…";
+    const label = "Ask or edit this component…";
     expect(screen.getByRole("dialog").getAttribute("aria-label")).toBe(label);
     fireEvent.keyDown(screen.getByRole("textbox", { name: label }), {
       key: "Escape",
@@ -213,7 +213,7 @@ describe("Editable overlay", () => {
     const { target, shortcut } = setup();
     shortcut();
     fireEvent.click(target);
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit this component…" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask or edit this component…" }), {
       target: { value: "Keep this draft." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -222,7 +222,8 @@ describe("Editable overlay", () => {
       "The Workshop host is offline. Reconnect it or choose another host.",
     );
     expect(
-      (screen.getByRole("textbox", { name: "Edit this component…" }) as HTMLInputElement).value,
+      (screen.getByRole("textbox", { name: "Ask or edit this component…" }) as HTMLInputElement)
+        .value,
     ).toBe("Keep this draft.");
   });
 
@@ -233,7 +234,7 @@ describe("Editable overlay", () => {
     const { target, shortcut } = setup();
     shortcut();
     fireEvent.click(target);
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit this component…" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask or edit this component…" }), {
       target: { value: "Keep this draft too." },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));
@@ -242,7 +243,8 @@ describe("Editable overlay", () => {
       "Could not send the edit. Check the Workshop host and repository path, then try again. (Workshop directory not found on host: ~/.editable-paseo/repo)",
     );
     expect(
-      (screen.getByRole("textbox", { name: "Edit this component…" }) as HTMLInputElement).value,
+      (screen.getByRole("textbox", { name: "Ask or edit this component…" }) as HTMLInputElement)
+        .value,
     ).toBe("Keep this draft too.");
   });
 
@@ -318,6 +320,7 @@ describe("Editable overlay", () => {
           releaseDigest: "e".repeat(64),
           generation: 1,
           sourceSha: "3".repeat(40),
+          hasChanges: true,
           behindMain: true,
           canFastForward: false,
           requiresDaemon: true,
@@ -327,6 +330,27 @@ describe("Editable overlay", () => {
           agentId: "agent-2",
           error: null,
           updatedAt: "2026-11-25T10:00:00.000Z",
+        },
+        {
+          slug: "question-only",
+          channel: "wip-question-only",
+          branch: "ed/wip/question-only",
+          isMain: false,
+          status: "idle",
+          summary: "What do you think about these headers?",
+          releaseDigest: null,
+          generation: null,
+          sourceSha: "1".repeat(40),
+          hasChanges: false,
+          behindMain: false,
+          canFastForward: false,
+          requiresDaemon: false,
+          hasUpdate: false,
+          loaded: false,
+          remoteOnly: false,
+          agentId: "agent-3",
+          error: null,
+          updatedAt: "2026-11-25T09:59:00.000Z",
         },
       ],
     });
@@ -354,9 +378,15 @@ describe("Editable overlay", () => {
     expect(popover.textContent).toContain("v8");
     expect(popover.textContent).toContain("fast-branch");
     expect(popover.textContent).toContain("behind-branch");
+    expect(popover.textContent).toContain("question-only");
+    expect(popover.textContent).toContain("No changes");
     expect(popover.textContent).toContain("+ daemon");
     expect(popover.textContent).toContain("behind main");
     expect(popover.textContent).toContain("Fallback UI");
+
+    // Only the 2 branches with changes offer Load / Ship / Update to main; question-only only offers Chat + discard
+    expect(screen.getAllByRole("button", { name: "Load" })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Chat" })).toHaveLength(3);
 
     // Fast-forward branch has "Ship"; behind-main branch has "Update to main"
     fireEvent.click(screen.getByRole("button", { name: "Ship" }));
@@ -383,7 +413,7 @@ describe("Editable overlay", () => {
     fireEvent.click(target);
     expect(await screen.findByRole("button", { name: "compact-sidebar" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "New branch" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Edit this component…" }), {
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask or edit this component…" }), {
       target: { value: "Different idea" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Send" }));

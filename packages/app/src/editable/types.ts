@@ -24,11 +24,12 @@ export interface EditableBranchEntry {
   channel: string;
   branch: string;
   isMain: boolean;
-  status: "ready" | "working" | "shipping" | "failed";
+  status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
   releaseDigest: string | null;
   generation: number | null;
   sourceSha: string | null;
+  hasChanges?: boolean;
   behindMain: boolean;
   canFastForward: boolean;
   requiresDaemon: boolean;
@@ -46,6 +47,14 @@ export interface EditableBranchesSnapshot {
   safeRenderer: boolean;
   main: EditableBranchEntry;
   branches: EditableBranchEntry[];
+}
+
+export interface EditableCreateBranchResult {
+  ok: boolean;
+  slug?: string;
+  branch?: string;
+  worktreePath?: string;
+  error?: string;
 }
 
 export interface EditableShipBranchResult {
@@ -84,6 +93,12 @@ export interface EditableDesktopBridge {
   getBranches?: () => Promise<EditableBranchesSnapshot | null>;
   loadBranch?: (channel: string) => Promise<{ ok: boolean; error?: string }>;
   shipBranch?: (slug: string) => Promise<EditableShipBranchResult>;
+  createBranch?: (input: {
+    slug: string;
+    summary?: string;
+    agentId?: string;
+  }) => Promise<EditableCreateBranchResult>;
+  attachBranchAgent?: (slug: string, agentId: string) => Promise<{ ok: boolean; error?: string }>;
   discardBranch?: (slug: string) => Promise<{ ok: boolean; error?: string }>;
   getWorkshopStatus?: () => Promise<EditableWorkshopDaemonStatus | null>;
   startWorkshopDaemon?: () => Promise<EditableWorkshopDaemonStatus>;

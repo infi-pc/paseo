@@ -35,11 +35,14 @@ export interface EditableStatusWorkshopInfo {
   agentId?: string | null;
   branchAgents?: Record<string, EditableBranchAgentRecord>;
   agentStatuses?: Record<string, string>;
+  agentReplies?: Record<string, string>;
+  unreadReplySlugs?: string[];
   runningSlugs?: string[];
   lastRequest?: string | null;
   workshopError?: string | null;
   startWorkshop?: () => Promise<unknown>;
-  clearBranchAgent?: (slug: string) => void;
+  clearBranchAgent?: (slug: string, options?: { archive?: boolean }) => void;
+  markReplyRead?: (slug: string) => void;
 }
 
 type StatusTone = "green" | "blue" | "amber" | "red" | "gray";
@@ -116,10 +119,13 @@ interface MergedBranchRow {
   slug: string;
   channel: string;
   isMain: boolean;
-  status: "ready" | "working" | "shipping" | "failed";
+  status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
+  replyPreview: string | null;
+  hasUnreadReply: boolean;
   generation: number | null;
   releaseDigest: string | null;
+  hasChanges: boolean;
   behindMain: boolean;
   canFastForward: boolean;
   requiresDaemon: boolean;
@@ -143,8 +149,11 @@ function buildMainRow(
     isMain: true,
     status: "ready",
     summary: b?.summary ?? status?.releaseSummary ?? null,
+    replyPreview: null,
+    hasUnreadReply: false,
     generation: b?.generation ?? (status?.activeGeneration || null),
     releaseDigest: b?.releaseDigest ?? status?.releaseDigest ?? null,
+    hasChanges: false,
     behindMain: false,
     canFastForward: false,
     requiresDaemon: false,
@@ -155,15 +164,24 @@ function buildMainRow(
   };
 }
 
-function buildPendingWipRow(rec: EditableBranchAgentRecord): MergedBranchRow {
+function buildPendingWipRow(
+  rec: EditableBranchAgentRecord,
+  liveStatus: string | undefined,
+  replyPreview: string | null,
+  hasUnreadReply: boolean,
+): MergedBranchRow {
+  const running = liveStatus === "running" || liveStatus === "initializing";
   return {
     slug: rec.slug,
     channel: `wip-${rec.slug}`,
     isMain: false,
-    status: "working",
+    status: running ? "working" : "idle",
     summary: rec.request,
+    replyPreview,
+    hasUnreadReply,
     generation: null,
     releaseDigest: null,
+    hasChanges: false,
     behindMain: false,
     canFastForward: false,
     requiresDaemon: false,
@@ -176,30 +194,39 @@ function buildPendingWipRow(rec: EditableBranchAgentRecord): MergedBranchRow {
 
 function mergeWipEntryRow(
   b: EditableBranchEntry,
-  clientAgent: EditableBranchAgentRecord | undefined,
-  liveStatus: string | undefined,
-  shippingSlugs: Set<string>,
-  statusUpdate: string | null,
+  ctx: {
+    clientAgent: EditableBranchAgentRecord | undefined;
+    liveStatus: string | undefined;
+    replyPreview: string | null;
+    hasUnreadReply: boolean;
+    shippingSlugs: Set<string>;
+    statusUpdate: string | null;
+  },
 ): MergedBranchRow {
-  const isAgentRunning = liveStatus === "running" || liveStatus === "initializing";
+  const isAgentRunning = ctx.liveStatus === "running" || ctx.liveStatus === "initializing";
+  const hasChanges = b.hasChanges ?? Boolean(b.releaseDigest);
   let mergedStatus: MergedBranchRow["status"] = b.status;
-  if (shippingSlugs.has(b.slug) || b.status === "shipping") mergedStatus = "shipping";
+  if (ctx.shippingSlugs.has(b.slug) || b.status === "shipping") mergedStatus = "shipping";
   else if (isAgentRunning) mergedStatus = "working";
+  else if (!hasChanges && mergedStatus !== "failed") mergedStatus = "idle";
 
   return {
     slug: b.slug,
     channel: b.channel,
     isMain: false,
     status: mergedStatus,
-    summary: b.summary ?? clientAgent?.request ?? null,
+    summary: b.summary ?? ctx.clientAgent?.request ?? null,
+    replyPreview: ctx.replyPreview,
+    hasUnreadReply: ctx.hasUnreadReply,
     generation: b.generation,
-    releaseDigest: b.releaseDigest,
+    releaseDigest: hasChanges ? b.releaseDigest : null,
+    hasChanges,
     behindMain: b.behindMain,
-    canFastForward: b.canFastForward,
+    canFastForward: hasChanges && b.canFastForward,
     requiresDaemon: b.requiresDaemon,
-    hasUpdate: b.hasUpdate || (b.loaded && Boolean(statusUpdate)),
+    hasUpdate: hasChanges && (b.hasUpdate || (b.loaded && Boolean(ctx.statusUpdate))),
     loaded: b.loaded,
-    agentId: clientAgent?.agentId ?? b.agentId,
+    agentId: ctx.clientAgent?.agentId ?? b.agentId,
     error: b.error,
   };
 }
@@ -224,20 +251,34 @@ function buildBranchRows(
   const { loadedChannel, safe, statusUpdate } = resolveLoadedContext(status, branches);
   const main = buildMainRow(status, branches, loadedChannel, safe, statusUpdate);
   const agentStatuses = workshop.agentStatuses ?? {};
+  const agentReplies = workshop.agentReplies ?? {};
+  const unreadSet = new Set(workshop.unreadReplySlugs ?? []);
   const clientAgents = workshop.branchAgents ?? {};
   const bySlug = new Map<string, MergedBranchRow>();
 
   for (const b of branches?.branches ?? []) {
     bySlug.set(
       b.slug,
-      mergeWipEntryRow(b, clientAgents[b.slug], agentStatuses[b.slug], shippingSlugs, statusUpdate),
+      mergeWipEntryRow(b, {
+        clientAgent: clientAgents[b.slug],
+        liveStatus: agentStatuses[b.slug],
+        replyPreview: agentReplies[b.slug] ?? null,
+        hasUnreadReply: unreadSet.has(b.slug),
+        shippingSlugs,
+        statusUpdate,
+      }),
     );
   }
 
   for (const rec of Object.values(clientAgents)) {
     if (bySlug.has(rec.slug)) continue;
     const st = agentStatuses[rec.slug];
-    if (st === "running" || st === "initializing") bySlug.set(rec.slug, buildPendingWipRow(rec));
+    if (st === "running" || st === "initializing" || st === "idle" || unreadSet.has(rec.slug)) {
+      bySlug.set(
+        rec.slug,
+        buildPendingWipRow(rec, st, agentReplies[rec.slug] ?? null, unreadSet.has(rec.slug)),
+      );
+    }
   }
 
   return { main, wips: Array.from(bySlug.values()) };
@@ -247,7 +288,9 @@ function rowTone(row: MergedBranchRow): { tone: StatusTone; pulse: "update" | "w
   if (row.hasUpdate) return { tone: "amber", pulse: "update" };
   if (row.status === "working" || row.status === "shipping") return { tone: "blue", pulse: "work" };
   if (row.status === "failed") return { tone: "red", pulse: null };
+  if (row.hasUnreadReply) return { tone: "blue", pulse: null };
   if (row.loaded || row.status === "ready") return { tone: "green", pulse: null };
+  if (row.status === "draft") return { tone: "amber", pulse: null };
   return { tone: "gray", pulse: null };
 }
 
@@ -313,7 +356,72 @@ function WipBranchStatusBadge({ row }: { row: MergedBranchRow }) {
   if (row.status === "failed") {
     return <span style={failedBadgeStyle}>{t("editable.failedBadge")}</span>;
   }
-  return <span style={readyBadgeStyle}>{t("editable.readyBadge")}</span>;
+  if (row.status === "ready") {
+    return <span style={readyBadgeStyle}>{t("editable.readyBadge")}</span>;
+  }
+  if (row.status === "draft") {
+    return <span style={warnTagStyle}>{t("editable.draftBadge")}</span>;
+  }
+  if (row.hasUnreadReply) {
+    return <span style={workingBadgeStyle}>{t("editable.repliedBadge")}</span>;
+  }
+  return <span style={mutedBadgeStyle}>{t("editable.noChangesBadge")}</span>;
+}
+
+function WipBranchActions({
+  row,
+  isBusyRow,
+  canOpenChat,
+  canManage,
+  onLoad,
+  onShip,
+  onDiscard,
+  onChat,
+}: {
+  row: MergedBranchRow;
+  isBusyRow: boolean;
+  canOpenChat: boolean;
+  canManage: boolean;
+  onLoad: () => void;
+  onShip: () => void;
+  onDiscard: () => void;
+  onChat: () => void;
+}) {
+  const { t } = useTranslation();
+  const canLoad =
+    canManage && row.hasChanges && Boolean(row.releaseDigest) && (!row.loaded || row.hasUpdate);
+  const canShip = canManage && row.hasChanges && row.status === "ready";
+  const shipLabel = row.canFastForward ? t("editable.shipBranch") : t("editable.updateToMain");
+
+  return (
+    <div style={actionsRowStyle}>
+      {canLoad ? (
+        <Button
+          size="sm"
+          variant={row.hasUpdate ? "default" : "ghost"}
+          disabled={isBusyRow}
+          onPress={onLoad}
+        >
+          {row.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
+        </Button>
+      ) : null}
+      {canShip ? (
+        <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={onShip}>
+          {shipLabel}
+        </Button>
+      ) : null}
+      {canOpenChat && row.agentId ? (
+        <Button size="sm" variant={row.hasUnreadReply ? "default" : "ghost"} onPress={onChat}>
+          {t("editable.openChatShort")}
+        </Button>
+      ) : null}
+      {canManage && row.status !== "shipping" ? (
+        <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={onDiscard}>
+          ×
+        </Button>
+      ) : null}
+    </div>
+  );
 }
 
 function WipBranchRow({
@@ -333,7 +441,7 @@ function WipBranchRow({
   onLoad: (channel: string) => void;
   onShip: (slug: string) => void;
   onDiscard: (slug: string) => void;
-  onOpenChat: (agentId: string) => void;
+  onOpenChat: (slug: string, agentId: string) => void;
 }) {
   const { t } = useTranslation();
   const { tone, pulse } = rowTone(row);
@@ -341,13 +449,12 @@ function WipBranchRow({
   const handleShip = useStableEvent(() => onShip(row.slug));
   const handleDiscard = useStableEvent(() => onDiscard(row.slug));
   const handleChat = useStableEvent(() => {
-    if (row.agentId) onOpenChat(row.agentId);
+    if (row.agentId) onOpenChat(row.slug, row.agentId);
   });
 
   const isBusyRow = busy || row.status === "shipping";
-  const canLoad = canManage && Boolean(row.releaseDigest) && (!row.loaded || row.hasUpdate);
-  const canShip = canManage && row.status === "ready";
-  const shipLabel = row.canFastForward ? t("editable.shipBranch") : t("editable.updateToMain");
+  const showReplyPreview = Boolean(row.replyPreview && (!row.hasChanges || row.hasUnreadReply));
+  const subtitle = showReplyPreview ? row.replyPreview : row.summary;
 
   return (
     <div style={row.loaded ? branchRowActiveStyle : branchRowStyle}>
@@ -358,41 +465,30 @@ function WipBranchRow({
         </div>
         <div style={inlineActionsStyle}>
           {row.requiresDaemon ? <span style={warnTagStyle}>{t("editable.daemonTag")}</span> : null}
-          {row.behindMain ? <span style={mutedBadgeStyle}>{t("editable.behindMain")}</span> : null}
+          {row.hasChanges && row.behindMain ? (
+            <span style={mutedBadgeStyle}>{t("editable.behindMain")}</span>
+          ) : null}
           <WipBranchStatusBadge row={row} />
         </div>
       </div>
 
-      {row.summary ? <div style={summaryStyle}>{truncate(row.summary, 84)}</div> : null}
+      {subtitle ? (
+        <div style={showReplyPreview ? replyPreviewStyle : summaryStyle}>
+          {truncate(subtitle, 96)}
+        </div>
+      ) : null}
       {row.error ? <div style={errorTextStyle}>{truncate(row.error, 100)}</div> : null}
 
-      <div style={actionsRowStyle}>
-        {canLoad ? (
-          <Button
-            size="sm"
-            variant={row.hasUpdate ? "default" : "ghost"}
-            disabled={isBusyRow}
-            onPress={handleLoad}
-          >
-            {row.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
-          </Button>
-        ) : null}
-        {canShip ? (
-          <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={handleShip}>
-            {shipLabel}
-          </Button>
-        ) : null}
-        {canOpenChat && row.agentId ? (
-          <Button size="sm" variant="ghost" onPress={handleChat}>
-            {t("editable.openChatShort")}
-          </Button>
-        ) : null}
-        {canManage && row.status !== "shipping" ? (
-          <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={handleDiscard}>
-            ×
-          </Button>
-        ) : null}
-      </div>
+      <WipBranchActions
+        row={row}
+        isBusyRow={isBusyRow}
+        canOpenChat={canOpenChat}
+        canManage={canManage}
+        onLoad={handleLoad}
+        onShip={handleShip}
+        onDiscard={handleDiscard}
+        onChat={handleChat}
+      />
     </div>
   );
 }
@@ -497,7 +593,7 @@ function StatusPopover({
   onReloadLoaded: () => void;
   onShipBranch: (slug: string) => void;
   onDiscardBranch: (slug: string) => void;
-  onOpenChat: (agentId: string) => void;
+  onOpenChat: (slug: string, agentId: string) => void;
   onStartWorkshop: () => void;
   onSync: () => void;
   onExitPreview: () => void;
@@ -738,7 +834,7 @@ function useBranchActions({
     void run(async () => {
       const res = await bridge.discardBranch!(slug);
       if (!res.ok) throw new Error(res.error ?? t("editable.desktopFailed"));
-      workshop.clearBranchAgent?.(slug);
+      workshop.clearBranchAgent?.(slug, { archive: true });
       await onRefresh?.();
     });
   });
@@ -754,8 +850,9 @@ function useBranchActions({
     });
   });
 
-  const openChat = useStableEvent((agentId: string) => {
+  const openChat = useStableEvent((slug: string, agentId: string) => {
     if (!workshop.hostId) return;
+    workshop.markReplyRead?.(slug);
     closePopover();
     router.push(buildHostAgentDetailRoute(workshop.hostId, agentId) as never);
   });
@@ -795,12 +892,14 @@ function resolvePillDot(input: {
   recovery: boolean;
   loadedHasUpdate: boolean;
   working: boolean;
+  unreadReply: boolean;
   preview: boolean;
   workshopReady: boolean;
 }): { dotTone: StatusTone; dotPulse: "update" | "work" | null } {
   if (input.hasError || input.recovery) return { dotTone: "red", dotPulse: null };
   if (input.loadedHasUpdate) return { dotTone: "amber", dotPulse: "update" };
   if (input.working) return { dotTone: "blue", dotPulse: "work" };
+  if (input.unreadReply) return { dotTone: "blue", dotPulse: null };
   if (input.preview) return { dotTone: "amber", dotPulse: null };
   return { dotTone: input.workshopReady ? "green" : "gray", dotPulse: null };
 }
@@ -821,8 +920,15 @@ function resolvePillLabel(input: {
   return formatMainPill(input.status, input.main, input.t);
 }
 
-function resolveBadgeText(workingCount: number, readyBackgroundCount: number): string | null {
+function resolveBadgeText(
+  workingCount: number,
+  unreadReplyCount: number,
+  readyBackgroundCount: number,
+): string | null {
   if (workingCount > 0) return `${workingCount} working`;
+  if (unreadReplyCount > 0) {
+    return unreadReplyCount === 1 ? "1 reply" : `${unreadReplyCount} replies`;
+  }
   if (readyBackgroundCount > 0) return `${readyBackgroundCount} ready`;
   return null;
 }
@@ -853,6 +959,7 @@ function deriveSummaryState({
   const loadedWip = wips.find((w) => w.loaded) ?? null;
   const loadedHasUpdate = main.hasUpdate || wips.some((w) => w.loaded && w.hasUpdate);
   const workingCount = wips.filter((w) => w.status === "working" || w.status === "shipping").length;
+  const unreadReplyCount = wips.filter((w) => w.hasUnreadReply).length;
   const readyBackgroundCount = wips.filter((w) => !w.loaded && w.status === "ready").length;
   const preview = !!status?.previewUrl;
   const recovery = !!status?.safeRenderer;
@@ -869,11 +976,12 @@ function deriveSummaryState({
     recovery,
     loadedHasUpdate,
     working: workingCount > 0 || workshop.editing,
+    unreadReply: unreadReplyCount > 0,
     preview,
     workshopReady: workshopState.ready,
   });
   const pillLabel = resolvePillLabel({ failed, preview, recovery, loadedWip, status, main, t });
-  const badgeText = resolveBadgeText(workingCount, readyBackgroundCount);
+  const badgeText = resolveBadgeText(workingCount, unreadReplyCount, readyBackgroundCount);
 
   return {
     loadedHasUpdate,
@@ -1181,6 +1289,14 @@ const summaryStyle = {
   color: "#cbd5e1",
   fontSize: 11,
   lineHeight: "15px",
+} as const;
+
+const replyPreviewStyle = {
+  color: "#e2e8f0",
+  fontSize: 11,
+  lineHeight: "15px",
+  borderLeft: "2px solid rgba(65, 145, 251, 0.55)",
+  paddingLeft: 6,
 } as const;
 
 const mutedStyle = {
