@@ -1,5 +1,5 @@
 import type { WorkspaceCompactHeaderActions } from "./adaptive-workspace-chrome";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import { View } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -211,7 +211,7 @@ export interface WorkspaceHeaderMenuMobileProps extends WorkspaceHeaderWorkspace
   onExitFocusMode?: () => void;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
-  scripts: Omit<UseWorkspaceScriptsMenuPagesInput, "enabled">;
+  scripts: UseWorkspaceScriptsMenuPagesInput;
   showCreateBrowserTab: boolean;
   createTerminalDisabled: boolean;
   onCreateTerminalWithProfile: (profile: TerminalProfile, paneId?: string) => void;
@@ -260,8 +260,7 @@ export function WorkspaceHeaderMenuMobile({
     router.push(buildSettingsHostSectionRoute(normalizedServerId, "terminals") as Href);
   }, [normalizedServerId, router]);
   // FORK(package-scripts): discover packages while the compact menu is open.
-  const [menuOpen, setMenuOpen] = useState(false);
-  const scriptsMenu = useWorkspaceScriptsMenuPages({ ...scripts, enabled: menuOpen });
+  const scriptsMenu = useWorkspaceScriptsMenuPages(scripts);
   const pluginMenu = usePluginWorkspaceMenu(normalizedServerId, normalizedWorkspaceId);
   const pages = useMemo(
     () => [...scriptsMenu.pages, ...pluginMenu.pages],
@@ -269,7 +268,7 @@ export function WorkspaceHeaderMenuMobile({
   );
 
   return (
-    <DropdownMenu compactMode="sheet" onOpenChange={setMenuOpen}>
+    <DropdownMenu compactMode="sheet">
       <DropdownMenuTrigger
         testID="workspace-header-menu-trigger"
         style={triggerStyle}

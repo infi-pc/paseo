@@ -1077,8 +1077,8 @@ export const en = {
       },
     },
     scripts: {
+      searchPlaceholder: "Search scripts…",
       rootPackage: "Root",
-      searchPlaceholder: "Search scripts or packages…",
       title: "Scripts",
       actions: {
         chooseUrl: "Choose URL",

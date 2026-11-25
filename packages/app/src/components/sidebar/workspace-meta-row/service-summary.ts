@@ -16,15 +16,9 @@ export function selectWorkspaceServiceSummary(
   let service: WorkspaceScript | null = null;
   const commands: string[] = [];
   for (const script of scripts) {
-    if (script.lifecycle !== "running") continue;
+    if (script.packageJson || script.lifecycle !== "running") continue;
     if (script.type === "script") {
-      const packageJson = script.packageJson;
-      let name = script.scriptName;
-      if (packageJson) {
-        const directory = packageJson.path.slice(0, -"package.json".length);
-        name = directory ? `${directory}${packageJson.script}` : packageJson.script;
-      }
-      commands.push(name);
+      commands.push(script.scriptName);
     } else if (!service || script.health === "unhealthy") {
       service = script;
     }

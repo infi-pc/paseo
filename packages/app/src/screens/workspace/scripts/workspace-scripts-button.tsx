@@ -1,10 +1,8 @@
-import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import type { GestureResponderEvent } from "react-native";
 import { Pressable, Text, View } from "react-native";
-import { useWorkspaceScripts } from "./use-workspace-scripts";
 import {
   ChevronDown,
-  ChevronRight,
   Copy,
   Eye,
   Play,
@@ -20,7 +18,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
   useDropdownMenuClose,
 } from "@/components/ui/dropdown-menu";
@@ -42,8 +39,6 @@ import type { WorkspaceScriptActions } from "./use-workspace-script-actions";
 type RowActionIcon = "copy" | "open" | "restart" | "start" | "stop" | "terminal";
 
 interface WorkspaceScriptsButtonProps {
-  serverId: string;
-  workspaceId: string;
   actions: WorkspaceScriptActions;
   scripts: WorkspaceDescriptor["scripts"];
   liveTerminalIds?: readonly string[];
@@ -54,7 +49,6 @@ interface WorkspaceScriptsButtonProps {
 
 const ThemedPlay = withUnistyles(Play);
 const ThemedSquareTerminal = withUnistyles(SquareTerminal);
-const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedEye = withUnistyles(Eye);
 const ThemedCopy = withUnistyles(Copy);
@@ -320,7 +314,7 @@ function ScriptRow({
   onOpenUrlInBrowserTab,
 }: ScriptRowProps): ReactElement {
   const { t } = useTranslation();
-  const scriptLabel = script.packageJson?.script ?? script.scriptName;
+  const scriptLabel = script.scriptName;
   const isRunning = script.lifecycle === "running";
   const exitCode = script.exitCode ?? null;
   const { selected: selectedLink, targets: linkTargets } = actions.resolveLinks(script);
@@ -451,48 +445,7 @@ function ScriptRow({
   );
 }
 
-function ScriptGroup({
-  path,
-  collapsible,
-  children,
-}: {
-  path: string;
-  collapsible: boolean;
-  children: ReactNode;
-}): ReactNode {
-  const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(path === "package.json");
-  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
-  const Icon = expanded ? ThemedChevronDown : ThemedChevronRight;
-  const leading = useMemo(() => <Icon size={14} uniProps={mutedColorMapping} />, [Icon]);
-  if (!path) return children;
-  const directory =
-    path === "package.json"
-      ? t("workspace.scripts.rootPackage")
-      : path.slice(0, -"/package.json".length);
-  return (
-    <>
-      <DropdownMenuSeparator />
-      {collapsible ? (
-        <DropdownMenuItem
-          closeOnSelect={false}
-          onSelect={toggleExpanded}
-          leading={leading}
-          testID={`workspace-scripts-group-${path}`}
-        >
-          {directory}
-        </DropdownMenuItem>
-      ) : (
-        <DropdownMenuLabel>{path}</DropdownMenuLabel>
-      )}
-      {!collapsible || expanded ? children : null}
-    </>
-  );
-}
-
 export function WorkspaceScriptsButton({
-  serverId,
-  workspaceId,
   actions,
   scripts: workspaceScripts,
   liveTerminalIds = [],
@@ -501,39 +454,18 @@ export function WorkspaceScriptsButton({
   hideLabels,
 }: WorkspaceScriptsButtonProps): ReactElement | null {
   const { t } = useTranslation();
-  const [menuOpen, setMenuOpen] = useState(false);
   const [search, setSearch] = useState("");
   const handleMenuOpenChange = useCallback((open: boolean) => {
-    setMenuOpen(open);
     if (open) setSearch("");
   }, []);
-  const { scripts, supportsPackages, packageQuery, retryDiscovery } = useWorkspaceScripts({
-    serverId,
-    workspaceId,
-    scripts: workspaceScripts,
-    enabled: menuOpen,
-  });
-  const groups = useMemo(() => {
-    const grouped = new Map<string, WorkspaceDescriptor["scripts"]>();
-    const terms = search.toLowerCase().trim().split(/\s+/).filter(Boolean);
-    for (const script of scripts) {
-      const path = script.packageJson?.path ?? "";
-      const label = script.packageJson?.script ?? script.scriptName;
-      const searchable = `${label} ${path}`.toLowerCase();
-      if (!terms.every((term) => searchable.includes(term))) continue;
-      const group = grouped.get(path) ?? [];
-      group.push(script);
-      grouped.set(path, group);
-    }
-    return [...grouped.entries()].sort(([left], [right]) => {
-      if (left === "") return -1;
-      if (right === "") return 1;
-      if (left === "package.json") return -1;
-      if (right === "package.json") return 1;
-      return left.localeCompare(right);
-    });
-  }, [scripts, search]);
-  const packageCount = groups.filter(([path]) => path !== "").length;
+  const scripts = useMemo(
+    () => workspaceScripts.filter((script) => !script.packageJson),
+    [workspaceScripts],
+  );
+  const terms = search.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const filtered = scripts.filter((script) =>
+    terms.every((term) => script.scriptName.toLowerCase().includes(term)),
+  );
   const liveTerminalIdSet = useMemo(() => new Set(liveTerminalIds), [liveTerminalIds]);
 
   const triggerStyle = useCallback(
@@ -544,7 +476,7 @@ export function WorkspaceScriptsButton({
     [],
   );
 
-  if (scripts.length === 0 && !supportsPackages) {
+  if (scripts.length === 0) {
     return null;
   }
 
@@ -585,37 +517,17 @@ export function WorkspaceScriptsButton({
               placeholder={t("workspace.scripts.searchPlaceholder")}
               testID="workspace-scripts-search"
             />
-            {groups.map(([path, group]) => (
-              <ScriptGroup
-                key={path}
-                path={path}
-                collapsible={path !== "" && packageCount > 1 && !search.trim()}
-              >
-                {group.map((script) => (
-                  <ScriptRow
-                    key={script.scriptName}
-                    script={script}
-                    liveTerminalIdSet={liveTerminalIdSet}
-                    actions={actions}
-                    onViewTerminal={onViewTerminal}
-                    onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
-                  />
-                ))}
-              </ScriptGroup>
+            {filtered.map((script) => (
+              <ScriptRow
+                key={script.scriptName}
+                script={script}
+                liveTerminalIdSet={liveTerminalIdSet}
+                actions={actions}
+                onViewTerminal={onViewTerminal}
+                onOpenUrlInBrowserTab={onOpenUrlInBrowserTab}
+              />
             ))}
-            {packageQuery.isFetching ? (
-              <DropdownMenuLabel>{t("common.loading")}</DropdownMenuLabel>
-            ) : null}
-            {packageQuery.isError ? (
-              <DropdownMenuItem
-                description={packageQuery.error.message}
-                closeOnSelect={false}
-                onSelect={retryDiscovery}
-              >
-                {t("common.actions.retry")}
-              </DropdownMenuItem>
-            ) : null}
-            {groups.length === 0 && !packageQuery.isFetching ? (
+            {filtered.length === 0 ? (
               <DropdownMenuLabel>
                 {t(
                   search.trim()

@@ -233,8 +233,7 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 
 - Commits: `41b31a3dd`, `4f9a6f739`, `ff66c741b`
 - Owns: `packages/server/src/server/workspace-scripts/package-scripts.ts`
-- Wires into: `packages/app/src/screens/workspace/workspace-scripts-button.tsx`, `packages/server/src/server/worktree-bootstrap.ts`, `packages/app/src/components/sidebar/workspace-meta-row/service-summary.ts`, `packages/server/src/server/script-status-projection.ts`, `packages/server/src/server/workspace-script-runtime-store.ts`, `packages/app/src/components/sidebar/workspace-meta-row/index.tsx`
-- Scripts from a workspace's `package.json` are runnable and searchable from the scripts button; run state shows in the sidebar meta row.
+- See [managing workspace scripts](service-proxy.md#managing-workspace-scripts).
 
 ### Branch pair and base branch control
 

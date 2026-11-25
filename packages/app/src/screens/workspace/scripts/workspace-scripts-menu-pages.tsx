@@ -1,5 +1,3 @@
-// FORK(package-scripts): compact script pages share host discovery with the desktop menu.
-import { useWorkspaceScripts } from "./use-workspace-scripts";
 import { MenuTextField } from "@/components/ui/menu";
 import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { View } from "react-native";
@@ -56,11 +54,8 @@ function scriptPageId(scriptName: string): string {
 }
 
 export interface UseWorkspaceScriptsMenuPagesInput {
-  serverId: string;
-  workspaceId: string;
   actions: WorkspaceScriptActions;
   scripts: WorkspaceDescriptor["scripts"];
-  enabled: boolean;
   liveTerminalIds: readonly string[];
   onViewTerminal: (terminalId: string) => void;
   onOpenUrlInBrowserTab: (url: string) => void;
@@ -84,9 +79,6 @@ export interface WorkspaceScriptsMenuPages {
  * The workspace screen owns the actions so a restart finishes across menu and header changes.
  */
 export function useWorkspaceScriptsMenuPages({
-  serverId,
-  workspaceId,
-  enabled,
   actions,
   scripts: workspaceScripts,
   liveTerminalIds,
@@ -94,36 +86,25 @@ export function useWorkspaceScriptsMenuPages({
   onOpenUrlInBrowserTab,
 }: UseWorkspaceScriptsMenuPagesInput): WorkspaceScriptsMenuPages {
   const { t } = useTranslation();
-  const { scripts, supportsPackages, packageQuery, retryDiscovery } = useWorkspaceScripts({
-    serverId,
-    workspaceId,
-    scripts: workspaceScripts,
-    enabled,
-  });
+  const scripts = useMemo(
+    () => workspaceScripts.filter((script) => !script.packageJson),
+    [workspaceScripts],
+  );
   const summary = useMemo(() => summarizeScripts(scripts), [scripts]);
 
   const trigger = useMemo(
-    () =>
-      scripts.length === 0 && !supportsPackages ? null : <ScriptsMenuTrigger summary={summary} />,
-    [scripts.length, summary, supportsPackages],
+    () => (scripts.length === 0 ? null : <ScriptsMenuTrigger summary={summary} />),
+    [scripts.length, summary],
   );
 
   const pages = useMemo<MenuPageDefinition[]>(() => {
-    if (scripts.length === 0 && !supportsPackages) return [];
+    if (scripts.length === 0) return [];
     const liveTerminalIdSet = new Set(liveTerminalIds);
     return [
       {
         id: SCRIPTS_PAGE_ID,
         title: t("workspace.scripts.title"),
-        content: (
-          <ScriptsPage
-            scripts={scripts}
-            actions={actions}
-            pending={packageQuery.isFetching}
-            error={packageQuery.error?.message ?? null}
-            retry={retryDiscovery}
-          />
-        ),
+        content: <ScriptsPage scripts={scripts} actions={actions} />,
       },
       ...scripts.map((script) => ({
         id: scriptPageId(script.scriptName),
@@ -143,18 +124,7 @@ export function useWorkspaceScriptsMenuPages({
         ),
       })),
     ];
-  }, [
-    actions,
-    liveTerminalIds,
-    onOpenUrlInBrowserTab,
-    onViewTerminal,
-    scripts,
-    t,
-    supportsPackages,
-    packageQuery.isFetching,
-    packageQuery.error,
-    retryDiscovery,
-  ]);
+  }, [actions, liveTerminalIds, onOpenUrlInBrowserTab, onViewTerminal, scripts, t]);
 
   return { trigger, pages, needsAttention: summary.tone === "unhealthy" };
 }
@@ -192,24 +162,16 @@ function ScriptsMenuTrigger({ summary }: { summary: ScriptsSummary }): ReactElem
 function ScriptsPage({
   scripts,
   actions,
-  pending,
-  error,
-  retry,
 }: {
   scripts: WorkspaceDescriptor["scripts"];
   actions: WorkspaceScriptActions;
-  pending: boolean;
-  error: string | null;
-  retry: () => void;
 }): ReactElement {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const terms = search.toLowerCase().trim().split(/\s+/).filter(Boolean);
-  const filtered = scripts.filter((script) => {
-    const searchable =
-      `${script.packageJson?.script ?? script.scriptName} ${script.packageJson?.path ?? ""}`.toLowerCase();
-    return terms.every((term) => searchable.includes(term));
-  });
+  const filtered = scripts.filter((script) =>
+    terms.every((term) => script.scriptName.toLowerCase().includes(term)),
+  );
   return (
     <>
       <MenuTextField
@@ -225,13 +187,7 @@ function ScriptsPage({
           <StoppedScriptRow key={script.scriptName} script={script} actions={actions} />
         ),
       )}
-      {pending ? <DropdownMenuItem disabled>{t("common.loading")}</DropdownMenuItem> : null}
-      {error ? (
-        <DropdownMenuItem onSelect={retry} closeOnSelect={false} description={error}>
-          {t("common.actions.retry")}
-        </DropdownMenuItem>
-      ) : null}
-      {!pending && !error && filtered.length === 0 ? (
+      {filtered.length === 0 ? (
         <DropdownMenuItem disabled>
           {t(
             search.trim() ? "workspace.scripts.states.noMatches" : "workspace.scripts.states.empty",

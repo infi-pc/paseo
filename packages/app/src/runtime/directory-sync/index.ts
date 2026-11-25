@@ -354,11 +354,11 @@ export class DirectorySync {
 
   private async fetchScriptStatus(workspaceId: string): Promise<void> {
     const { client, source } = this.requireOnline();
-    const result = await client.listWorkspaceScripts(workspaceId);
-    if (!this.isCurrent(client, source) || result.error || !result.scripts) return;
+    const workspace = await client.findWorkspace(workspaceId);
+    if (!this.isCurrent(client, source) || !workspace) return;
     this.receiveWorkspaceDelta(source, {
       kind: "script_status",
-      update: { workspaceId, scripts: result.scripts },
+      update: { workspaceId, scripts: workspace.scripts ?? [] },
     });
   }
 

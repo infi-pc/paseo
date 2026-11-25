@@ -40,7 +40,7 @@ describe("selectWorkspaceServiceSummary", () => {
     );
   });
 
-  it("keeps regular scripts visible alongside a service and qualifies nested package names", () => {
+  it("keeps configured scripts visible alongside a service", () => {
     expect(
       selectWorkspaceServiceSummary([
         script({ scriptName: "web", type: "service" }),
@@ -56,7 +56,7 @@ describe("selectWorkspaceServiceSummary", () => {
       name: "web",
       health: null,
       type: "service",
-      otherScripts: ["build", "packages/api/build"],
+      otherScripts: ["build"],
     });
   });
 

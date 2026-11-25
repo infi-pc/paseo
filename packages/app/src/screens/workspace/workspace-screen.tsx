@@ -3260,8 +3260,6 @@ function WorkspaceScreenContent({
         <PluginHeaderButtons serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
         {workspaceDescriptor ? (
           <WorkspaceScriptsButton
-            serverId={normalizedServerId}
-            workspaceId={normalizedWorkspaceId}
             actions={scriptActions}
             scripts={workspaceDescriptor.scripts}
             liveTerminalIds={liveTerminalIds}
@@ -3395,8 +3393,6 @@ function WorkspaceScreenContent({
   );
   const compactHeaderScripts = useMemo(
     () => ({
-      serverId: normalizedServerId,
-      workspaceId: normalizedWorkspaceId,
       actions: scriptActions,
       scripts: workspaceScripts,
       liveTerminalIds,
@@ -3404,8 +3400,6 @@ function WorkspaceScreenContent({
       onOpenUrlInBrowserTab: handleOpenUrlInBrowserTab,
     }),
     [
-      normalizedServerId,
-      normalizedWorkspaceId,
       workspaceScripts,
       liveTerminalIds,
       scriptActions,

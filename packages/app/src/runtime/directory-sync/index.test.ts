@@ -36,7 +36,6 @@ import { subscriptionFixture } from "../subscription-fixture";
 type WorkspaceFetchResult = Awaited<ReturnType<DaemonClient["fetchWorkspaces"]>>;
 type ProjectListResult = Awaited<ReturnType<DaemonClient["listProjects"]>>;
 type AgentFetchResult = Awaited<ReturnType<DaemonClient["fetchAgents"]>>;
-type WorkspaceScriptsResult = Awaited<ReturnType<DaemonClient["listWorkspaceScripts"]>>;
 
 class FakeDirectoryClient {
   supportsBackgroundWorkspaces(): boolean {
@@ -197,12 +196,10 @@ class FakeDirectoryClient {
     };
   }
 
-  listWorkspaceScriptsCalls = 0;
-  workspaceScripts: WorkspaceScriptsResult["scripts"] = [];
+  workspaceScripts: WorkspaceDescriptorPayload["scripts"] = [];
 
-  async listWorkspaceScripts(workspaceId: string): Promise<WorkspaceScriptsResult> {
-    this.listWorkspaceScriptsCalls += 1;
-    return { requestId: "scripts", workspaceId, scripts: this.workspaceScripts, error: null };
+  async findWorkspace(workspaceId: string): ReturnType<DaemonClient["findWorkspace"]> {
+    return { ...createWorkspaceEntry(workspaceId), scripts: this.workspaceScripts };
   }
 
   getLastServerInfoMessage() {
