@@ -35,6 +35,7 @@ export interface EditableStatusWorkshopInfo {
   isConnected?: boolean;
   agentId?: string | null;
   branchAgents?: Record<string, EditableBranchAgentRecord>;
+  pendingBranches?: Record<string, { slug: string; request: string; createdAt: string }>;
   agentStatuses?: Record<string, string>;
   agentReplies?: Record<string, string>;
   unreadReplySlugs?: string[];
@@ -166,12 +167,13 @@ function buildMainRow(
 }
 
 function buildPendingWipRow(
-  rec: EditableBranchAgentRecord,
+  rec: { slug: string; request: string; agentId: string | null },
   liveStatus: string | undefined,
   replyPreview: string | null,
   hasUnreadReply: boolean,
 ): MergedBranchRow {
-  const running = liveStatus === "running" || liveStatus === "initializing";
+  const running =
+    liveStatus === "running" || liveStatus === "initializing" || liveStatus === undefined;
   return {
     slug: rec.slug,
     channel: `wip-${rec.slug}`,
@@ -193,10 +195,21 @@ function buildPendingWipRow(
   };
 }
 
+function resolveMergedWipStatus(
+  entry: EditableBranchEntry,
+  options: { isShipping: boolean; isAgentRunning: boolean; hasChanges: boolean },
+): MergedBranchRow["status"] {
+  if (options.isShipping || entry.status === "shipping") return "shipping";
+  if (options.isAgentRunning) return "working";
+  if (!options.hasChanges && entry.status !== "failed") return "idle";
+  return entry.status;
+}
+
 function mergeWipEntryRow(
   b: EditableBranchEntry,
   ctx: {
     clientAgent: EditableBranchAgentRecord | undefined;
+    pending: { slug: string; request: string } | undefined;
     liveStatus: string | undefined;
     replyPreview: string | null;
     hasUnreadReply: boolean;
@@ -204,19 +217,21 @@ function mergeWipEntryRow(
     statusUpdate: string | null;
   },
 ): MergedBranchRow {
-  const isAgentRunning = ctx.liveStatus === "running" || ctx.liveStatus === "initializing";
+  const isAgentRunning =
+    Boolean(ctx.pending) || ctx.liveStatus === "running" || ctx.liveStatus === "initializing";
   const hasChanges = b.hasChanges ?? Boolean(b.releaseDigest);
-  let mergedStatus: MergedBranchRow["status"] = b.status;
-  if (ctx.shippingSlugs.has(b.slug) || b.status === "shipping") mergedStatus = "shipping";
-  else if (isAgentRunning) mergedStatus = "working";
-  else if (!hasChanges && mergedStatus !== "failed") mergedStatus = "idle";
+  const mergedStatus = resolveMergedWipStatus(b, {
+    isShipping: ctx.shippingSlugs.has(b.slug),
+    isAgentRunning,
+    hasChanges,
+  });
 
   return {
     slug: b.slug,
     channel: b.channel,
     isMain: false,
     status: mergedStatus,
-    summary: b.summary ?? ctx.clientAgent?.request ?? null,
+    summary: b.summary ?? ctx.pending?.request ?? ctx.clientAgent?.request ?? null,
     replyPreview: ctx.replyPreview,
     hasUnreadReply: ctx.hasUnreadReply,
     generation: b.generation,
@@ -255,13 +270,28 @@ function buildBranchRows(
   const agentReplies = workshop.agentReplies ?? {};
   const unreadSet = new Set(workshop.unreadReplySlugs ?? []);
   const clientAgents = workshop.branchAgents ?? {};
+  const pendingBranches = workshop.pendingBranches ?? {};
   const bySlug = new Map<string, MergedBranchRow>();
+
+  for (const pending of Object.values(pendingBranches)) {
+    const rec = clientAgents[pending.slug];
+    bySlug.set(
+      pending.slug,
+      buildPendingWipRow(
+        { slug: pending.slug, request: pending.request, agentId: rec?.agentId ?? null },
+        agentStatuses[pending.slug] ?? "initializing",
+        agentReplies[pending.slug] ?? null,
+        unreadSet.has(pending.slug),
+      ),
+    );
+  }
 
   for (const b of branches?.branches ?? []) {
     bySlug.set(
       b.slug,
       mergeWipEntryRow(b, {
         clientAgent: clientAgents[b.slug],
+        pending: pendingBranches[b.slug],
         liveStatus: agentStatuses[b.slug],
         replyPreview: agentReplies[b.slug] ?? null,
         hasUnreadReply: unreadSet.has(b.slug),
@@ -274,7 +304,7 @@ function buildBranchRows(
   for (const rec of Object.values(clientAgents)) {
     if (bySlug.has(rec.slug)) continue;
     const st = agentStatuses[rec.slug];
-    if (st === "running" || st === "initializing" || st === "idle" || unreadSet.has(rec.slug)) {
+    if (st !== "closed" && st !== "archived") {
       bySlug.set(
         rec.slug,
         buildPendingWipRow(rec, st, agentReplies[rec.slug] ?? null, unreadSet.has(rec.slug)),

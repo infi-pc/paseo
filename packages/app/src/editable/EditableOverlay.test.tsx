@@ -9,6 +9,7 @@ import {
 import { DEFAULT_BINDINGS, resolveKeyboardShortcut } from "@/keyboard/keyboard-shortcuts";
 import { routeKeyboardShortcut } from "@/keyboard/route-shortcut";
 import { EditableOverlay } from "./EditableOverlay.web";
+import { EditableStatusPill } from "./EditableStatusPill.web";
 import type { EditableDesktopBridge, EditableDesktopStatus } from "./types";
 
 const {
@@ -102,6 +103,28 @@ vi.mock("./use-workshop", () => ({
 }));
 
 const digest = "a".repeat(64);
+const optimisticWorkshop = {
+  editing: true,
+  sending: true,
+  hostId: "workshop",
+  pendingBranches: {
+    "optimistic-question": {
+      slug: "optimistic-question",
+      request: "Check whether the model returned a title",
+      createdAt: "2026-11-25T19:15:00.000Z",
+    },
+  },
+  branchAgents: {
+    "unsampled-agent": {
+      slug: "unsampled-agent",
+      agentId: "agent-2",
+      request: "Fresh agent before first status poll",
+      createdAt: "2026-11-25T19:15:01.000Z",
+    },
+  },
+  agentStatuses: {},
+};
+const noopPick = () => {};
 const status: EditableDesktopStatus = {
   runtimeVersion: "desktop-1",
   activeDigest: digest,
@@ -547,5 +570,25 @@ describe("Editable overlay", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Exit" }));
     expect(bridge.setPreviewUrl).toHaveBeenCalledExactlyOnceWith(null);
     expect(bridge.reportHealthy).not.toHaveBeenCalled();
+  });
+
+  it("shows optimistic pending branches and unsampled clientAgents immediately as Working", () => {
+    render(
+      <EditableStatusPill
+        bridge={undefined}
+        status={status}
+        workshopDaemon={null}
+        branches={null}
+        workshop={optimisticWorkshop}
+        onPick={noopPick}
+        layer={100}
+      />,
+    );
+
+    expect(screen.getByText("2 working")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Editable Paseo status" }));
+    expect(screen.getByText("optimistic-question")).toBeTruthy();
+    expect(screen.getByText("unsampled-agent")).toBeTruthy();
+    expect(screen.getAllByText("Working…")).toHaveLength(2);
   });
 });
