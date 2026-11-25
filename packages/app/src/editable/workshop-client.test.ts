@@ -55,6 +55,7 @@ it("builds the Workshop prompt with intent-first instructions and no query or ex
       "  1. Make the edit inside that worktree.",
       "  2. Run `paseo-ed verify <slug>` to check typecheck and lint.",
       '  3. Run `paseo-ed stage <slug> --summary "<short summary>" --upload` to commit on the WIP branch, build the signed Electron preview, and publish to Cloud Shelf. Do NOT merge to main or run `paseo-ed ship` — the user will click Ship when ready.',
+      "- To live-inspect the running Paseo Dev.app (screenshots, DOM, React props/hooks, matched CSS, console logs, network, perf/APM, or stores), run `paseo-ed app --help`.",
       "",
       "Locator context:",
       JSON.stringify({ ...locator, route: "/workspaces" }, null, 2),
@@ -221,6 +222,41 @@ it("spawns the Workshop agent directly inside a pre-created worktree path when p
     "working inside isolated WIP worktree `inbox-headers`",
   );
   expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain("Do NOT modify files");
+});
+
+it("attaches element snapshot JSON and screenshot images when provided", async () => {
+  const { client, input } = fixture();
+  const snapshot = {
+    react: [{ name: "InboxHeader", source: null, props: { collapsible: true }, hooks: [true] }],
+    dom: {
+      tag: "button",
+      role: "button",
+      rect: { x: 10, y: 20, width: 120, height: 32 },
+      overflow: {
+        horizontal: false,
+        vertical: false,
+        scrollWidth: 120,
+        clientWidth: 120,
+        scrollHeight: 32,
+        clientHeight: 32,
+      },
+      styles: { display: "flex" },
+      text: "Inbox",
+      ancestors: [],
+      children: [],
+    },
+    viewport: { width: 1280, height: 800, dpr: 2, scrollX: 0, scrollY: 0 },
+    theme: "dark",
+    density: "comfortable",
+  };
+  const images = [{ data: "iVBORw0KGgo=", mimeType: "image/png" as const }];
+  await sendWorkshopEdit({ ...input, snapshot, images });
+  expect(client.sendAgentMessage).toHaveBeenCalledExactlyOnceWith(
+    "workshop-agent",
+    expect.stringContaining("Element snapshot:"),
+    { images },
+  );
+  expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain('"collapsible":true');
 });
 
 it("uses auto mode when falling back to Claude", async () => {

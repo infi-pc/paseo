@@ -9,6 +9,7 @@ import type {
   EditableBranchesSnapshot,
   ShipBranchResult,
 } from "./editable/branches.js";
+import type { EditableScreenshotResult, ScreenshotRectInput } from "./editable/inspector-server.js";
 import type { EditableDesktopStatus } from "./editable/release-store.js";
 import type { EditableWorkshopDaemonStatus } from "./editable/workshop-daemon.js";
 
@@ -86,6 +87,12 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     }): Promise<CreateBranchResult> => ipcRenderer.invoke("paseo:editable:createBranch", input),
     attachBranchAgent: (slug: string, agentId: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("paseo:editable:attachBranchAgent", slug, agentId),
+    captureScreenshot: (input?: {
+      rect?: ScreenshotRectInput | null;
+      full?: boolean;
+      padding?: number;
+    }): Promise<EditableScreenshotResult> =>
+      ipcRenderer.invoke("paseo:editable:captureScreenshot", input),
     discardBranch: (slug: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("paseo:editable:discardBranch", slug),
     getWorkshopStatus: (): Promise<EditableWorkshopDaemonStatus | null> =>

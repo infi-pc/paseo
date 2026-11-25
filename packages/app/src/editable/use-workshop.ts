@@ -11,7 +11,9 @@ import type {
   EditableBranchAgentRecord,
   EditableBranchesSnapshot,
   EditableDesktopBridge,
+  EditableElementSnapshot,
   EditableLocatorContext,
+  EditableScreenshotAttachment,
   EditableWorkshopConfig,
   EditableWorkshopDaemonStatus,
 } from "./types";
@@ -366,7 +368,12 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     locator: EditableLocatorContext,
     request: string,
     cwd: string,
-    branchTarget?: { slug?: string | null; isFollowUp?: boolean },
+    branchTarget?: {
+      slug?: string | null;
+      isFollowUp?: boolean;
+      snapshot?: EditableElementSnapshot | null;
+      images?: EditableScreenshotAttachment[];
+    },
   ) {
     if (!config || locked.current) return { kind: "busy" } as const;
     locked.current = true;
@@ -405,6 +412,8 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         slug,
         isFollowUp,
         worktreePath,
+        snapshot: branchTarget?.snapshot,
+        images: branchTarget?.images,
         getClient: (serverId) =>
           isHostRuntimeConnected(runtime.getSnapshot(serverId))
             ? runtime.getClient(serverId)

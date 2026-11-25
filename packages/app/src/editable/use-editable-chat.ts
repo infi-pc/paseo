@@ -49,7 +49,10 @@ export function parseWorkshopUserMessage(raw: string): ParsedWorkshopUserMessage
   const msgMatch = /\n\n(?:User message|Edit request):\n([\s\S]*)$/.exec(afterLocator);
   if (!msgMatch) return { text: raw, locatorLabel: null };
 
-  const jsonPart = afterLocator.slice(0, msgMatch.index).trim();
+  const beforeMsg = afterLocator.slice(0, msgMatch.index);
+  const snapshotMarker = "\n\nElement snapshot:\n";
+  const snapshotIdx = beforeMsg.indexOf(snapshotMarker);
+  const jsonPart = (snapshotIdx >= 0 ? beforeMsg.slice(0, snapshotIdx) : beforeMsg).trim();
   const userText = (msgMatch[1] ?? "").trim();
   return {
     text: userText || raw,

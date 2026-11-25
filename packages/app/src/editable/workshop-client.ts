@@ -1,7 +1,9 @@
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   routeLocatorContext,
+  type EditableElementSnapshot,
   type EditableLocatorContext,
+  type EditableScreenshotAttachment,
   type EditableWorkshopConfig,
 } from "./types";
 
@@ -109,6 +111,7 @@ function buildIntentGuidelines(slugPlaceholder: string, summaryHint: string): st
     `  1. Make the edit inside that worktree.`,
     `  2. Run \`paseo-ed verify ${slugPlaceholder}\` to check typecheck and lint.`,
     `  3. Run \`paseo-ed stage ${slugPlaceholder} --summary "${summaryHint}" --upload\` to commit on the WIP branch, build the signed Electron preview, and publish to Cloud Shelf. Do NOT merge to main or run \`paseo-ed ship\` — the user will click Ship when ready.`,
+    "- To live-inspect the running Paseo Dev.app (screenshots, DOM, React props/hooks, matched CSS, console logs, network, perf/APM, or stores), run `paseo-ed app --help`.",
   ];
 }
 
@@ -149,7 +152,12 @@ function buildPromptInstructions(
 export function buildWorkshopPrompt(
   locator: EditableLocatorContext,
   request: string,
-  options: { slug?: string; isFollowUp?: boolean; worktreePath?: string } = {},
+  options: {
+    slug?: string;
+    isFollowUp?: boolean;
+    worktreePath?: string;
+    snapshot?: EditableElementSnapshot | null;
+  } = {},
 ): string {
   const { file, line, column, componentName } = locator;
   const { route, releaseDigest, platform } = routeLocatorContext(locator);
@@ -162,15 +170,50 @@ export function buildWorkshopPrompt(
     options.worktreePath,
   );
 
-  return [
-    ...instructions,
-    "",
-    "Locator context:",
-    JSON.stringify(context, null, 2),
-    "",
-    "User message:",
-    request.trim(),
-  ].join("\n");
+  const sections = [...instructions, "", "Locator context:", JSON.stringify(context, null, 2)];
+  if (options.snapshot) {
+    sections.push("", "Element snapshot:", JSON.stringify(options.snapshot));
+  }
+  sections.push("", "User message:", request.trim());
+  return sections.join("\n");
+}
+
+async function ensureWorkshopAgent(input: {
+  client: WorkshopClient;
+  target: WorkshopTarget;
+  slug: string;
+  hasExplicitSlug: boolean;
+  isFollowUp?: boolean;
+  worktreePath?: string;
+  rememberAgent: (agentId: string, slug: string) => Promise<void>;
+}): Promise<{ kind: "ready"; agentId: string } | { kind: "no-provider" }> {
+  let agentId = input.isFollowUp !== false ? input.target.workshopAgentId : null;
+  if (agentId) {
+    const existing = await input.client.fetchAgent(agentId);
+    if (!existing || existing.agent.status === "closed" || existing.agent.archivedAt) {
+      agentId = null;
+    }
+  }
+  if (agentId) return { kind: "ready", agentId };
+
+  const { providers, error } = await input.client.listAvailableProviders();
+  if (error) throw new Error(error);
+  const available = providers.filter((provider) => provider.available);
+  const provider = available.find((entry) => entry.provider === "codex") ?? available[0];
+  if (!provider) return { kind: "no-provider" };
+
+  const cwd =
+    input.worktreePath ??
+    (await resolveWorkshopCwd(input.client, input.target.workshopCwd ?? DEFAULT_WORKSHOP_CWD));
+  const modeId = await resolveWorkshopModeId(input.client, provider.provider, cwd);
+  const agent = await input.client.createAgent({
+    title: input.hasExplicitSlug ? `Editable: ${input.slug}` : "Editable Paseo Workshop",
+    provider: provider.provider,
+    cwd,
+    ...(modeId ? { modeId } : {}),
+  });
+  await input.rememberAgent(agent.id, input.slug);
+  return { kind: "ready", agentId: agent.id };
 }
 
 export async function sendWorkshopEdit(input: {
@@ -180,48 +223,39 @@ export async function sendWorkshopEdit(input: {
   slug?: string;
   isFollowUp?: boolean;
   worktreePath?: string | null;
+  snapshot?: EditableElementSnapshot | null;
+  images?: EditableScreenshotAttachment[];
   getClient: (serverId: string) => WorkshopClient | null;
   rememberAgent: (agentId: string, slug: string) => Promise<void>;
 }): Promise<WorkshopResult> {
-  const { workshopHostId, workshopCwd, workshopAgentId } = input.target;
+  const { workshopHostId } = input.target;
   if (!workshopHostId) return { kind: "choose-host" };
   const client = input.getClient(workshopHostId);
   if (!client) return { kind: "offline" };
 
   const slug = input.slug ?? slugifyEditRequest(input.request);
   const worktreePath = input.worktreePath?.trim() || undefined;
-  let agentId = input.isFollowUp !== false ? workshopAgentId : null;
-  if (agentId) {
-    const existing = await client.fetchAgent(agentId);
-    if (!existing || existing.agent.status === "closed" || existing.agent.archivedAt)
-      agentId = null;
-  }
-  if (!agentId) {
-    const { providers, error } = await client.listAvailableProviders();
-    if (error) throw new Error(error);
-    const available = providers.filter((provider) => provider.available);
-    const provider = available.find((entry) => entry.provider === "codex") ?? available[0];
-    if (!provider) return { kind: "no-provider" };
-    const cwd =
-      worktreePath ?? (await resolveWorkshopCwd(client, workshopCwd ?? DEFAULT_WORKSHOP_CWD));
-    const modeId = await resolveWorkshopModeId(client, provider.provider, cwd);
-    const agent = await client.createAgent({
-      title: input.slug ? `Editable: ${slug}` : "Editable Paseo Workshop",
-      provider: provider.provider,
-      cwd,
-      ...(modeId ? { modeId } : {}),
-    });
-    agentId = agent.id;
-    await input.rememberAgent(agentId, slug);
-  }
+  const resolved = await ensureWorkshopAgent({
+    client,
+    target: input.target,
+    slug,
+    hasExplicitSlug: Boolean(input.slug),
+    isFollowUp: input.isFollowUp,
+    worktreePath,
+    rememberAgent: input.rememberAgent,
+  });
+  if (resolved.kind !== "ready") return resolved;
 
-  await client.sendAgentMessage(
-    agentId,
-    buildWorkshopPrompt(input.locator, input.request, {
-      slug: input.slug,
-      isFollowUp: input.isFollowUp,
-      worktreePath,
-    }),
-  );
-  return { kind: "sent", agentId, slug };
+  const promptText = buildWorkshopPrompt(input.locator, input.request, {
+    slug: input.slug,
+    isFollowUp: input.isFollowUp,
+    worktreePath,
+    snapshot: input.snapshot,
+  });
+  if (input.images && input.images.length > 0) {
+    await client.sendAgentMessage(resolved.agentId, promptText, { images: input.images });
+  } else {
+    await client.sendAgentMessage(resolved.agentId, promptText);
+  }
+  return { kind: "sent", agentId: resolved.agentId, slug };
 }

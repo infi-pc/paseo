@@ -1,6 +1,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { EditableLocatorContext } from "./types";
+import type {
+  EditableElementSnapshot,
+  EditableLocatorContext,
+  EditableScreenshotAttachment,
+} from "./types";
 import { useWorkshop, type UseWorkshopOptions } from "./use-workshop";
 import { DEFAULT_WORKSHOP_CWD } from "./workshop-client";
 
@@ -48,17 +52,21 @@ export function useEditablePrompt(options: UseEditablePromptOptions = {}) {
 
   async function sendDraft(
     context: EditableLocatorContext,
+    extras?: {
+      snapshot?: EditableElementSnapshot | null;
+      images?: EditableScreenshotAttachment[];
+    },
   ): Promise<{ agentId: string; slug: string } | null> {
     if (!canSend) return null;
     setError("");
     try {
       const followUp = Boolean(loadedWipSlug && !targetNewBranch);
-      const result = await workshop.send(
-        context,
-        draft,
-        cwd,
-        followUp ? { slug: loadedWipSlug, isFollowUp: true } : { isFollowUp: false },
-      );
+      const branchTarget = {
+        ...(followUp ? { slug: loadedWipSlug, isFollowUp: true } : { isFollowUp: false }),
+        ...(extras?.snapshot ? { snapshot: extras.snapshot } : {}),
+        ...(extras?.images && extras.images.length > 0 ? { images: extras.images } : {}),
+      };
+      const result = await workshop.send(context, draft, cwd, branchTarget);
       if (result.kind === "sent") {
         reset();
         return { agentId: result.agentId, slug: result.slug };
