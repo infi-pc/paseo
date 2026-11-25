@@ -14,7 +14,37 @@ type WorkshopClient = Pick<
   | "getDirectorySuggestions"
   | "listAvailableProviders"
   | "sendAgentMessage"
->;
+> &
+  Partial<Pick<DaemonClient, "getProvidersSnapshot">>;
+
+const PREFERRED_AUTO_REVIEW_MODES = ["auto-review", "auto"] as const;
+
+function fallbackAutoReviewModeId(providerId: string): string | undefined {
+  if (providerId === "codex") return "auto-review";
+  if (providerId === "claude" || providerId === "antigravity") return "auto";
+  return undefined;
+}
+
+async function resolveWorkshopModeId(
+  client: WorkshopClient,
+  providerId: string,
+  cwd: string,
+): Promise<string | undefined> {
+  if (!client.getProvidersSnapshot) return fallbackAutoReviewModeId(providerId);
+  try {
+    const snapshot = await client.getProvidersSnapshot({ cwd });
+    const entry = snapshot.entries.find((item) => item.provider === providerId);
+    const modes = entry?.modes ?? [];
+    const matched = PREFERRED_AUTO_REVIEW_MODES.find((preferred) =>
+      modes.some((mode) => mode.id === preferred),
+    );
+    if (matched) return matched;
+    if (entry?.defaultModeId) return entry.defaultModeId;
+  } catch {
+    // Fall back to provider-known auto-review mode below.
+  }
+  return fallbackAutoReviewModeId(providerId);
+}
 type WorkshopTarget = Pick<
   EditableWorkshopConfig,
   "workshopHostId" | "workshopCwd" | "workshopAgentId"
@@ -153,10 +183,12 @@ export async function sendWorkshopEdit(input: {
     const provider = available.find((entry) => entry.provider === "codex") ?? available[0];
     if (!provider) return { kind: "no-provider" };
     const cwd = await resolveWorkshopCwd(client, workshopCwd ?? DEFAULT_WORKSHOP_CWD);
+    const modeId = await resolveWorkshopModeId(client, provider.provider, cwd);
     const agent = await client.createAgent({
       title: input.slug ? `Editable: ${slug}` : "Editable Paseo Workshop",
       provider: provider.provider,
       cwd,
+      ...(modeId ? { modeId } : {}),
     });
     agentId = agent.id;
     await input.rememberAgent(agentId, slug);

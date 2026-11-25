@@ -86,6 +86,7 @@ it("expands the default tilde repo path on the configured host before creating t
   });
   expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
     cwd: "/Users/tester/.editable-paseo/repo",
+    modeId: "auto-review",
     provider: "codex",
     title: "Editable Paseo Workshop",
   });
@@ -110,6 +111,7 @@ it("passes absolute Workshop paths directly without directory lookup", async () 
   expect(client.getDirectorySuggestions).not.toHaveBeenCalled();
   expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
     cwd: "/srv/paseo-editable/repo",
+    modeId: "auto-review",
     provider: "codex",
     title: "Editable Paseo Workshop",
   });
@@ -159,7 +161,47 @@ it("spawns a parallel agent when isFollowUp is false even if an earlier agent ex
   });
   expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
     cwd: "/Users/tester/.editable-paseo/repo",
+    modeId: "auto-review",
     provider: "codex",
     title: "Editable: compact-sidebar",
+  });
+});
+
+it("falls back to auto mode from provider snapshot when auto-review is unavailable", async () => {
+  const { client, input } = fixture();
+  const getProvidersSnapshot = vi.fn().mockResolvedValue({
+    entries: [
+      {
+        provider: "codex",
+        status: "ready",
+        defaultModeId: "auto",
+        modes: [
+          { id: "auto", label: "Default Permissions" },
+          { id: "full-access", label: "Full Access" },
+        ],
+      },
+    ],
+  });
+  input.getClient.mockReturnValue({ ...client, getProvidersSnapshot });
+  await sendWorkshopEdit(input);
+  expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
+    cwd: "/Users/tester/.editable-paseo/repo",
+    modeId: "auto",
+    provider: "codex",
+    title: "Editable Paseo Workshop",
+  });
+});
+
+it("uses auto mode when falling back to Claude", async () => {
+  const { client, input } = fixture();
+  client.listAvailableProviders.mockResolvedValueOnce({
+    providers: [{ provider: "claude", available: true }],
+  });
+  await sendWorkshopEdit(input);
+  expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
+    cwd: "/Users/tester/.editable-paseo/repo",
+    modeId: "auto",
+    provider: "claude",
+    title: "Editable Paseo Workshop",
   });
 });
