@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
+import { EditableChatView } from "./EditableChatView.web";
 import type {
   EditableBranchAgentRecord,
   EditableBranchEntry,
@@ -850,9 +851,8 @@ function useBranchActions({
     });
   });
 
-  const openChat = useStableEvent((slug: string, agentId: string) => {
+  const openFullChat = useStableEvent((agentId: string) => {
     if (!workshop.hostId) return;
-    workshop.markReplyRead?.(slug);
     closePopover();
     router.push(buildHostAgentDetailRoute(workshop.hostId, agentId) as never);
   });
@@ -867,7 +867,7 @@ function useBranchActions({
     shipBranch,
     discardBranch,
     sync,
-    openChat,
+    openFullChat,
     exitPreview: useStableEvent(() => {
       if (bridge) void run(() => bridge.setPreviewUrl(null));
     }),
@@ -995,6 +995,91 @@ function deriveSummaryState({
   };
 }
 
+function StatusPopoverPanel({
+  open,
+  activeChatSlug,
+  bridge,
+  branches,
+  main,
+  wips,
+  workshop,
+  workshopDaemon,
+  summary,
+  actions,
+  onOpenInlineChat,
+  onBackToBranches,
+  onClosePopover,
+  onTurnFinished,
+}: {
+  open: boolean;
+  activeChatSlug: string | null;
+  bridge: EditableDesktopBridge | undefined;
+  branches: EditableBranchesSnapshot | null;
+  main: MergedBranchRow;
+  wips: MergedBranchRow[];
+  workshop: EditableStatusWorkshopInfo;
+  workshopDaemon: EditableWorkshopDaemonStatus | null;
+  summary: ReturnType<typeof deriveSummaryState>;
+  actions: ReturnType<typeof useBranchActions>;
+  onOpenInlineChat: (slug: string) => void;
+  onBackToBranches: () => void;
+  onClosePopover: () => void;
+  onTurnFinished: () => void;
+}) {
+  if (!open) return null;
+  const activeChatRow = activeChatSlug
+    ? (wips.find((w) => w.slug === activeChatSlug) ?? null)
+    : null;
+  if (activeChatRow?.agentId) {
+    const activeChatBranch = branches?.branches.find((b) => b.slug === activeChatRow.slug) ?? null;
+    return (
+      <div role="dialog" aria-label={activeChatRow.slug} style={chatPopoverWrapStyle}>
+        <EditableChatView
+          serverId={workshop.hostId}
+          agentId={activeChatRow.agentId}
+          slug={activeChatRow.slug}
+          title={activeChatRow.slug}
+          branch={activeChatBranch}
+          busy={actions.busy}
+          onBack={onBackToBranches}
+          onClose={onClosePopover}
+          onPopOut={workshop.hostId ? actions.openFullChat : undefined}
+          onLoadBranch={bridge?.loadBranch ? actions.loadBranch : undefined}
+          onShipBranch={bridge?.shipBranch ? actions.shipBranch : undefined}
+          onTurnFinished={onTurnFinished}
+        />
+      </div>
+    );
+  }
+  return (
+    <StatusPopover
+      bridge={bridge}
+      main={main}
+      wips={wips}
+      workshop={workshop}
+      workshopDaemon={workshopDaemon}
+      workshopState={summary.workshopState}
+      dotTone={summary.dotTone}
+      dotPulse={summary.dotPulse}
+      preview={summary.preview}
+      recovery={summary.recovery}
+      busy={actions.busy}
+      syncMessage={actions.syncMessage}
+      errorText={actions.failed ?? workshop.workshopError ?? null}
+      onPick={actions.pickFromPopover}
+      onLoadBranch={actions.loadBranch}
+      onReloadLoaded={actions.reloadLoaded}
+      onShipBranch={actions.shipBranch}
+      onDiscardBranch={actions.discardBranch}
+      onOpenChat={onOpenInlineChat}
+      onStartWorkshop={actions.startWorkshop}
+      onSync={actions.sync}
+      onExitPreview={actions.exitPreview}
+      onRecover={actions.recover}
+    />
+  );
+}
+
 export function EditableStatusPill({
   bridge,
   status,
@@ -1016,6 +1101,7 @@ export function EditableStatusPill({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [activeChatSlug, setActiveChatSlug] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const closePopover = useStableEvent(() => setOpen(false));
   useDismissPopover(open, rootRef, closePopover);
@@ -1051,6 +1137,14 @@ export function EditableStatusPill({
       return !wasOpen;
     });
   });
+  const openInlineChat = useStableEvent((slug: string) => {
+    workshop.markReplyRead?.(slug);
+    setActiveChatSlug(slug);
+  });
+  const backToBranches = useStableEvent(() => setActiveChatSlug(null));
+  const handleTurnFinished = useStableEvent(() => {
+    void bridge?.syncNow?.().finally(() => void onRefresh?.());
+  });
   const containerStyle = useMemo(
     () =>
       ({
@@ -1071,33 +1165,22 @@ export function EditableStatusPill({
   return (
     <div ref={rootRef} data-ed-overlay="true" style={containerStyle}>
       <style>{PULSE_CSS}</style>
-      {open ? (
-        <StatusPopover
-          bridge={bridge}
-          main={main}
-          wips={wips}
-          workshop={workshop}
-          workshopDaemon={workshopDaemon}
-          workshopState={summary.workshopState}
-          dotTone={summary.dotTone}
-          dotPulse={summary.dotPulse}
-          preview={summary.preview}
-          recovery={summary.recovery}
-          busy={actions.busy}
-          syncMessage={actions.syncMessage}
-          errorText={actions.failed ?? workshop.workshopError ?? null}
-          onPick={actions.pickFromPopover}
-          onLoadBranch={actions.loadBranch}
-          onReloadLoaded={actions.reloadLoaded}
-          onShipBranch={actions.shipBranch}
-          onDiscardBranch={actions.discardBranch}
-          onOpenChat={actions.openChat}
-          onStartWorkshop={actions.startWorkshop}
-          onSync={actions.sync}
-          onExitPreview={actions.exitPreview}
-          onRecover={actions.recover}
-        />
-      ) : null}
+      <StatusPopoverPanel
+        open={open}
+        activeChatSlug={activeChatSlug}
+        bridge={bridge}
+        branches={branches}
+        main={main}
+        wips={wips}
+        workshop={workshop}
+        workshopDaemon={workshopDaemon}
+        summary={summary}
+        actions={actions}
+        onOpenInlineChat={openInlineChat}
+        onBackToBranches={backToBranches}
+        onClosePopover={closePopover}
+        onTurnFinished={handleTurnFinished}
+      />
       <StatusTriggerBar
         open={open}
         dotTone={summary.dotTone}
@@ -1373,4 +1456,10 @@ const actionsRowStyle = {
   flexWrap: "wrap",
   gap: 4,
   marginTop: 2,
+} as const;
+
+const chatPopoverWrapStyle = {
+  pointerEvents: "auto",
+  width: 420,
+  maxWidth: "calc(100vw - 24px)",
 } as const;
