@@ -160,6 +160,10 @@ describe("EditableBranchManager", () => {
     git(["commit", "-m", "fast branch"], wtFast);
     const fastSha = git(["rev-parse", "HEAD"], wtFast);
 
+    // Create a clean worktree with no changes (discussion-only branch)
+    const wtClean = path.join(configHome, "worktrees", "question-branch");
+    git(["worktree", "add", "-b", "ed/wip/question-branch", wtClean, mainSha]);
+
     // Sign releases for main, fast-branch, and behind-branch
     const mainRel = writeSignedRelease(configHome, privateKeyPem, publicKeyPem, {
       sourceSha: mainSha,
@@ -279,13 +283,54 @@ describe("EditableBranchManager", () => {
     const behind = snap.branches.find((b) => b.slug === "behind-branch");
     expect(fast).toMatchObject({
       status: "ready",
+      hasChanges: true,
       canFastForward: true,
       behindMain: false,
     });
     expect(behind).toMatchObject({
       status: "ready",
+      hasChanges: true,
       canFastForward: false,
       behindMain: true,
+    });
+
+    // Attach an agent to the clean question-only worktree and verify it reports idle + hasChanges: false
+    expect(manager.attachBranchAgent("question-branch", "agent-question")).toEqual({ ok: true });
+    const snapWithQuestion = await manager.getSnapshot({
+      loadedChannel: "prod",
+      loadedDigest: mainRel.releaseDigest,
+      safeRenderer: false,
+    });
+    const question = snapWithQuestion.branches.find((b) => b.slug === "question-branch");
+    expect(question).toMatchObject({
+      status: "idle",
+      hasChanges: false,
+      canFastForward: false,
+      releaseDigest: null,
+      agentId: "agent-question",
+    });
+
+    // createBranch reuses an existing worktree idempotently and calls CLI for a new one
+    expect(await manager.createBranch({ slug: "question-branch" })).toEqual({
+      ok: true,
+      slug: "question-branch",
+      branch: "ed/wip/question-branch",
+      worktreePath: wtClean,
+    });
+    execCli.mockResolvedValueOnce(
+      JSON.stringify({
+        slug: "fresh-branch",
+        branch: "ed/wip/fresh-branch",
+        worktreeDir: path.join(configHome, "worktrees", "fresh-branch"),
+      }),
+    );
+    expect(
+      await manager.createBranch({ slug: "fresh-branch", summary: "Ask about button" }),
+    ).toEqual({
+      ok: true,
+      slug: "fresh-branch",
+      branch: "ed/wip/fresh-branch",
+      worktreePath: path.join(configHome, "worktrees", "fresh-branch"),
     });
 
     // Switch to wip-fast-branch and verify prod generation high-water mark is preserved

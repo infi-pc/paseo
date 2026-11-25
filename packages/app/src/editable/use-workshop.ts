@@ -90,6 +90,19 @@ function resolveBranchSendTarget(input: {
   return { slug, isFollowUp, followUpAgentId };
 }
 
+async function prepareWorktreeForSend(
+  bridge: EditableDesktopBridge | undefined,
+  slug: string,
+  summary: string,
+): Promise<string | null> {
+  if (!bridge?.createBranch) return null;
+  const created = await bridge.createBranch({ slug, summary: summary.slice(0, 120) });
+  if (!created.ok) {
+    throw new Error(created.error ?? `Failed to create worktree ${slug}`);
+  }
+  return created.worktreePath ?? null;
+}
+
 export function useWorkshop(options: UseWorkshopOptions = {}) {
   const { bridge, workshopDaemon = null, branches = null, refreshDesktop } = options;
   const managedWorkshop = Boolean(bridge?.startWorkshopDaemon);
@@ -100,6 +113,8 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
   const [startingWorkshop, setStartingWorkshop] = useState(false);
   const [workshopError, setWorkshopError] = useState<string | null>(null);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, string>>({});
+  const [agentReplies, setAgentReplies] = useState<Record<string, string>>({});
+  const [unreadReplySlugs, setUnreadReplySlugs] = useState<string[]>([]);
   const locked = useRef(false);
   const prevRunningRef = useRef<Set<string>>(new Set());
   const configRef = useRef<EditableWorkshopConfig | null>(null);
@@ -191,6 +206,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     let timer: ReturnType<typeof setTimeout>;
     const sample = async () => {
       const nextStatuses: Record<string, string> = {};
+      const nextReplies: Record<string, string> = {};
       const nextRunning = new Set<string>();
       await Promise.all(
         trackedEntries.map(async ([slug, id]) => {
@@ -198,18 +214,25 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
           const status = result?.agent.status;
           if (status) nextStatuses[slug] = status;
           if (status === "initializing" || status === "running") nextRunning.add(slug);
+          const reply = result?.agent.responseMetadata?.lastTurn?.message?.trim();
+          if (reply) nextReplies[slug] = reply;
         }),
       );
       if (stopped) return;
       setAgentStatuses(nextStatuses);
+      setAgentReplies(nextReplies);
 
-      // If any branch agent just finished its turn, sync Cloud Shelf + local branches immediately.
-      let finishedAny = false;
+      // If any branch agent just finished its turn, mark unread reply + sync immediately.
+      const newlyFinished: string[] = [];
       for (const prevSlug of prevRunningRef.current) {
-        if (!nextRunning.has(prevSlug)) finishedAny = true;
+        if (!nextRunning.has(prevSlug)) newlyFinished.push(prevSlug);
       }
       prevRunningRef.current = nextRunning;
-      if (finishedAny) {
+      if (newlyFinished.length > 0) {
+        const replied = newlyFinished.filter((slug) => Boolean(nextReplies[slug]));
+        if (replied.length > 0) {
+          setUnreadReplySlugs((prev) => Array.from(new Set([...prev, ...replied])));
+        }
         void bridge?.syncNow?.().finally(() => void refreshDesktop?.());
       }
       timer = setTimeout(sample, 3000);
@@ -265,16 +288,40 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     }
   }, [bridge, refreshDesktop]);
 
-  const clearBranchAgent = useCallback((slug: string) => {
-    setConfig((prev) => {
-      if (!prev?.branchAgents?.[slug]) return prev;
-      const nextAgents = { ...prev.branchAgents };
-      delete nextAgents[slug];
-      const next = { ...prev, branchAgents: nextAgents };
-      void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
-      return next;
-    });
+  const markReplyRead = useCallback((slug: string) => {
+    setUnreadReplySlugs((prev) =>
+      prev.includes(slug) ? prev.filter((item) => item !== slug) : prev,
+    );
   }, []);
+
+  const clearBranchAgent = useCallback(
+    (slug: string, clearOptions?: { archive?: boolean }) => {
+      const targetAgentId =
+        configRef.current?.branchAgents?.[slug]?.agentId ??
+        branches?.branches.find((b) => b.slug === slug)?.agentId ??
+        null;
+      if (clearOptions?.archive && targetAgentId && effectiveHostId) {
+        const client = getHostRuntimeStore().getClient(effectiveHostId);
+        void client?.archiveAgent(targetAgentId).catch(() => undefined);
+      }
+      setUnreadReplySlugs((prev) => prev.filter((item) => item !== slug));
+      setAgentReplies((prev) => {
+        if (!(slug in prev)) return prev;
+        const next = { ...prev };
+        delete next[slug];
+        return next;
+      });
+      setConfig((prev) => {
+        if (!prev?.branchAgents?.[slug]) return prev;
+        const nextAgents = { ...prev.branchAgents };
+        delete nextAgents[slug];
+        const next = { ...prev, branchAgents: nextAgents };
+        void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
+        return next;
+      });
+    },
+    [branches, effectiveHostId],
+  );
 
   async function chooseHost(serverId: string) {
     if (!config || locked.current || !hosts.some((entry) => entry.serverId === serverId)) return;
@@ -342,10 +389,11 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
       });
 
       const trimmedRequest = request.trim();
+      const worktreePath = await prepareWorktreeForSend(bridge, slug, trimmedRequest);
       const target: EditableWorkshopConfig = {
         ...config,
         workshopHostId: targetHostId,
-        workshopCwd: targetCwd,
+        workshopCwd: worktreePath ?? targetCwd,
         workshopAgentId: followUpAgentId,
         lastRequest: trimmedRequest,
       };
@@ -356,6 +404,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         request,
         slug,
         isFollowUp,
+        worktreePath,
         getClient: (serverId) =>
           isHostRuntimeConnected(runtime.getSnapshot(serverId))
             ? runtime.getClient(serverId)
@@ -364,14 +413,18 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
           const next = recordBranchAgent(target, createdSlug, createdAgentId, trimmedRequest);
           setConfig(next);
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          void bridge?.attachBranchAgent?.(createdSlug, createdAgentId).catch(() => undefined);
         },
       });
       if (result.kind === "sent") {
         const next = recordBranchAgent(target, result.slug, result.agentId, trimmedRequest);
         setConfig(next);
         void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
+        void bridge?.attachBranchAgent?.(result.slug, result.agentId).catch(() => undefined);
+        markReplyRead(result.slug);
         prevRunningRef.current.add(result.slug);
         setAgentStatuses((prev) => ({ ...prev, [result.slug]: "running" }));
+        void refreshDesktop?.();
       }
       return result;
     } finally {
@@ -396,6 +449,8 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     agentId,
     branchAgents,
     agentStatuses,
+    agentReplies,
+    unreadReplySlugs,
     runningSlugs,
     lastRequest: config?.lastRequest ?? null,
     isConnected,
@@ -409,6 +464,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     chooseHost,
     startWorkshop: ensureManagedWorkshopReady,
     clearBranchAgent,
+    markReplyRead,
     send,
   };
 }

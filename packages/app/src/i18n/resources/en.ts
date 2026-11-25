@@ -3,9 +3,9 @@ import { pluginGallery } from "./plugin-gallery";
 export const en = {
   // FORK(editable): Workshop picker and release controls.
   editable: {
-    placeholder: "Edit this component…",
+    placeholder: "Ask or edit this component…",
     editScreen: "Edit this screen",
-    pickHint: "Click a component to edit it. Esc to cancel.",
+    pickHint: "Click a component to ask or edit. Esc to cancel.",
     component: "Component",
     repoPath: "Workshop repository path",
     selectHost: "Choose a Workshop host",
@@ -32,6 +32,9 @@ export const en = {
     updatingBranch: "Updating…",
     discardBranch: "Discard",
     workingBadge: "Working…",
+    noChangesBadge: "No changes",
+    draftBadge: "Draft",
+    repliedBadge: "Replied",
     readyBadge: "Ready",
     failedBadge: "Failed",
     behindMain: "behind main",

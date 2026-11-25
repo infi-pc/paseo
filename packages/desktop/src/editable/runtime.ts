@@ -209,6 +209,31 @@ export class EditableDesktopRuntime {
       }
       return { ...result, autoLoaded: false };
     });
+    ipcMain.handle("paseo:editable:createBranch", async (event, input: unknown) => {
+      this.requireWindow(event);
+      if (!this.branchManager || !input || typeof input !== "object") {
+        return { ok: false, error: "Invalid branch request" };
+      }
+      const record = input as { slug?: unknown; summary?: unknown; agentId?: unknown };
+      if (typeof record.slug !== "string") {
+        return { ok: false, error: "Invalid branch slug" };
+      }
+      return this.branchManager.createBranch({
+        slug: record.slug,
+        summary: typeof record.summary === "string" ? record.summary : undefined,
+        agentId: typeof record.agentId === "string" ? record.agentId : undefined,
+      });
+    });
+    ipcMain.handle(
+      "paseo:editable:attachBranchAgent",
+      async (event, slug: unknown, agentId: unknown) => {
+        this.requireWindow(event);
+        if (!this.branchManager || typeof slug !== "string" || typeof agentId !== "string") {
+          return { ok: false, error: "Invalid branch agent attachment" };
+        }
+        return this.branchManager.attachBranchAgent(slug, agentId);
+      },
+    );
     ipcMain.handle("paseo:editable:discardBranch", async (event, slug: unknown) => {
       const win = this.requireWindow(event);
       if (!this.branchManager || typeof slug !== "string") {

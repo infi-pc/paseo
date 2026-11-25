@@ -43,20 +43,23 @@ function fixture() {
   };
 }
 
-it("builds the Workshop prompt with the location and no query or extra metadata", () => {
+it("builds the Workshop prompt with intent-first instructions and no query or extra metadata", () => {
   const locatorWithExtra = { ...locator, innerText: "private conversation", password: "secret" };
   expect(buildWorkshopPrompt(locatorWithExtra, request)).toBe(
     [
-      "Edit Paseo in the dedicated Editable Paseo repository.",
-      "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH):",
-      "1. Run `paseo-ed wip create <slug>` and edit inside that worktree.",
-      "2. Run `paseo-ed verify <slug>` to check typecheck and lint.",
-      '3. Run `paseo-ed stage <slug> --summary "<short summary>" --upload` to build the signed branch preview and publish to Cloud Shelf. Do NOT merge to main or run `paseo-ed ship` unless explicitly asked.',
+      "You are the Editable Paseo Workshop assistant in the dedicated Editable Paseo repository.",
+      "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH). If you need to make code changes, first run `paseo-ed wip create <slug>` and edit inside that worktree.",
+      "Respond based on what the user is actually asking:",
+      '- If the user is asking a question, brainstorming, seeking your opinion, or exploring (for example "what do you think?", "why does…?", "how does…?", "could we…?"): ONLY inspect the code and answer concisely. Do NOT modify files, commit, or run `paseo-ed stage` until the user explicitly asks to implement a change.',
+      "- Only when the user asks you to make or change something (now or in a later turn of this chat):",
+      "  1. Make the edit inside that worktree.",
+      "  2. Run `paseo-ed verify <slug>` to check typecheck and lint.",
+      '  3. Run `paseo-ed stage <slug> --summary "<short summary>" --upload` to commit on the WIP branch, build the signed Electron preview, and publish to Cloud Shelf. Do NOT merge to main or run `paseo-ed ship` — the user will click Ship when ready.',
       "",
       "Locator context:",
       JSON.stringify({ ...locator, route: "/workspaces" }, null, 2),
       "",
-      "Edit request:",
+      "User message:",
       "Use a smaller label.",
     ].join("\n"),
   );
@@ -190,6 +193,34 @@ it("falls back to auto mode from provider snapshot when auto-review is unavailab
     provider: "codex",
     title: "Editable Paseo Workshop",
   });
+});
+
+it("spawns the Workshop agent directly inside a pre-created worktree path when provided", async () => {
+  const { client, input } = fixture();
+  const worktreePath = "/Users/tester/.editable-paseo/worktrees/inbox-headers";
+  expect(
+    await sendWorkshopEdit({
+      ...input,
+      slug: "inbox-headers",
+      isFollowUp: false,
+      worktreePath,
+    }),
+  ).toEqual({
+    kind: "sent",
+    agentId: "workshop-agent",
+    slug: "inbox-headers",
+  });
+  expect(client.getDirectorySuggestions).not.toHaveBeenCalled();
+  expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
+    cwd: worktreePath,
+    modeId: "auto-review",
+    provider: "codex",
+    title: "Editable: inbox-headers",
+  });
+  expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain(
+    "working inside isolated WIP worktree `inbox-headers`",
+  );
+  expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain("Do NOT modify files");
 });
 
 it("uses auto mode when falling back to Claude", async () => {

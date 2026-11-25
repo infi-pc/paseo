@@ -1,5 +1,13 @@
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -45,11 +53,12 @@ export interface EditableBranchEntry {
   channel: string;
   branch: string;
   isMain: boolean;
-  status: "ready" | "working" | "shipping" | "failed";
+  status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
   releaseDigest: string | null;
   generation: number | null;
   sourceSha: string | null;
+  hasChanges: boolean;
   behindMain: boolean;
   canFastForward: boolean;
   requiresDaemon: boolean;
@@ -67,6 +76,14 @@ export interface EditableBranchesSnapshot {
   safeRenderer: boolean;
   main: EditableBranchEntry;
   branches: EditableBranchEntry[];
+}
+
+export interface CreateBranchResult {
+  ok: boolean;
+  slug?: string;
+  branch?: string;
+  worktreePath?: string;
+  error?: string;
 }
 
 export interface ShipBranchResult {
@@ -243,6 +260,7 @@ export class EditableBranchManager {
       releaseDigest: prodPtr?.digest ?? null,
       generation: prodPtr?.generation ?? null,
       sourceSha: prodPtr?.sourceSha ?? null,
+      hasChanges: false,
       behindMain: false,
       canFastForward: false,
       requiresDaemon: false,
@@ -262,7 +280,7 @@ export class EditableBranchManager {
     const channelPtr = this.deps.store.getChannelPointer(ptr.channel);
     const digest = channelPtr?.digest ?? ptr.releaseDigest;
     const loaded = !input.safeRenderer && input.loadedChannel === ptr.channel;
-    let status: EditableBranchEntry["status"] = digest ? "ready" : "working";
+    let status: EditableBranchEntry["status"] = digest ? "ready" : "idle";
     if (this.shippingSlugs.has(ptr.slug)) status = "shipping";
     return {
       slug: ptr.slug,
@@ -274,6 +292,7 @@ export class EditableBranchManager {
       releaseDigest: digest,
       generation: channelPtr?.generation ?? null,
       sourceSha: channelPtr?.sourceSha ?? ptr.sourceSha,
+      hasChanges: Boolean(digest),
       behindMain: false,
       canFastForward: false,
       requiresDaemon: ptr.requiresDaemon,
@@ -340,14 +359,18 @@ export class EditableBranchManager {
   private resolveLocalWipStatus(
     slug: string,
     meta: LocalBranchMeta | null,
+    hasChanges: boolean,
     releaseMatchesHead: boolean,
     releaseDigest: string | null,
     shipErr: string | null,
   ): EditableBranchEntry["status"] {
     if (this.shippingSlugs.has(slug)) return "shipping";
     if (shipErr || meta?.status === "failed") return "failed";
-    if (releaseMatchesHead || (meta?.status === "ready" && releaseDigest)) return "ready";
-    return "working";
+    if (hasChanges && (releaseMatchesHead || (meta?.status === "ready" && releaseDigest))) {
+      return "ready";
+    }
+    if (hasChanges) return "draft";
+    return "idle";
   }
 
   private buildLocalWipEntry(
@@ -356,13 +379,14 @@ export class EditableBranchManager {
     input: { loadedChannel: string; loadedDigest: string | null; safeRenderer: boolean },
   ): EditableBranchEntry | null {
     const meta = readLocalBranchMeta(this.deps.configHome, info.slug);
-    if (info.aheadOfMain === 0 && !info.dirty && !meta && !hasRemote) return null;
+    const hasChanges = info.aheadOfMain > 0 || info.dirty;
+    if (!hasChanges && !meta && !hasRemote) return null;
 
     const defaults = this.extractMetaDefaults(info.slug, meta);
     const channelPtr = this.deps.store.getChannelPointer(defaults.channel);
     const release = this.mergeChannelRelease(channelPtr, defaults);
     const releaseMatchesHead = Boolean(
-      release.releaseDigest && release.releaseSha === info.headSha && !info.dirty,
+      hasChanges && release.releaseDigest && release.releaseSha === info.headSha && !info.dirty,
     );
     const loaded = !input.safeRenderer && input.loadedChannel === defaults.channel;
     const shipErr = this.shipErrors.get(info.slug) ?? null;
@@ -375,18 +399,24 @@ export class EditableBranchManager {
       status: this.resolveLocalWipStatus(
         info.slug,
         meta,
+        hasChanges,
         releaseMatchesHead,
         release.releaseDigest,
         shipErr,
       ),
       summary: release.summary,
-      releaseDigest: release.releaseDigest,
-      generation: release.generation,
+      releaseDigest: hasChanges ? release.releaseDigest : null,
+      generation: hasChanges ? release.generation : null,
       sourceSha: info.headSha,
+      hasChanges,
       behindMain: info.behindMain > 0,
-      canFastForward: info.behindMain === 0 && !info.dirty && releaseMatchesHead,
+      canFastForward: hasChanges && info.behindMain === 0 && !info.dirty && releaseMatchesHead,
       requiresDaemon: defaults.requiresDaemon,
-      hasUpdate: this.hasDigestUpdate(loaded, release.releaseDigest, input.loadedDigest),
+      hasUpdate: this.hasDigestUpdate(
+        loaded,
+        hasChanges ? release.releaseDigest : null,
+        input.loadedDigest,
+      ),
       loaded,
       remoteOnly: false,
       agentId: defaults.agentId,
@@ -580,6 +610,83 @@ export class EditableBranchManager {
       return { ok: false, error: message };
     } finally {
       this.shippingSlugs.delete(slug);
+    }
+  }
+
+  async createBranch(input: {
+    slug: string;
+    summary?: string;
+    agentId?: string;
+  }): Promise<CreateBranchResult> {
+    if (!SLUG_RE.test(input.slug)) {
+      return { ok: false, error: `Invalid branch slug: ${input.slug}` };
+    }
+    const worktreePath = path.join(this.deps.configHome, "worktrees", input.slug);
+    if (existsSync(worktreePath)) {
+      return {
+        ok: true,
+        slug: input.slug,
+        branch: `ed/wip/${input.slug}`,
+        worktreePath,
+      };
+    }
+    const args = ["wip", "create", input.slug];
+    if (input.summary) args.push("--summary", input.summary.slice(0, 120));
+    if (input.agentId) args.push("--agent-id", input.agentId);
+    args.push("--json");
+    try {
+      const stdout = await this.runCli(args);
+      const parsed = JSON.parse(stdout) as {
+        slug?: string;
+        branch?: string;
+        worktreeDir?: string;
+      };
+      return {
+        ok: true,
+        slug: parsed.slug ?? input.slug,
+        branch: parsed.branch ?? `ed/wip/${input.slug}`,
+        worktreePath: parsed.worktreeDir ?? worktreePath,
+      };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  attachBranchAgent(slug: string, agentId: string): { ok: boolean; error?: string } {
+    if (!SLUG_RE.test(slug) || !agentId.trim()) {
+      return { ok: false, error: "Invalid branch slug or agentId" };
+    }
+    try {
+      const existing = readLocalBranchMeta(this.deps.configHome, slug);
+      const now = new Date().toISOString();
+      const next: LocalBranchMeta = existing
+        ? { ...existing, agentId, updatedAt: now }
+        : {
+            schemaVersion: 1,
+            slug,
+            branch: `ed/wip/${slug}`,
+            channel: `wip-${slug}`,
+            status: "working",
+            summary: "",
+            releaseDigest: null,
+            sourceSha: "",
+            generation: null,
+            uploadedToCloud: false,
+            requiresDaemon: false,
+            requiresNative: false,
+            agentId,
+            error: null,
+            updatedAt: now,
+          };
+      const dir = path.join(this.deps.configHome, "branches");
+      mkdirSync(dir, { recursive: true });
+      const filePath = path.join(dir, `${slug}.json`);
+      const tmp = `${filePath}.${randomUUID()}.tmp`;
+      writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+      renameSync(tmp, filePath);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
