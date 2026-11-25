@@ -13,6 +13,7 @@ import type {
   EditableDesktopBridge,
   EditableElementSnapshot,
   EditableLocatorContext,
+  EditableReferencedElement,
   EditableScreenshotAttachment,
   EditableWorkshopConfig,
   EditableWorkshopDaemonStatus,
@@ -416,6 +417,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
       slug?: string | null;
       isFollowUp?: boolean;
       snapshot?: EditableElementSnapshot | null;
+      extraReferences?: ReadonlyArray<Pick<EditableReferencedElement, "locator" | "snapshot">>;
       images?: EditableScreenshotAttachment[];
     },
   ) {
@@ -459,6 +461,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         isFollowUp,
         worktreePath,
         snapshot: branchTarget?.snapshot,
+        extraReferences: branchTarget?.extraReferences,
         images: branchTarget?.images,
         getClient: (serverId) =>
           isHostRuntimeConnected(runtime.getSnapshot(serverId))

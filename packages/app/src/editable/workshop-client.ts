@@ -3,6 +3,7 @@ import {
   routeLocatorContext,
   type EditableElementSnapshot,
   type EditableLocatorContext,
+  type EditableReferencedElement,
   type EditableScreenshotAttachment,
   type EditableWorkshopConfig,
 } from "./types";
@@ -149,6 +150,50 @@ function buildPromptInstructions(
   ];
 }
 
+function serializeLocatorContext(locator: EditableLocatorContext): string {
+  const { file, line, column, componentName } = locator;
+  const { route, releaseDigest, platform } = routeLocatorContext(locator);
+  return JSON.stringify(
+    { file, line, column, componentName, route, releaseDigest, platform },
+    null,
+    2,
+  );
+}
+
+function appendReferenceSections(
+  sections: string[],
+  references: ReadonlyArray<{
+    locator: EditableLocatorContext;
+    snapshot?: EditableElementSnapshot | null;
+  }>,
+) {
+  for (const ref of references) {
+    sections.push("", "Locator context:", serializeLocatorContext(ref.locator));
+    if (ref.snapshot) {
+      sections.push("", "Element snapshot:", JSON.stringify(ref.snapshot));
+    }
+  }
+}
+
+export function buildWorkshopFollowUpPrompt(
+  request: string,
+  references: ReadonlyArray<{
+    locator: EditableLocatorContext;
+    snapshot?: EditableElementSnapshot | null;
+  }>,
+): string {
+  const trimmed = request.trim();
+  if (references.length === 0) return trimmed;
+  const sections: string[] = [
+    references.length === 1
+      ? "Follow-up referencing a new UI element in the running app:"
+      : `Follow-up referencing ${references.length} UI elements in the running app:`,
+  ];
+  appendReferenceSections(sections, references);
+  sections.push("", "User message:", trimmed);
+  return sections.join("\n");
+}
+
 export function buildWorkshopPrompt(
   locator: EditableLocatorContext,
   request: string,
@@ -157,11 +202,9 @@ export function buildWorkshopPrompt(
     isFollowUp?: boolean;
     worktreePath?: string;
     snapshot?: EditableElementSnapshot | null;
+    extraReferences?: ReadonlyArray<Pick<EditableReferencedElement, "locator" | "snapshot">>;
   } = {},
 ): string {
-  const { file, line, column, componentName } = locator;
-  const { route, releaseDigest, platform } = routeLocatorContext(locator);
-  const context = { file, line, column, componentName, route, releaseDigest, platform };
   const summaryHint = request.trim().replace(/"/g, "'").slice(0, 72);
   const instructions = buildPromptInstructions(
     options.slug,
@@ -170,10 +213,12 @@ export function buildWorkshopPrompt(
     options.worktreePath,
   );
 
-  const sections = [...instructions, "", "Locator context:", JSON.stringify(context, null, 2)];
-  if (options.snapshot) {
-    sections.push("", "Element snapshot:", JSON.stringify(options.snapshot));
-  }
+  const sections = [...instructions];
+  const allRefs: Array<{
+    locator: EditableLocatorContext;
+    snapshot?: EditableElementSnapshot | null;
+  }> = [{ locator, snapshot: options.snapshot }, ...(options.extraReferences ?? [])];
+  appendReferenceSections(sections, allRefs);
   sections.push("", "User message:", request.trim());
   return sections.join("\n");
 }
@@ -186,7 +231,7 @@ async function ensureWorkshopAgent(input: {
   isFollowUp?: boolean;
   worktreePath?: string;
   rememberAgent: (agentId: string, slug: string) => Promise<void>;
-}): Promise<{ kind: "ready"; agentId: string } | { kind: "no-provider" }> {
+}): Promise<{ kind: "ready"; agentId: string; reused: boolean } | { kind: "no-provider" }> {
   let agentId = input.isFollowUp !== false ? input.target.workshopAgentId : null;
   if (agentId) {
     const existing = await input.client.fetchAgent(agentId);
@@ -194,7 +239,7 @@ async function ensureWorkshopAgent(input: {
       agentId = null;
     }
   }
-  if (agentId) return { kind: "ready", agentId };
+  if (agentId) return { kind: "ready", agentId, reused: true };
 
   const { providers, error } = await input.client.listAvailableProviders();
   if (error) throw new Error(error);
@@ -213,7 +258,7 @@ async function ensureWorkshopAgent(input: {
     ...(modeId ? { modeId } : {}),
   });
   await input.rememberAgent(agent.id, input.slug);
-  return { kind: "ready", agentId: agent.id };
+  return { kind: "ready", agentId: agent.id, reused: false };
 }
 
 export async function sendWorkshopEdit(input: {
@@ -224,6 +269,7 @@ export async function sendWorkshopEdit(input: {
   isFollowUp?: boolean;
   worktreePath?: string | null;
   snapshot?: EditableElementSnapshot | null;
+  extraReferences?: ReadonlyArray<Pick<EditableReferencedElement, "locator" | "snapshot">>;
   images?: EditableScreenshotAttachment[];
   getClient: (serverId: string) => WorkshopClient | null;
   rememberAgent: (agentId: string, slug: string) => Promise<void>;
@@ -246,12 +292,19 @@ export async function sendWorkshopEdit(input: {
   });
   if (resolved.kind !== "ready") return resolved;
 
-  const promptText = buildWorkshopPrompt(input.locator, input.request, {
-    slug: input.slug,
-    isFollowUp: input.isFollowUp,
-    worktreePath,
-    snapshot: input.snapshot,
-  });
+  const useCompactFollowUp = Boolean(input.isFollowUp && resolved.reused);
+  const promptText = useCompactFollowUp
+    ? buildWorkshopFollowUpPrompt(input.request, [
+        { locator: input.locator, snapshot: input.snapshot },
+        ...(input.extraReferences ?? []),
+      ])
+    : buildWorkshopPrompt(input.locator, input.request, {
+        slug: input.slug,
+        isFollowUp: input.isFollowUp,
+        worktreePath,
+        snapshot: input.snapshot,
+        extraReferences: input.extraReferences,
+      });
   if (input.images && input.images.length > 0) {
     await client.sendAgentMessage(resolved.agentId, promptText, { images: input.images });
   } else {

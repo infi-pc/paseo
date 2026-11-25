@@ -1,5 +1,10 @@
 import { expect, it, vi } from "vitest";
-import { buildWorkshopPrompt, DEFAULT_WORKSHOP_CWD, sendWorkshopEdit } from "./workshop-client";
+import {
+  buildWorkshopFollowUpPrompt,
+  buildWorkshopPrompt,
+  DEFAULT_WORKSHOP_CWD,
+  sendWorkshopEdit,
+} from "./workshop-client";
 import type { EditableLocatorContext } from "./types";
 
 const locator: EditableLocatorContext = {
@@ -270,5 +275,54 @@ it("uses auto mode when falling back to Claude", async () => {
     modeId: "auto",
     provider: "claude",
     title: "Editable Paseo Workshop",
+  });
+});
+
+it("formats compact follow-up prompts with one or more referenced elements", () => {
+  const secondLocator: EditableLocatorContext = {
+    file: "packages/app/src/agent-stream/recommended-prompts.tsx",
+    line: 95,
+    column: 7,
+    componentName: "PressHighlight",
+    route: "/h/local/agent/123?secret=1",
+    releaseDigest: null,
+    platform: "electron",
+  };
+  const prompt = buildWorkshopFollowUpPrompt("Look at both of these.", [
+    { locator },
+    { locator: secondLocator },
+  ]);
+  expect(prompt).toContain("Follow-up referencing 2 UI elements in the running app:");
+  expect(prompt).toContain('"componentName": "WorkspaceHeader"');
+  expect(prompt).toContain('"componentName": "PressHighlight"');
+  expect(prompt).not.toContain("secret=1");
+  expect(prompt).not.toContain("You are the Editable Paseo Workshop assistant");
+  expect(prompt.endsWith("User message:\nLook at both of these.")).toBe(true);
+});
+
+it("sends a compact follow-up prompt when continuing an existing branch discussion", async () => {
+  const { client, input } = fixture();
+  client.fetchAgent.mockResolvedValue({ agent: { id: "saved-agent", status: "idle" } });
+  const target = { ...input.target, workshopAgentId: "saved-agent" };
+  const images = [{ data: "iVBORw0KGgo=", mimeType: "image/png" as const }];
+  expect(
+    await sendWorkshopEdit({
+      ...input,
+      target,
+      slug: "existing-discussion",
+      isFollowUp: true,
+      images,
+    }),
+  ).toEqual({
+    kind: "sent",
+    agentId: "saved-agent",
+    slug: "existing-discussion",
+  });
+  expect(client.createAgent).not.toHaveBeenCalled();
+  const sentPrompt = client.sendAgentMessage.mock.calls[0]?.[1] as string;
+  expect(sentPrompt).toContain("Follow-up referencing a new UI element in the running app:");
+  expect(sentPrompt).not.toContain("You are the Editable Paseo Workshop assistant");
+  expect(client.sendAgentMessage).toHaveBeenCalledExactlyOnceWith("saved-agent", sentPrompt, {
+    images,
   });
 });

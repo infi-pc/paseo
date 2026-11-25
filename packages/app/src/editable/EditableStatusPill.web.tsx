@@ -11,6 +11,7 @@ import type {
   EditableBranchesSnapshot,
   EditableDesktopBridge,
   EditableDesktopStatus,
+  EditableReferencedElement,
   EditableWorkshopDaemonStatus,
 } from "./types";
 
@@ -90,10 +91,13 @@ function useDismissPopover(
   open: boolean,
   rootRef: React.RefObject<HTMLDivElement | null>,
   onClose: () => void,
+  options: { suppressDismiss?: boolean; keepOpenOnAltClick?: boolean } = {},
 ) {
+  const { suppressDismiss = false, keepOpenOnAltClick = false } = options;
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
+      if (suppressDismiss || (keepOpenOnAltClick && event.altKey)) return;
       if (
         rootRef.current &&
         event.target instanceof Node &&
@@ -103,6 +107,7 @@ function useDismissPopover(
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (suppressDismiss) return;
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
@@ -114,7 +119,7 @@ function useDismissPopover(
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open, rootRef, onClose]);
+  }, [open, rootRef, onClose, suppressDismiss, keepOpenOnAltClick]);
 }
 
 interface MergedBranchRow {
@@ -1025,6 +1030,20 @@ function deriveSummaryState({
   };
 }
 
+interface StatusChatReferenceProps {
+  referencedElements?: ReadonlyArray<EditableReferencedElement>;
+  onRemoveReference?: (id: string) => void;
+  onClearReferences?: () => void;
+  onStartPickReference?: () => void;
+  pickingReference?: boolean;
+  loadedWipSlug?: string | null;
+  onSendReferencedToTarget?: (input: {
+    targetSlug: string | null;
+    text: string;
+    references: ReadonlyArray<EditableReferencedElement>;
+  }) => Promise<boolean>;
+}
+
 function StatusPopoverPanel({
   open,
   activeChatSlug,
@@ -1036,6 +1055,7 @@ function StatusPopoverPanel({
   workshopDaemon,
   summary,
   actions,
+  chatReferences,
   onOpenInlineChat,
   onBackToBranches,
   onClosePopover,
@@ -1051,6 +1071,7 @@ function StatusPopoverPanel({
   workshopDaemon: EditableWorkshopDaemonStatus | null;
   summary: ReturnType<typeof deriveSummaryState>;
   actions: ReturnType<typeof useBranchActions>;
+  chatReferences: StatusChatReferenceProps;
   onOpenInlineChat: (slug: string) => void;
   onBackToBranches: () => void;
   onClosePopover: () => void;
@@ -1070,6 +1091,13 @@ function StatusPopoverPanel({
           slug={activeChatRow.slug}
           title={activeChatRow.slug}
           branch={activeChatBranch}
+          referencedElements={chatReferences.referencedElements}
+          onRemoveReference={chatReferences.onRemoveReference}
+          onClearReferences={chatReferences.onClearReferences}
+          onStartPickReference={chatReferences.onStartPickReference}
+          pickingReference={chatReferences.pickingReference}
+          loadedWipSlug={chatReferences.loadedWipSlug}
+          onSendReferencedToTarget={chatReferences.onSendReferencedToTarget}
           busy={actions.busy}
           onBack={onBackToBranches}
           onClose={onClosePopover}
@@ -1119,6 +1147,18 @@ export function EditableStatusPill({
   onPick,
   onRefresh,
   layer,
+  popoverOpen: controlledOpen,
+  onPopoverOpenChange,
+  activeChatSlug: controlledActiveChatSlug,
+  onActiveChatSlugChange,
+  suppressDismiss = false,
+  referencedElements,
+  onRemoveReference,
+  onClearReferences,
+  onStartPickReference,
+  pickingReference = false,
+  loadedWipSlug = null,
+  onSendReferencedToTarget,
 }: {
   bridge: EditableDesktopBridge | undefined;
   status: EditableDesktopStatus | null;
@@ -1128,13 +1168,33 @@ export function EditableStatusPill({
   onPick: () => void;
   onRefresh?: () => Promise<void>;
   layer: number;
-}) {
+  popoverOpen?: boolean;
+  onPopoverOpenChange?: (open: boolean) => void;
+  activeChatSlug?: string | null;
+  onActiveChatSlugChange?: (slug: string | null) => void;
+  suppressDismiss?: boolean;
+} & StatusChatReferenceProps) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [activeChatSlug, setActiveChatSlug] = useState<string | null>(null);
+  const [localOpen, setLocalOpen] = useState(false);
+  const [localActiveChatSlug, setLocalActiveChatSlug] = useState<string | null>(null);
+  const open = controlledOpen ?? localOpen;
+  const activeChatSlug =
+    controlledActiveChatSlug !== undefined ? controlledActiveChatSlug : localActiveChatSlug;
+  const setOpen = useStableEvent((next: boolean) => {
+    if (controlledOpen === undefined) setLocalOpen(next);
+    onPopoverOpenChange?.(next);
+  });
+  const setActiveChatSlug = useStableEvent((next: string | null) => {
+    if (controlledActiveChatSlug === undefined) setLocalActiveChatSlug(next);
+    onActiveChatSlugChange?.(next);
+  });
+
   const rootRef = useRef<HTMLDivElement | null>(null);
   const closePopover = useStableEvent(() => setOpen(false));
-  useDismissPopover(open, rootRef, closePopover);
+  useDismissPopover(open, rootRef, closePopover, {
+    suppressDismiss,
+    keepOpenOnAltClick: Boolean(activeChatSlug),
+  });
 
   const loadedChannel = branches?.loadedChannel ?? status?.activeChannel ?? "prod";
   const actions = useBranchActions({
@@ -1162,10 +1222,9 @@ export function EditableStatusPill({
     t,
   });
   const toggleOpen = useStableEvent(() => {
-    setOpen((wasOpen) => {
-      if (!wasOpen) void onRefresh?.();
-      return !wasOpen;
-    });
+    const next = !open;
+    if (next) void onRefresh?.();
+    setOpen(next);
   });
   const openInlineChat = useStableEvent((slug: string) => {
     workshop.markReplyRead?.(slug);
@@ -1192,6 +1251,27 @@ export function EditableStatusPill({
   );
   const reloadLabel = bridge?.loadBranch ? t("editable.reloadRelease") : t("editable.applyRelease");
 
+  const chatReferences = useMemo(
+    () => ({
+      referencedElements,
+      onRemoveReference,
+      onClearReferences,
+      onStartPickReference,
+      pickingReference,
+      loadedWipSlug,
+      onSendReferencedToTarget,
+    }),
+    [
+      referencedElements,
+      onRemoveReference,
+      onClearReferences,
+      onStartPickReference,
+      pickingReference,
+      loadedWipSlug,
+      onSendReferencedToTarget,
+    ],
+  );
+
   return (
     <div ref={rootRef} data-ed-overlay="true" style={containerStyle}>
       <style>{PULSE_CSS}</style>
@@ -1206,6 +1286,7 @@ export function EditableStatusPill({
         workshopDaemon={workshopDaemon}
         summary={summary}
         actions={actions}
+        chatReferences={chatReferences}
         onOpenInlineChat={openInlineChat}
         onBackToBranches={backToBranches}
         onClosePopover={closePopover}

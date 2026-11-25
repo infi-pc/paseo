@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentPermissionRequest, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
+import {
+  parseResponseFooter,
+  responseDisplayText,
+  type ResponseFooterMetadata,
+} from "@getpaseo/protocol/response-control/footer";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { continuesResponse, continuesTurn } from "@/agent-stream/turn-membership";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import {
   applyStreamEvent,
@@ -11,10 +17,13 @@ import {
   type StreamItem,
   type ToolCallItem,
 } from "@/types/stream";
+import type { EditableReferencedElement } from "./types";
+import { buildWorkshopFollowUpPrompt } from "./workshop-client";
 
 export interface ParsedWorkshopUserMessage {
   text: string;
   locatorLabel: string | null;
+  locatorLabels: string[];
 }
 
 function formatLocatorFromJson(rawJson: string): string | null {
@@ -35,28 +44,123 @@ function formatLocatorFromJson(rawJson: string): string | null {
   }
 }
 
+function extractLocatorLabels(segment: string): string[] {
+  const labels: string[] = [];
+  const locatorMarker = "Locator context:\n";
+  let cursor = 0;
+  while (cursor < segment.length) {
+    const start = segment.indexOf(locatorMarker, cursor);
+    if (start < 0) break;
+    const bodyStart = start + locatorMarker.length;
+    const nextSnapshot = segment.indexOf("\n\nElement snapshot:\n", bodyStart);
+    const nextLocator = segment.indexOf("\n\nLocator context:\n", bodyStart);
+    let end = segment.length;
+    if (nextSnapshot >= 0 && nextSnapshot < end) end = nextSnapshot;
+    if (nextLocator >= 0 && nextLocator < end) end = nextLocator;
+    const label = formatLocatorFromJson(segment.slice(bodyStart, end).trim());
+    if (label) labels.push(label);
+    cursor = end;
+  }
+  return labels;
+}
+
 /**
- * Strips the internal Editable Paseo Workshop instruction wrapper when rendering
- * user bubbles in the popover chat, exposing the user's actual message and a
- * compact locator badge.
+ * Strips the internal Editable Paseo Workshop instruction or element-reference wrapper
+ * when rendering user bubbles in the popover chat, exposing the user's actual message
+ * and compact locator badge(s).
  */
 export function parseWorkshopUserMessage(raw: string): ParsedWorkshopUserMessage {
   const marker = "\nLocator context:\n";
   const markerIdx = raw.indexOf(marker);
-  if (markerIdx < 0) return { text: raw, locatorLabel: null };
+  if (markerIdx < 0) return { text: raw, locatorLabel: null, locatorLabels: [] };
 
-  const afterLocator = raw.slice(markerIdx + marker.length);
+  const afterLocator = raw.slice(markerIdx + 1);
   const msgMatch = /\n\n(?:User message|Edit request):\n([\s\S]*)$/.exec(afterLocator);
-  if (!msgMatch) return { text: raw, locatorLabel: null };
+  if (!msgMatch) return { text: raw, locatorLabel: null, locatorLabels: [] };
 
   const beforeMsg = afterLocator.slice(0, msgMatch.index);
-  const snapshotMarker = "\n\nElement snapshot:\n";
-  const snapshotIdx = beforeMsg.indexOf(snapshotMarker);
-  const jsonPart = (snapshotIdx >= 0 ? beforeMsg.slice(0, snapshotIdx) : beforeMsg).trim();
+  const locatorLabels = extractLocatorLabels(beforeMsg);
   const userText = (msgMatch[1] ?? "").trim();
   return {
     text: userText || raw,
-    locatorLabel: formatLocatorFromJson(jsonPart),
+    locatorLabel: locatorLabels[0] ?? null,
+    locatorLabels,
+  };
+}
+
+/**
+ * Matches main Paseo's `layout.ts` rule: only the final response item of a turn
+ * strips `<paseo-meta ... />`, and while the turn is actively streaming, partial
+ * `<paseo-meta` prefixes at the end are withheld until complete or turn end.
+ */
+export function getAssistantDisplayText(
+  items: readonly StreamItem[],
+  index: number,
+  isRunning: boolean,
+): string {
+  const item = items[index];
+  if (!item || item.kind !== "assistant_message") return "";
+  const belowItem = items[index + 1] ?? null;
+  const isFinalResponse = belowItem === null || !continuesTurn(item, belowItem);
+  if (!isFinalResponse) return item.text;
+  const streaming = isRunning && belowItem === null;
+  return responseDisplayText(item.text, streaming);
+}
+
+/**
+ * Matches main Paseo's `resolveAuxiliaryTurnFooter` + `TurnFooter`: returns
+ * deduplicated recommended prompts only for the latest completed assistant turn.
+ */
+export function getLatestRecommendedPrompts(
+  items: readonly StreamItem[],
+  isRunning: boolean,
+): string[] {
+  if (isRunning || items.length === 0) return [];
+  let laterItem: StreamItem | null = null;
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const item = items[i];
+    if (!item || (laterItem && !continuesResponse(item, laterItem))) return [];
+    if (item.kind === "assistant_message") {
+      const prompts = parseResponseFooter(item.text)?.metadata.prompts ?? [];
+      return Array.from(new Set(prompts));
+    }
+    laterItem = item;
+  }
+  return [];
+}
+
+function parseFinalTurnMetaAt(
+  items: readonly StreamItem[],
+  index: number,
+): ResponseFooterMetadata | null {
+  const item = items[index];
+  if (!item || item.kind !== "assistant_message") return null;
+  const belowItem = items[index + 1] ?? null;
+  if (belowItem !== null && continuesTurn(item, belowItem)) return null;
+  return parseResponseFooter(item.text)?.metadata ?? null;
+}
+
+/** Extracts the latest response-control metadata (title/icon/message) emitted in the thread. */
+export function getLatestResponseMeta(items: readonly StreamItem[]): ResponseFooterMetadata | null {
+  let latest: ResponseFooterMetadata | null = null;
+  let title: string | undefined;
+  let icon: string | undefined;
+
+  for (let i = items.length - 1; i >= 0; i -= 1) {
+    const parsed = parseFinalTurnMetaAt(items, i);
+    if (!parsed) continue;
+    latest ??= parsed;
+    title ??= parsed.title;
+    icon ??= parsed.icon;
+    if (title && icon) break;
+  }
+
+  if (!latest) return null;
+  return {
+    message: latest.message,
+    ...(title ? { title } : {}),
+    ...(icon ? { icon } : {}),
+    ...(latest.prompts ? { prompts: latest.prompts } : {}),
   };
 }
 
@@ -298,7 +402,7 @@ export function useEditableChat({ serverId, agentId, onTurnFinished }: UseEditab
   }, [serverId, agentId, commitStream]);
 
   const sendFollowUp = useCallback(
-    async (text: string) => {
+    async (text: string, options?: { references?: ReadonlyArray<EditableReferencedElement> }) => {
       const trimmed = text.trim();
       if (!trimmed || !serverId || !agentId) return;
       const client = getHostRuntimeStore().getClient(serverId);
@@ -306,19 +410,29 @@ export function useEditableChat({ serverId, agentId, onTurnFinished }: UseEditab
         setError("Workshop host is offline.");
         return;
       }
+      const references = options?.references ?? [];
+      const payloadText =
+        references.length > 0 ? buildWorkshopFollowUpPrompt(trimmed, references) : trimmed;
+      const images = references
+        .map((ref) => ref.screenshot)
+        .filter((img): img is NonNullable<typeof img> => Boolean(img));
+
       setSendingFollowUp(true);
       setError(null);
       const clientMessageId = generateMessageId();
       const optimistic = createUserMessage({
         id: clientMessageId,
         clientMessageId,
-        text: trimmed,
+        text: payloadText,
         timestamp: new Date(),
       });
       commitStream([...streamRef.current.tail, ...streamRef.current.head, optimistic], []);
       setStatus("running");
       try {
-        await client.sendAgentMessage(agentId, trimmed, { messageId: clientMessageId });
+        await client.sendAgentMessage(agentId, payloadText, {
+          messageId: clientMessageId,
+          ...(images.length > 0 ? { images } : {}),
+        });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not send message.");
         setStatus("idle");

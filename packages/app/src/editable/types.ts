@@ -54,6 +54,14 @@ export interface EditableScreenshotAttachment {
   mimeType: "image/png";
 }
 
+export interface EditableReferencedElement {
+  id: string;
+  label: string;
+  locator: EditableLocatorContext;
+  snapshot: EditableElementSnapshot | null;
+  screenshot: EditableScreenshotAttachment | null;
+}
+
 export interface EditableScreenshotResult {
   ok: boolean;
   dataBase64?: string;

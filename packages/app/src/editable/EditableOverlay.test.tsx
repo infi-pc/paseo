@@ -76,7 +76,14 @@ vi.mock("react-i18next", async () => {
   return {
     initReactI18next: { type: "3rdParty", init: () => {} },
     useTranslation: () => ({
-      t: (key: string) => en.editable[key.split(".")[1] as keyof typeof en.editable],
+      t: (key: string) => {
+        let cur: unknown = en;
+        for (const part of key.split(".")) {
+          if (!cur || typeof cur !== "object") return key;
+          cur = (cur as Record<string, unknown>)[part];
+        }
+        return typeof cur === "string" ? cur : key;
+      },
     }),
   };
 });
@@ -590,5 +597,231 @@ describe("Editable overlay", () => {
     expect(screen.getByText("optimistic-question")).toBeTruthy();
     expect(screen.getByText("unsampled-agent")).toBeTruthy();
     expect(screen.getAllByText("Working…")).toHaveLength(2);
+  });
+
+  it("strips <paseo-meta> and renders clickable recommended prompts with send and edit actions", async () => {
+    sendAgentMessage.mockClear();
+    fetchAgentTimeline.mockResolvedValueOnce({
+      epoch: "ep-meta",
+      agent: { id: "agent-1", status: "idle", pendingPermissions: [] },
+      entries: [
+        {
+          provider: "codex",
+          seqStart: 1,
+          seqEnd: 1,
+          timestamp: "2026-11-25T10:00:00.000Z",
+          sourceSeqRanges: [],
+          collapsed: [],
+          turnId: "turn-1",
+          item: {
+            type: "assistant_message",
+            text: 'Confirmed the reply omitted prompts.\n<paseo-meta message="Confirmed." title="Response metadata" icon="🔎" prompt1="Make Paseo require a prompt" prompt2="Inspect turn footer" />',
+          },
+        },
+      ],
+    });
+    const { target, shortcut } = setup();
+    shortcut();
+    fireEvent.click(target);
+    const input = screen.getByRole("textbox", { name: "Ask or edit this component…" });
+    fireEvent.change(input, { target: { value: "Check metadata" } });
+    fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByText("Confirmed the reply omitted prompts.")).toBeTruthy();
+    expect(screen.queryByText(/<paseo-meta/)).toBeNull();
+    expect(screen.getByText(/🔎\s*use-a-smaller-label/)).toBeTruthy();
+
+    // Edit button puts the recommended prompt into the composer for editing
+    fireEvent.click(screen.getByRole("button", { name: "Use edited: Inspect turn footer" }));
+    const replyInput = screen.getByRole("textbox", {
+      name: "Reply in this thread…",
+    }) as HTMLTextAreaElement;
+    expect(replyInput.value).toBe("Inspect turn footer");
+
+    // Clicking the recommended prompt row sends it directly
+    fireEvent.click(
+      screen.getByRole("button", { name: "Send prompt: Make Paseo require a prompt" }),
+    );
+    await waitFor(() =>
+      expect(sendAgentMessage).toHaveBeenCalledWith(
+        "agent-1",
+        "Make Paseo require a prompt",
+        expect.objectContaining({ messageId: expect.any(String) }),
+      ),
+    );
+  });
+
+  it("keeps the bottom-right chat open on Option+Click to reference a new element and lets you choose discussion vs New branch", async () => {
+    sendAgentMessage.mockClear();
+    const getBranches = vi.fn().mockResolvedValue({
+      loadedChannel: "prod",
+      loadedDigest: digest,
+      safeRenderer: false,
+      main: {
+        slug: "main",
+        channel: "prod",
+        branch: "feat/editable-paseo-desktop",
+        isMain: true,
+        status: "ready",
+        summary: "Main",
+        releaseDigest: digest,
+        generation: 13,
+        sourceSha: "1".repeat(40),
+        behindMain: false,
+        canFastForward: false,
+        requiresDaemon: false,
+        hasUpdate: false,
+        loaded: true,
+        remoteOnly: false,
+        agentId: null,
+        error: null,
+        updatedAt: "2026-11-25T10:00:00.000Z",
+      },
+      branches: [
+        {
+          slug: "prompt-discussion",
+          channel: "wip-prompt-discussion",
+          branch: "ed/wip/prompt-discussion",
+          isMain: false,
+          status: "idle",
+          summary: "Check response metadata",
+          releaseDigest: null,
+          generation: null,
+          sourceSha: "1".repeat(40),
+          hasChanges: false,
+          behindMain: false,
+          canFastForward: false,
+          requiresDaemon: false,
+          hasUpdate: false,
+          loaded: false,
+          remoteOnly: false,
+          agentId: "agent-1",
+          error: null,
+          updatedAt: "2026-11-25T10:01:00.000Z",
+        },
+      ],
+    });
+    const bridge = {
+      getStatus: vi.fn().mockResolvedValue(status),
+      reportHealthy: vi.fn().mockResolvedValue(undefined),
+      getBranches,
+      loadBranch: vi.fn().mockResolvedValue({ ok: true }),
+    } satisfies Partial<EditableDesktopBridge>;
+    window.paseoDesktop = { editable: bridge as unknown as EditableDesktopBridge };
+    const { target } = setup();
+
+    // Open the bottom-right chat for prompt-discussion
+    fireEvent.click(screen.getByRole("button", { name: "Editable Paseo status" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Chat" }));
+    expect(await screen.findByRole("dialog", { name: "prompt-discussion" })).toBeTruthy();
+
+    // Option+Click an element while staying in the chat: chat stays open and attaches the element chip
+    fireEvent.keyDown(window, { key: "Alt", code: "AltLeft", altKey: true });
+    fireEvent.pointerDown(target, { button: 0, altKey: true });
+    fireEvent.click(target, { altKey: true });
+
+    expect(screen.getByRole("dialog", { name: "prompt-discussion" })).toBeTruthy();
+    expect(await screen.findByText("WorkspaceHeader · Header.tsx:42")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "prompt-discussion" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "New branch" })).toBeTruthy();
+
+    // Default target continues the open discussion with the referenced element context
+    const replyInput = screen.getByRole("textbox", { name: "Reply in this thread…" });
+    fireEvent.change(replyInput, { target: { value: "Look at this rendered element." } });
+    fireEvent.keyDown(replyInput, { key: "Enter", code: "Enter" });
+    await waitFor(() => expect(sendAgentMessage).toHaveBeenCalledTimes(1));
+    const sentText = sendAgentMessage.mock.calls[0]?.[1] as string;
+    expect(sentText).toContain("Follow-up referencing a new UI element in the running app:");
+    expect(sentText).toContain('"componentName": "WorkspaceHeader"');
+    expect(sentText).toContain("Look at this rendered element.");
+
+    // Referencing again and choosing "New branch" routes via workshop.send as a new branch
+    fireEvent.keyDown(window, { key: "Alt", code: "AltLeft", altKey: true });
+    fireEvent.click(target, { altKey: true });
+    expect(
+      await screen.findByRole("button", {
+        name: "Remove referenced element: WorkspaceHeader · Header.tsx:42",
+      }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "New branch" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Reply in this thread…" }), {
+      target: { value: "Start separate branch for this" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send.mock.calls[0]?.[1]).toBe("Start separate branch for this");
+    expect(send.mock.calls[0]?.[3]).toMatchObject({ isFollowUp: false });
+  });
+
+  it("offers existing discussions in the element popover target picker even while on main", async () => {
+    const getBranches = vi.fn().mockResolvedValue({
+      loadedChannel: "prod",
+      loadedDigest: digest,
+      safeRenderer: false,
+      main: {
+        slug: "main",
+        channel: "prod",
+        branch: "feat/editable-paseo-desktop",
+        isMain: true,
+        status: "ready",
+        summary: "Main",
+        releaseDigest: digest,
+        generation: 13,
+        sourceSha: "1".repeat(40),
+        behindMain: false,
+        canFastForward: false,
+        requiresDaemon: false,
+        hasUpdate: false,
+        loaded: true,
+        remoteOnly: false,
+        agentId: null,
+        error: null,
+        updatedAt: "2026-11-25T10:00:00.000Z",
+      },
+      branches: [
+        {
+          slug: "prompt-discussion",
+          channel: "wip-prompt-discussion",
+          branch: "ed/wip/prompt-discussion",
+          isMain: false,
+          status: "idle",
+          summary: "Check response metadata",
+          releaseDigest: null,
+          generation: null,
+          sourceSha: "1".repeat(40),
+          hasChanges: false,
+          behindMain: false,
+          canFastForward: false,
+          requiresDaemon: false,
+          hasUpdate: false,
+          loaded: false,
+          remoteOnly: false,
+          agentId: "agent-1",
+          error: null,
+          updatedAt: "2026-11-25T10:01:00.000Z",
+        },
+      ],
+    });
+    const bridge = {
+      getStatus: vi.fn().mockResolvedValue(status),
+      reportHealthy: vi.fn().mockResolvedValue(undefined),
+      getBranches,
+    } satisfies Partial<EditableDesktopBridge>;
+    window.paseoDesktop = { editable: bridge as unknown as EditableDesktopBridge };
+    const { target, shortcut } = setup();
+    await waitFor(() => expect(getBranches).toHaveBeenCalled());
+
+    shortcut();
+    fireEvent.click(target);
+    fireEvent.click(await screen.findByRole("button", { name: "prompt-discussion" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask or edit this component…" }), {
+      target: { value: "Continue here with this element" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(send.mock.calls[0]?.[3]).toMatchObject({
+      slug: "prompt-discussion",
+      isFollowUp: true,
+    });
   });
 });
