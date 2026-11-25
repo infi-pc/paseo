@@ -4,6 +4,7 @@ import type { DesktopNavigationTarget } from "@getpaseo/protocol/compose-deep-li
 import type { BrowserKeyboardPolicy } from "./features/browser-keyboard/index.js";
 import type { DesktopWindowChromeMode } from "./window/chrome.js";
 // FORK(editable): status typing is erased from the sandboxed preload.
+import type { EditableBranchesSnapshot, ShipBranchResult } from "./editable/branches.js";
 import type { EditableDesktopStatus } from "./editable/release-store.js";
 import type { EditableWorkshopDaemonStatus } from "./editable/workshop-daemon.js";
 
@@ -66,6 +67,16 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:editable:reportHealthy", digest),
     syncFromCloudShelf: (): Promise<{ ok: boolean; updated?: boolean; error?: string }> =>
       ipcRenderer.invoke("paseo:editable:syncFromCloudShelf"),
+    syncNow: (): Promise<{ ok: boolean; updated?: boolean; error?: string }> =>
+      ipcRenderer.invoke("paseo:editable:syncNow"),
+    getBranches: (): Promise<EditableBranchesSnapshot | null> =>
+      ipcRenderer.invoke("paseo:editable:getBranches"),
+    loadBranch: (channel: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("paseo:editable:loadBranch", channel),
+    shipBranch: (slug: string): Promise<ShipBranchResult & { autoLoaded?: boolean }> =>
+      ipcRenderer.invoke("paseo:editable:shipBranch", slug),
+    discardBranch: (slug: string): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("paseo:editable:discardBranch", slug),
     getWorkshopStatus: (): Promise<EditableWorkshopDaemonStatus | null> =>
       ipcRenderer.invoke("paseo:editable:getWorkshopStatus"),
     startWorkshopDaemon: (): Promise<EditableWorkshopDaemonStatus> =>

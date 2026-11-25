@@ -19,6 +19,44 @@ export interface EditableWorkshopDaemonStatus {
   error: string | null;
 }
 
+export interface EditableBranchEntry {
+  slug: string;
+  channel: string;
+  branch: string;
+  isMain: boolean;
+  status: "ready" | "working" | "shipping" | "failed";
+  summary: string | null;
+  releaseDigest: string | null;
+  generation: number | null;
+  sourceSha: string | null;
+  behindMain: boolean;
+  canFastForward: boolean;
+  requiresDaemon: boolean;
+  hasUpdate: boolean;
+  loaded: boolean;
+  remoteOnly: boolean;
+  agentId: string | null;
+  error: string | null;
+  updatedAt: string | null;
+}
+
+export interface EditableBranchesSnapshot {
+  loadedChannel: string;
+  loadedDigest: string | null;
+  safeRenderer: boolean;
+  main: EditableBranchEntry;
+  branches: EditableBranchEntry[];
+}
+
+export interface EditableShipBranchResult {
+  ok: boolean;
+  fastForwarded?: boolean;
+  autoLoaded?: boolean;
+  releaseDigest?: string | null;
+  generation?: number;
+  error?: string;
+}
+
 export interface EditableDesktopStatus {
   runtimeVersion: string;
   activeDigest: string | null;
@@ -30,6 +68,8 @@ export interface EditableDesktopStatus {
   activeGeneration: number;
   safeRenderer: boolean;
   releaseSummary?: string | null;
+  activeChannel?: string;
+  availableSummary?: string | null;
 }
 
 export interface EditableDesktopBridge {
@@ -40,6 +80,11 @@ export interface EditableDesktopBridge {
   openPreviewWindow(url: string): Promise<void>;
   reportHealthy(releaseDigest: string): Promise<void>;
   syncFromCloudShelf?: () => Promise<{ ok: boolean; updated?: boolean; error?: string }>;
+  syncNow?: () => Promise<{ ok: boolean; updated?: boolean; error?: string }>;
+  getBranches?: () => Promise<EditableBranchesSnapshot | null>;
+  loadBranch?: (channel: string) => Promise<{ ok: boolean; error?: string }>;
+  shipBranch?: (slug: string) => Promise<EditableShipBranchResult>;
+  discardBranch?: (slug: string) => Promise<{ ok: boolean; error?: string }>;
   getWorkshopStatus?: () => Promise<EditableWorkshopDaemonStatus | null>;
   startWorkshopDaemon?: () => Promise<EditableWorkshopDaemonStatus>;
 }
@@ -50,11 +95,19 @@ declare module "@/desktop/host" {
   }
 }
 
+export interface EditableBranchAgentRecord {
+  slug: string;
+  agentId: string;
+  request: string;
+  createdAt: string;
+}
+
 export interface EditableWorkshopConfig {
   workshopHostId: string | null;
   workshopCwd: string | null;
   workshopAgentId: string | null;
   lastRequest?: string | null;
+  branchAgents?: Record<string, EditableBranchAgentRecord>;
   enabled: boolean;
 }
 

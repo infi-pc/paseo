@@ -132,8 +132,15 @@ function shouldRenderOverlay({
 export function EditableOverlay() {
   const { t } = useTranslation();
   const route = usePathname();
-  const { bridge, status, workshopDaemon, refresh } = useEditableDesktop();
-  const prompt = useEditablePrompt({ bridge, workshopDaemon, refreshDesktop: refresh });
+  const { bridge, status, workshopDaemon, branches, refresh } = useEditableDesktop();
+  const loadedChannel = branches?.loadedChannel ?? status?.activeChannel ?? "prod";
+  const prompt = useEditablePrompt({
+    bridge,
+    workshopDaemon,
+    branches,
+    loadedChannel,
+    refreshDesktop: refresh,
+  });
   const [picking, setPicking] = useState(false);
   const [selected, setSelected] = useState<EditableTarget | null>(null);
   const pointerPos = usePointerPositionRef();
@@ -229,6 +236,7 @@ export function EditableOverlay() {
         bridge={bridge}
         status={status}
         workshopDaemon={workshopDaemon}
+        branches={branches}
         workshop={prompt}
         onPick={startPick}
         onRefresh={refresh}
