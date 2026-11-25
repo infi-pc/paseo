@@ -117,7 +117,11 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
   const [agentStatuses, setAgentStatuses] = useState<Record<string, string>>({});
   const [agentReplies, setAgentReplies] = useState<Record<string, string>>({});
   const [unreadReplySlugs, setUnreadReplySlugs] = useState<string[]>([]);
+  const [pendingBranches, setPendingBranches] = useState<
+    Record<string, { slug: string; request: string; createdAt: string }>
+  >({});
   const locked = useRef(false);
+  const pendingSlugsRef = useRef<Set<string>>(new Set());
   const prevRunningRef = useRef<Set<string>>(new Set());
   const configRef = useRef<EditableWorkshopConfig | null>(null);
   configRef.current = config;
@@ -198,7 +202,14 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
 
   useEffect(() => {
     if (!effectiveHostId || !config?.enabled || !isConnected || trackedEntries.length === 0) {
-      setAgentStatuses({});
+      setAgentStatuses((prev) => {
+        if (pendingSlugsRef.current.size === 0) return Object.keys(prev).length === 0 ? prev : {};
+        const kept: Record<string, string> = {};
+        for (const pendingSlug of pendingSlugsRef.current) {
+          kept[pendingSlug] = prev[pendingSlug] ?? "initializing";
+        }
+        return kept;
+      });
       return;
     }
     const client = getHostRuntimeStore().getClient(effectiveHostId);
@@ -221,6 +232,12 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         }),
       );
       if (stopped) return;
+      for (const pendingSlug of pendingSlugsRef.current) {
+        if (!nextStatuses[pendingSlug] || nextStatuses[pendingSlug] === "idle") {
+          nextStatuses[pendingSlug] = "initializing";
+        }
+        nextRunning.add(pendingSlug);
+      }
       setAgentStatuses(nextStatuses);
       setAgentReplies(nextReplies);
 
@@ -364,6 +381,33 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     };
   }
 
+  function beginPendingBranch(slug: string, request: string) {
+    pendingSlugsRef.current.add(slug);
+    setPendingBranches((prev) => ({
+      ...prev,
+      [slug]: { slug, request, createdAt: new Date().toISOString() },
+    }));
+    setAgentStatuses((prev) => ({ ...prev, [slug]: prev[slug] ?? "initializing" }));
+  }
+
+  function endPendingBranch(slug: string, succeeded: boolean) {
+    pendingSlugsRef.current.delete(slug);
+    setPendingBranches((prev) => {
+      if (!(slug in prev)) return prev;
+      const next = { ...prev };
+      delete next[slug];
+      return next;
+    });
+    if (!succeeded) {
+      setAgentStatuses((prev) => {
+        if (prev[slug] !== "initializing") return prev;
+        const next = { ...prev };
+        delete next[slug];
+        return next;
+      });
+    }
+  }
+
   async function send(
     locator: EditableLocatorContext,
     request: string,
@@ -378,6 +422,15 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     if (!config || locked.current) return { kind: "busy" } as const;
     locked.current = true;
     setSending(true);
+    const { slug, isFollowUp, followUpAgentId } = resolveBranchSendTarget({
+      config,
+      branches,
+      request,
+      branchTarget,
+    });
+    const trimmedRequest = request.trim();
+    beginPendingBranch(slug, trimmedRequest);
+    let sentOk = false;
     try {
       let targetHostId = host?.serverId ?? null;
       let targetCwd = cwd.trim() || null;
@@ -388,15 +441,8 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         targetCwd = targetCwd ?? ready.repoDir;
       }
 
-      const { slug, isFollowUp, followUpAgentId } = resolveBranchSendTarget({
-        config,
-        branches,
-        request,
-        branchTarget,
-      });
-
-      const trimmedRequest = request.trim();
       const worktreePath = await prepareWorktreeForSend(bridge, slug, trimmedRequest);
+      void refreshDesktop?.();
       const target: EditableWorkshopConfig = {
         ...config,
         workshopHostId: targetHostId,
@@ -421,11 +467,13 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         rememberAgent: async (createdAgentId, createdSlug) => {
           const next = recordBranchAgent(target, createdSlug, createdAgentId, trimmedRequest);
           setConfig(next);
+          setAgentStatuses((prev) => ({ ...prev, [createdSlug]: "running" }));
           await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
           void bridge?.attachBranchAgent?.(createdSlug, createdAgentId).catch(() => undefined);
         },
       });
       if (result.kind === "sent") {
+        sentOk = true;
         const next = recordBranchAgent(target, result.slug, result.agentId, trimmedRequest);
         setConfig(next);
         void AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => undefined);
@@ -437,6 +485,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
       }
       return result;
     } finally {
+      endPendingBranch(slug, sentOk);
       locked.current = false;
       setSending(false);
     }
@@ -457,6 +506,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     hostId: effectiveHostId,
     agentId,
     branchAgents,
+    pendingBranches,
     agentStatuses,
     agentReplies,
     unreadReplySlugs,
