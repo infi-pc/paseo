@@ -13,14 +13,22 @@ export interface MaterializedAgentProfile {
   modeId: string;
   thinkingOptionId: string;
   options: Record<string, unknown>;
+  systemPrompt?: string;
 }
 
 function trimmed(value: string | undefined): string {
   return value?.trim() ?? "";
 }
 
+// Profile records preserve extension fields through the existing daemon config API.
+export function readAgentProfilePrompt(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function materializeAgentProfile(profile: AgentProfile): MaterializedAgentProfile {
+  const systemPrompt = readAgentProfilePrompt(profile.systemPrompt);
   return {
+    ...(systemPrompt ? { systemPrompt } : {}),
     provider: trimmed(profile.provider),
     modelId: trimmed(profile.model),
     modeId: trimmed(profile.modeId),

@@ -10,6 +10,7 @@ import type { AgentProfile } from "@getpaseo/protocol/messages";
 import { withoutLostControls } from "@/agent-controls/lost-controls";
 import { formatAgentModeLabel, formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { filterSelectableModels } from "@/provider-selection/model-catalog";
+import { readAgentProfilePrompt } from "./materialize-profile";
 
 /**
  * The persisted profile minus the id; the list owns identity.
@@ -26,7 +27,7 @@ export type AgentProfileValue = {
     : K extends "id"
       ? never
       : K]: AgentProfile[K];
-};
+} & { systemPrompt?: string };
 
 export interface AgentProfileFormDisplay {
   label: string;
@@ -87,6 +88,7 @@ export interface AgentProfileFormState {
   icon: string;
   color: string;
   notes: string;
+  systemPrompt: string;
   provider: string;
   modelId: string;
   modeId: string;
@@ -141,6 +143,7 @@ export interface AgentProfileFormModel {
   setName: (value: string) => void;
   setAppearance: (value: { icon: string; color: string }) => void;
   setNotes: (value: string) => void;
+  setSystemPrompt: (value: string) => void;
   setProvider: (providerId: string, display: AgentProfileFormDisplay) => void;
   setModel: (modelId: string, display: AgentProfileFormDisplay | null) => void;
   setMode: (modeId: string, display: AgentProfileFormDisplay | null) => void;
@@ -388,6 +391,7 @@ export function buildControlsRequestKey(
 function buildSubmitValue(state: AgentProfileFormState): AgentProfileValue | null {
   const name = state.name.trim();
   const notes = state.notes.trim();
+  const systemPrompt = state.systemPrompt.trim();
   if (!name || !state.provider) {
     return null;
   }
@@ -403,6 +407,7 @@ function buildSubmitValue(state: AgentProfileFormState): AgentProfileValue | nul
     // app that predates them and keeps the profile's stored options.
     options: ownOptionsOf(state),
     ...(notes ? { notes } : {}),
+    ...(systemPrompt ? { systemPrompt } : {}),
   };
 }
 
@@ -439,6 +444,7 @@ function buildInitialState(snapshot: AgentProfileFormSnapshot): AgentProfileForm
     icon: profile.icon ?? "",
     color: profile.color ?? "",
     notes: profile.notes ?? "",
+    systemPrompt: readAgentProfilePrompt(profile.systemPrompt),
     provider,
     modelId,
     modeId: profile.modeId ?? "",
@@ -630,6 +636,7 @@ export function openAgentProfileForm(snapshot: AgentProfileFormSnapshot): AgentP
     setAppearance: (value) =>
       publish((current) => ({ ...current, icon: value.icon, color: value.color })),
     setNotes: (value) => publish((current) => ({ ...current, notes: value })),
+    setSystemPrompt: (value) => publish((current) => ({ ...current, systemPrompt: value })),
     setProvider: (providerId, display) =>
       publish((current) => {
         if (current.provider === providerId) {

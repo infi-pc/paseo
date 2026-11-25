@@ -328,6 +328,7 @@ interface WorkspaceDraftSubmissionConfig {
   model: string | null;
   thinkingOptionId: string | null;
   providerOptions: Record<string, unknown> | undefined;
+  systemPrompt?: string;
   target: WorkspaceTabTarget;
 }
 
@@ -446,6 +447,7 @@ function buildWorkspaceDraftSetupFromComposer(input: {
     model: input.composerState.effectiveModelId || null,
     thinkingOptionId: input.composerState.effectiveThinkingOptionId || null,
     providerOptions: input.composerState.providerOptions ?? {},
+    ...(input.composerState.systemPrompt ? { systemPrompt: input.composerState.systemPrompt } : {}),
   };
 }
 
@@ -455,15 +457,17 @@ function buildWorkspaceDraftSetupForCreatedWorkspace(input: {
   provider: AgentProvider;
   composerState: NewWorkspaceComposerState;
 }): WorkspaceDraftTabSetup | undefined {
-  if (!input.forkDraftSetup) {
+  if (!input.forkDraftSetup && !input.composerState.systemPrompt) {
     return undefined;
   }
   return buildWorkspaceDraftSetupFromComposer({
-    cwd: remapDraftCwdToWorkspace({
-      cwd: input.forkDraftSetup.setup.cwd,
-      sourceDirectory: input.forkDraftSetup.sourceDirectory,
-      workspaceDirectory: input.workspaceDirectory,
-    }),
+    cwd: input.forkDraftSetup
+      ? remapDraftCwdToWorkspace({
+          cwd: input.forkDraftSetup.setup.cwd,
+          sourceDirectory: input.forkDraftSetup.sourceDirectory,
+          workspaceDirectory: input.workspaceDirectory,
+        })
+      : input.workspaceDirectory,
     provider: input.provider,
     composerState: input.composerState,
   });
@@ -526,6 +530,7 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
       model: composerState.effectiveModelId || undefined,
       thinkingOptionId: composerState.effectiveThinkingOptionId || undefined,
       providerOptions: composerState.providerOptions,
+      systemPrompt: composerState.systemPrompt,
     },
     ...(Object.keys(composerState.metadata).length > 0 ? { metadata: composerState.metadata } : {}),
     initialPrompt: text,
@@ -603,6 +608,7 @@ function buildComposerConfig(input: {
     initialServerId: serverId || null,
     initialValues: buildComposerInitialValues({ initialSetup }),
     initialProviderOptions: initialSetup?.providerOptions,
+    initialSystemPrompt: initialSetup?.systemPrompt,
     context: "new-workspace" as const,
     isVisible: true,
     lockedWorkingDir: workingDir,
@@ -637,6 +643,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
       model: initialSetup.model,
       thinkingOptionId: initialSetup.thinkingOptionId,
       providerOptions: initialSetup.providerOptions,
+      systemPrompt: initialSetup.systemPrompt,
       target: { kind: "draft", draftId, setup: initialSetup },
     };
   }
@@ -647,6 +654,7 @@ function resolveWorkspaceDraftSubmissionConfig(input: {
     model: composerState.effectiveModelId || null,
     thinkingOptionId: composerState.effectiveThinkingOptionId || null,
     providerOptions: composerState.providerOptions,
+    systemPrompt: composerState.systemPrompt,
     target: { kind: "draft", draftId },
   };
 }
@@ -705,6 +713,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): SubmitOutcome {
     ...(submission.model ? { model: submission.model } : {}),
     ...(submission.thinkingOptionId ? { thinkingOptionId: submission.thinkingOptionId } : {}),
     ...(submission.providerOptions ? { providerOptions: submission.providerOptions } : {}),
+    ...(submission.systemPrompt ? { systemPrompt: submission.systemPrompt } : {}),
     allowEmptyText: true,
     agentCreation: input.agentCreation,
   });

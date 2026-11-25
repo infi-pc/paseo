@@ -350,6 +350,24 @@ function OpenAgentProfileEditModal({
         ) : null}
 
         <Field
+          label={t("settings.host.agentProfiles.promptLabel")}
+          hint={t("settings.host.agentProfiles.promptHint")}
+          testID="agent-profile-prompt-field"
+        >
+          <FormTextInput
+            initialValue={state.systemPrompt}
+            onChangeText={model.setSystemPrompt}
+            multiline
+            numberOfLines={4}
+            style={styles.notesInput}
+            editable={!state.isSubmitting}
+            size={controlSize}
+            accessibilityLabel={t("settings.host.agentProfiles.promptLabel")}
+            testID="agent-profile-prompt-input"
+          />
+        </Field>
+
+        <Field
           label={t("settings.host.agentProfiles.notesLabel")}
           hint={t("settings.host.agentProfiles.notesHint")}
           testID="agent-profile-notes-field"

@@ -58,6 +58,7 @@ interface AutoSubmitConfig {
   model: string | null;
   thinkingOptionId: string | null;
   providerOptions: Record<string, unknown>;
+  systemPrompt?: string;
 }
 
 function resolveAutoSubmitConfig(
@@ -67,6 +68,7 @@ function resolveAutoSubmitConfig(
     model?: string | null;
     thinkingOptionId?: string | null;
     providerOptions?: Record<string, unknown>;
+    systemPrompt?: string;
   } | null,
 ): AutoSubmitConfig | null {
   if (!pending) return null;
@@ -76,6 +78,7 @@ function resolveAutoSubmitConfig(
     model: pending.model ?? null,
     thinkingOptionId: pending.thinkingOptionId ?? null,
     providerOptions: pending.providerOptions ?? {},
+    systemPrompt: pending.systemPrompt,
   };
 }
 
@@ -124,6 +127,7 @@ async function submitDraftCreateRequest(input: {
     effectiveModelId: string | null;
     effectiveThinkingOptionId: string | null;
     providerOptions: Record<string, unknown> | undefined;
+    systemPrompt: string | undefined;
     metadata: Record<string, JsonValue>;
   };
   hostDisconnectedMessage: string;
@@ -164,6 +168,7 @@ async function submitDraftCreateRequest(input: {
     thinkingOptionId:
       autoSubmitConfig?.thinkingOptionId ?? (composerState.effectiveThinkingOptionId || undefined),
     providerOptions: autoSubmitConfig?.providerOptions ?? composerState.providerOptions,
+    systemPrompt: autoSubmitConfig ? autoSubmitConfig.systemPrompt : composerState.systemPrompt,
   });
 
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
@@ -325,6 +330,7 @@ export function WorkspaceDraftComposer({
       initialServerId: serverId,
       initialValues: draftInitialValues,
       initialProviderOptions: draftSetup?.providerOptions,
+      initialSystemPrompt: draftSetup?.systemPrompt,
       isVisible: true,
       lockedWorkingDir: draftWorkingDirectory ?? undefined,
     },

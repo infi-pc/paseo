@@ -40,6 +40,7 @@ interface AgentInputDraftComposerOptions {
   initialServerId: string | null;
   initialValues?: CreateAgentInitialValues;
   initialProviderOptions?: Record<string, unknown>;
+  initialSystemPrompt?: string;
   /** Which composer a plugin's `useComposer()` reports. */
   context?: "draft" | "new-workspace";
   isVisible?: boolean;
@@ -57,6 +58,7 @@ type DraftComposerState = UseAgentFormStateResult & {
   effectiveModelId: string;
   effectiveThinkingOptionId: string;
   providerOptions: Record<string, unknown> | undefined;
+  systemPrompt: string | undefined;
   /** What plugins set on the agent this draft creates. */
   metadata: Record<string, JsonValue>;
   agentControls: DraftAgentControlsProps;
@@ -207,11 +209,29 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     [draftKey],
   );
 
+  const [profileSelection, setProfileSelection] = useState<{
+    draftKey: string;
+    provider: string;
+    systemPrompt?: string;
+  } | null>(null);
+  const promptSelection =
+    profileSelection?.draftKey === draftKey
+      ? profileSelection
+      : {
+          provider: composerOptions?.initialValues?.provider,
+          systemPrompt: composerOptions?.initialSystemPrompt,
+        };
+  const systemPrompt =
+    promptSelection.provider === formState.selectedProvider
+      ? promptSelection.systemPrompt
+      : undefined;
+
   const clear = useCallback(
     (lifecycle: "sent" | "abandoned") => {
       textPublication.cancel();
       useDraftStore.getState().clearDraftInput({ draftKey, lifecycle });
       if (lifecycle === "sent") useDraftStore.getState().clearDraftMetadata({ draftKey });
+      setProfileSelection(null);
     },
     [draftKey, textPublication],
   );
@@ -313,9 +333,14 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   const applyDraftAgentProfile = useCallback(
     (profile: Parameters<typeof formState.applyProfileFromUser>[0]) => {
       formState.applyProfileFromUser(profile);
+      setProfileSelection({
+        draftKey,
+        provider: profile.provider,
+        systemPrompt: profile.systemPrompt,
+      });
       applyProfileOptions({ provider: profile.provider, options: profile.options });
     },
-    [applyProfileOptions, formState],
+    [applyProfileOptions, draftKey, formState],
   );
   const setDraftThinking = useCallback(
     (thinkingOptionId: string) =>
@@ -357,6 +382,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       effectiveModelId,
       effectiveThinkingOptionId,
       providerOptions: draftOptions,
+      systemPrompt,
       metadata,
       agentControls: buildDraftAgentControls({
         formState: draftForm,
@@ -386,6 +412,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     formState,
     metadata,
     setMetadata,
+    systemPrompt,
     workingDir,
   ]);
 

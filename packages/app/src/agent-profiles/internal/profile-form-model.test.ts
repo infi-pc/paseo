@@ -166,6 +166,7 @@ describe("openAgentProfileForm", () => {
     model.setName("  Cheap grunt  ");
     model.setProvider("codex", { label: "Codex" });
     model.setNotes("   ");
+    model.setSystemPrompt("   ");
 
     // Codex declares no thinking options, so that key is genuinely absent —
     // model and mode are seeded, never left for the host to decide.
@@ -176,6 +177,21 @@ describe("openAgentProfileForm", () => {
       modeId: "read-only",
       options: {},
     });
+  });
+
+  it("loads, updates, and clears the prompt in edit mode", () => {
+    const model = openWithCatalog({
+      mode: "edit",
+      profile: { id: "p1", name: "Reviewer", provider: "codex", systemPrompt: "Review changes" },
+    });
+
+    expect(model.getState().systemPrompt).toBe("Review changes");
+    model.setSystemPrompt("  Check correctness.\nExplain the impact.  ");
+    expect(model.getState().submitValue?.systemPrompt).toBe(
+      "Check correctness.\nExplain the impact.",
+    );
+    model.setSystemPrompt("");
+    expect(model.getState().submitValue).not.toHaveProperty("systemPrompt");
   });
 
   it("seeds edit mode from the stored profile before the catalog lands", () => {
