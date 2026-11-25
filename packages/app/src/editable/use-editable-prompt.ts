@@ -46,9 +46,10 @@ export function useEditablePrompt(options: UseEditablePromptOptions = {}) {
     !workshop.startingWorkshop &&
     !!draft.trim();
 
-  async function submit(context: EditableLocatorContext, close: () => void, reopen: () => void) {
-    if (!canSend) return;
-    close();
+  async function sendDraft(
+    context: EditableLocatorContext,
+  ): Promise<{ agentId: string; slug: string } | null> {
+    if (!canSend) return null;
     setError("");
     try {
       const followUp = Boolean(loadedWipSlug && !targetNewBranch);
@@ -60,7 +61,7 @@ export function useEditablePrompt(options: UseEditablePromptOptions = {}) {
       );
       if (result.kind === "sent") {
         reset();
-        return;
+        return { agentId: result.agentId, slug: result.slug };
       }
       const errors = {
         "choose-host": "editable.selectHost",
@@ -73,7 +74,14 @@ export function useEditablePrompt(options: UseEditablePromptOptions = {}) {
       const detail = err instanceof Error ? err.message.trim() : "";
       setError(detail ? `${t("editable.sendFailed")} (${detail})` : t("editable.sendFailed"));
     }
-    reopen();
+    return null;
+  }
+
+  async function submit(context: EditableLocatorContext, close: () => void, reopen: () => void) {
+    if (!canSend) return;
+    close();
+    const sent = await sendDraft(context);
+    if (!sent) reopen();
   }
 
   return {
@@ -93,5 +101,6 @@ export function useEditablePrompt(options: UseEditablePromptOptions = {}) {
     canSend,
     reset,
     submit,
+    submitInPlace: sendDraft,
   };
 }

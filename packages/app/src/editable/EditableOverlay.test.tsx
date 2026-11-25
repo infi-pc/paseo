@@ -11,11 +11,54 @@ import { routeKeyboardShortcut } from "@/keyboard/route-shortcut";
 import { EditableOverlay } from "./EditableOverlay.web";
 import type { EditableDesktopBridge, EditableDesktopStatus } from "./types";
 
-const { isReady, push, send, startWorkshop } = vi.hoisted(() => ({
+const {
+  isReady,
+  push,
+  send,
+  startWorkshop,
+  fetchAgentTimeline,
+  subscribeAgentTimeline,
+  sendAgentMessage,
+  cancelAgent,
+  respondToPermission,
+} = vi.hoisted(() => ({
   isReady: vi.fn(() => true),
   push: vi.fn(),
-  send: vi.fn().mockResolvedValue({ kind: "sent", agentId: "agent-1" }),
+  send: vi
+    .fn()
+    .mockResolvedValue({ kind: "sent", agentId: "agent-1", slug: "use-a-smaller-label" }),
   startWorkshop: vi.fn().mockResolvedValue({ serverId: "workshop", repoDir: "/repo" }),
+  fetchAgentTimeline: vi.fn().mockResolvedValue({
+    epoch: "ep-1",
+    agent: { id: "agent-1", status: "idle", pendingPermissions: [] },
+    entries: [
+      {
+        provider: "codex",
+        seqStart: 1,
+        seqEnd: 1,
+        timestamp: "2026-11-25T10:00:00.000Z",
+        sourceSeqRanges: [],
+        collapsed: [],
+        item: { type: "assistant_message", text: "Looks good — want me to apply it?" },
+      },
+    ],
+  }),
+  subscribeAgentTimeline: vi.fn(() => Object.assign(() => {}, { ready: Promise.resolve() })),
+  sendAgentMessage: vi.fn().mockResolvedValue(undefined),
+  cancelAgent: vi.fn().mockResolvedValue(undefined),
+  respondToPermission: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/runtime/host-runtime", () => ({
+  getHostRuntimeStore: () => ({
+    getClient: () => ({
+      fetchAgentTimeline,
+      subscribeAgentTimeline,
+      sendAgentMessage,
+      cancelAgent,
+      respondToPermission,
+      on: vi.fn(() => () => {}),
+    }),
+  }),
 }));
 vi.mock("expo-router", () => {
   const navigation = { isReady };
@@ -169,7 +212,7 @@ describe("Editable overlay", () => {
     expect(screen.getByRole("dialog", { name: "Ask or edit this component…" })).toBeTruthy();
   });
 
-  it("intercepts a component click, closes on Escape and submits an edit from Enter", async () => {
+  it("intercepts a component click, closes on Escape and stays open in live chat on Enter", async () => {
     const { target, shortcut, pageClick } = setup();
     shortcut();
     fireEvent.pointerMove(target);
@@ -191,7 +234,10 @@ describe("Editable overlay", () => {
     const input = screen.getByRole("textbox", { name: label });
     fireEvent.change(input, { target: { value: "Use a smaller label." } });
     fireEvent.keyDown(input, { key: "Enter", code: "Enter" });
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: "use-a-smaller-label" })).toBeTruthy(),
+    );
+    expect(await screen.findByText("Looks good — want me to apply it?")).toBeTruthy();
     expect(send).toHaveBeenCalledExactlyOnceWith(
       {
         file: "packages/app/src/Header.tsx",
@@ -206,6 +252,20 @@ describe("Editable overlay", () => {
       "",
       { isFollowUp: false },
     );
+
+    // Follow-up reply stays in the same popover and Escape docks it cleanly
+    const replyInput = screen.getByRole("textbox", { name: "Reply in this thread…" });
+    fireEvent.change(replyInput, { target: { value: "Yes, go ahead." } });
+    fireEvent.keyDown(replyInput, { key: "Enter", code: "Enter" });
+    await waitFor(() =>
+      expect(sendAgentMessage).toHaveBeenCalledWith(
+        "agent-1",
+        "Yes, go ahead.",
+        expect.objectContaining({ messageId: expect.any(String) }),
+      ),
+    );
+    fireEvent.keyDown(replyInput, { key: "Escape", code: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("preserves the prompt and reopens it when the Workshop host is offline", async () => {
@@ -397,7 +457,19 @@ describe("Editable overlay", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Load" })[0]!);
     await waitFor(() => expect(loadBranch).toHaveBeenCalledWith("wip-fast-branch"));
 
+    // Clicking Chat opens the embedded chat right inside the bottom-right popover
     fireEvent.click(screen.getAllByRole("button", { name: "Chat" })[0]!);
+    expect(await screen.findByRole("dialog", { name: "fast-branch" })).toBeTruthy();
+    expect(await screen.findByText("Looks good — want me to apply it?")).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+
+    // Back returns to the branch switcher list
+    fireEvent.click(screen.getByRole("button", { name: "Back to branches" }));
+    expect(await screen.findByRole("dialog", { name: "Editable Paseo" })).toBeTruthy();
+
+    // Open chat again and use the pop-out icon to open the full Paseo tab
+    fireEvent.click(screen.getAllByRole("button", { name: "Chat" })[0]!);
+    fireEvent.click(await screen.findByRole("button", { name: "Open in full tab" }));
     expect(push).toHaveBeenCalledWith("/h/workshop/agent/agent-1");
   });
 

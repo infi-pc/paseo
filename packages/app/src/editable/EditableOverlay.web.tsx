@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { usePathname } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { getIsElectron, isWeb } from "@/constants/platform";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useOverlayRegistration } from "@/keyboard";
 import { getOverlayRoot, useGlobalOverlayLayer } from "@/lib/overlay-root";
-import { EditablePrompt } from "./EditablePrompt";
+import { buildHostAgentDetailRoute } from "@/utils/host-routes";
+import { EditableChatView, type EditableChatDraftControls } from "./EditableChatView.web";
 import { EditableStatusPill, pillStyle } from "./EditableStatusPill.web";
 import { locateEditableTarget } from "./locator";
 import type { EditableTarget } from "./locator.ts";
@@ -16,7 +17,8 @@ import { useEditableDesktop } from "./use-editable-desktop.web";
 import { useEditablePrompt } from "./use-editable-prompt";
 
 const FRAME_GAP = 8;
-const PROMPT_WIDTH = 320;
+const DRAFT_POPOVER_WIDTH = 360;
+const CHAT_POPOVER_WIDTH = 410;
 
 function useOptionHoldPicking(enabled: boolean): [boolean, () => void] {
   const [altPicking, setAltPicking] = useState(false);
@@ -129,9 +131,135 @@ function shouldRenderOverlay({
   return active || enabled || hasBridge || editing;
 }
 
-export function EditableOverlay() {
+function workshopStatusTextKey(prompt: ReturnType<typeof useEditablePrompt>): string {
+  if (prompt.startingWorkshop) return "editable.workshopStarting";
+  if (prompt.workshopDaemon?.status === "running") {
+    return prompt.isConnected ? "editable.workshopConnected" : "editable.workshopConnecting";
+  }
+  return "editable.workshopAutoStart";
+}
+
+function buildDraftControls(
+  prompt: ReturnType<typeof useEditablePrompt>,
+  t: (key: string) => string,
+  onSubmitDraft: () => void,
+): EditableChatDraftControls {
+  return {
+    draft: prompt.draft,
+    setDraft: prompt.setDraft,
+    canSend: prompt.canSend,
+    sending: prompt.sending,
+    error: prompt.error,
+    loadedWipSlug: prompt.loadedWipSlug,
+    targetNewBranch: prompt.targetNewBranch,
+    setTargetNewBranch: prompt.setTargetNewBranch,
+    managedWorkshop: prompt.managedWorkshop,
+    choosingHost: prompt.choosingHost,
+    setChoosingHost: prompt.setChoosingHost,
+    hosts: prompt.hosts,
+    host: prompt.host,
+    chooseHost: prompt.chooseHost,
+    saving: prompt.saving,
+    cwd: prompt.cwd,
+    setCwd: prompt.setCwd,
+    defaultCwd: prompt.defaultCwd,
+    workshopStatusText: t(workshopStatusTextKey(prompt)),
+    onSubmitDraft,
+  };
+}
+
+function formatTargetLabel(target: EditableTarget, fallback: string): string {
+  const { componentName, file, line } = target.context;
+  const shortFile = file ? file.split("/").pop() : null;
+  const suffix = shortFile ? `${shortFile}${line ? `:${line}` : ""}` : null;
+  if (componentName && suffix) return `${componentName} · ${suffix}`;
+  return componentName || suffix || fallback;
+}
+
+function SelectedElementChat({
+  selected,
+  inlineChat,
+  rect,
+  layer,
+  setScope,
+  prompt,
+  bridge,
+  branches,
+  refresh,
+  onClose,
+  onSubmitDraft,
+  onPopOutChat,
+}: {
+  selected: EditableTarget;
+  inlineChat: { slug: string; agentId: string } | null;
+  rect: DOMRect | null;
+  layer: number;
+  setScope: (node: unknown) => void;
+  prompt: ReturnType<typeof useEditablePrompt>;
+  bridge: ReturnType<typeof useEditableDesktop>["bridge"];
+  branches: ReturnType<typeof useEditableDesktop>["branches"];
+  refresh: () => Promise<void>;
+  onClose: () => void;
+  onSubmitDraft: () => void;
+  onPopOutChat: (agentId: string) => void;
+}) {
   const { t } = useTranslation();
+  const onLoadInlineBranch = useStableEvent((channel: string) => {
+    if (!bridge?.loadBranch) return;
+    void (async () => {
+      await bridge.loadBranch!(channel);
+      await refresh();
+    })();
+  });
+  const onShipInlineBranch = useStableEvent((slug: string) => {
+    if (!bridge?.shipBranch) return;
+    void (async () => {
+      const res = await bridge.shipBranch!(slug);
+      if (res.ok) prompt.clearBranchAgent?.(slug);
+      await refresh();
+    })();
+  });
+  const onInlineTurnFinished = useStableEvent(() => {
+    void bridge?.syncNow?.().finally(() => void refresh());
+  });
+
+  const inlineBranch = inlineChat
+    ? (branches?.branches.find((b) => b.slug === inlineChat.slug) ?? null)
+    : null;
+  const draftControls = buildDraftControls(prompt, t, onSubmitDraft);
+  const selectedLabel = formatTargetLabel(selected, t("editable.component"));
+
+  return (
+    <InlinePopover
+      rect={rect}
+      layer={layer}
+      width={inlineChat ? CHAT_POPOVER_WIDTH : DRAFT_POPOVER_WIDTH}
+      setScope={setScope}
+      onDismiss={onClose}
+      label={inlineChat ? inlineChat.slug : t("editable.placeholder")}
+    >
+      <EditableChatView
+        serverId={prompt.hostId}
+        agentId={inlineChat?.agentId ?? null}
+        slug={inlineChat?.slug ?? null}
+        title={inlineChat ? inlineChat.slug : selectedLabel}
+        locatorChip={inlineChat ? selectedLabel : null}
+        branch={inlineBranch}
+        draftControls={draftControls}
+        compact
+        onClose={onClose}
+        onPopOut={prompt.hostId ? onPopOutChat : undefined}
+        onLoadBranch={bridge?.loadBranch ? onLoadInlineBranch : undefined}
+        onShipBranch={bridge?.shipBranch ? onShipInlineBranch : undefined}
+        onTurnFinished={onInlineTurnFinished}
+      />
+    </InlinePopover>
+  );
+}
+
+export function EditableOverlay() {
   const route = usePathname();
+  const router = useRouter();
   const { bridge, status, workshopDaemon, branches, refresh } = useEditableDesktop();
   const loadedChannel = branches?.loadedChannel ?? status?.activeChannel ?? "prod";
   const prompt = useEditablePrompt({
@@ -143,6 +271,7 @@ export function EditableOverlay() {
   });
   const [picking, setPicking] = useState(false);
   const [selected, setSelected] = useState<EditableTarget | null>(null);
+  const [inlineChat, setInlineChat] = useState<{ slug: string; agentId: string } | null>(null);
   const pointerPos = usePointerPositionRef();
   const canPick = isWeb && prompt.config?.enabled === true && !prompt.sending;
   const [altPicking, clearAltPicking] = useOptionHoldPicking(canPick && !selected);
@@ -151,6 +280,7 @@ export function EditableOverlay() {
 
   const close = useCallback(() => {
     setSelected(null);
+    setInlineChat(null);
     setPicking(false);
     clearAltPicking();
   }, [clearAltPicking]);
@@ -164,6 +294,7 @@ export function EditableOverlay() {
     if (!canPick) return;
     prompt.reset();
     setSelected(null);
+    setInlineChat(null);
     clearAltPicking();
     setPicking(true);
   }, [canPick, clearAltPicking, prompt]);
@@ -185,6 +316,7 @@ export function EditableOverlay() {
   const onPick = useCallback(
     (target: EditableTarget) => {
       setSelected(target);
+      setInlineChat(null);
       setPicking(false);
       clearAltPicking();
     },
@@ -200,11 +332,19 @@ export function EditableOverlay() {
   });
   const target = selected ?? hover;
   const rect = useTargetRect(target?.element);
-  const onSubmit = useStableEvent(() => {
+
+  const onSubmitDraft = useStableEvent(() => {
     if (!selected) return;
-    void prompt.submit(selected.context, close, () => {
-      if (currentRoute.current === route) setSelected(selected);
-    });
+    void (async () => {
+      const sent = await prompt.submitInPlace(selected.context);
+      if (sent && currentRoute.current === route) setInlineChat(sent);
+    })();
+  });
+
+  const onPopOutChat = useStableEvent((agentId: string) => {
+    if (!prompt.hostId) return;
+    close();
+    router.push(buildHostAgentDetailRoute(prompt.hostId, agentId) as never);
   });
 
   if (
@@ -223,14 +363,20 @@ export function EditableOverlay() {
       <PickingHint visible={isPickingMode} layer={layer} />
       {target && rect ? <PickerHighlight rect={rect} target={target} layer={layer} /> : null}
       {selected ? (
-        <InlinePopover
+        <SelectedElementChat
+          selected={selected}
+          inlineChat={inlineChat}
           rect={rect}
           layer={layer}
           setScope={setScope}
-          label={t("editable.placeholder")}
-        >
-          <EditablePrompt prompt={prompt} onClose={close} onSubmit={onSubmit} />
-        </InlinePopover>
+          prompt={prompt}
+          bridge={bridge}
+          branches={branches}
+          refresh={refresh}
+          onClose={close}
+          onSubmitDraft={onSubmitDraft}
+          onPopOutChat={onPopOutChat}
+        />
       ) : null}
       <EditableStatusPill
         bridge={bridge}
@@ -370,23 +516,54 @@ function PickerHighlight({
 function InlinePopover({
   rect,
   layer,
+  width: preferredWidth,
   setScope,
+  onDismiss,
   label,
   children,
 }: {
   rect: DOMRect | null;
   layer: number;
+  width: number;
   setScope: (node: unknown) => void;
+  onDismiss: () => void;
   label: string;
   children: React.ReactNode;
 }) {
   const [frame, setFrame] = useState<HTMLDivElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [style, setStyle] = useState<React.CSSProperties>();
+
+  const attachRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      containerRef.current = node;
+      setScope(node);
+    },
+    [setScope],
+  );
+
+  useEffect(() => {
+    if (!isWeb) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (
+        containerRef.current &&
+        event.target instanceof Node &&
+        !containerRef.current.contains(event.target)
+      ) {
+        onDismiss();
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+    };
+  }, [onDismiss]);
+
   useLayoutEffect(() => {
     if (!isWeb || !frame) return;
     const measure = () => {
       const { height } = frame.getBoundingClientRect();
-      const width = Math.max(0, Math.min(PROMPT_WIDTH, window.innerWidth - FRAME_GAP * 2));
+      const width = Math.max(0, Math.min(preferredWidth, window.innerWidth - FRAME_GAP * 2));
       const edge = rect?.bottom ?? FRAME_GAP;
       const fitsBelow = edge + height + FRAME_GAP * 2 <= window.innerHeight;
       const top = fitsBelow ? edge + FRAME_GAP : (rect?.top ?? edge) - height - FRAME_GAP;
@@ -396,14 +573,13 @@ function InlinePopover({
         width,
         pointerEvents: "auto",
         maxHeight: Math.max(0, window.innerHeight - FRAME_GAP * 2),
-        overflow: "auto",
+        overflow: "visible",
         top: Math.max(FRAME_GAP, Math.min(top, window.innerHeight - height - FRAME_GAP)),
         left: Math.max(
           FRAME_GAP,
           Math.min(rect?.left ?? FRAME_GAP, window.innerWidth - width - FRAME_GAP),
         ),
-        boxShadow: "0 6px 24px rgba(0, 0, 0, 0.22)",
-        borderRadius: 8,
+        borderRadius: 10,
       });
     };
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
@@ -414,11 +590,11 @@ function InlinePopover({
       observer?.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [frame, layer, rect]);
+  }, [frame, layer, preferredWidth, rect]);
 
   return (
     <div
-      ref={setScope}
+      ref={attachRef}
       role="dialog"
       aria-label={label}
       tabIndex={-1}
