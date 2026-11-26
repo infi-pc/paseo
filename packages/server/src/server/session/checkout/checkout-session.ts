@@ -3,6 +3,7 @@ import type { LinearGetIssuesRequest, LinearLinkIssueRequest } from "@getpaseo/p
 import type pino from "pino";
 import type { SessionDelivery } from "../owned-subscriptions/index.js";
 import { isAbsolute } from "node:path";
+import { canonicalGitHubPullRequestUrl } from "@getpaseo/protocol/git-remote";
 import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import { getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
 import { validateBranchSlug } from "@getpaseo/protocol/branch-slug";
@@ -1459,7 +1460,10 @@ export class CheckoutSession {
       // cwd's forge. Remove after 2027-01-17 once the supported client floor
       // is >= v0.2.0.
       const resolvedForge =
-        msg.type === "github_search_request"
+        msg.type === "github_search_request" ||
+        (kinds?.length === 1 &&
+          kinds[0] === "change_request" &&
+          canonicalGitHubPullRequestUrl(query))
           ? { forge: "github", service: this.github }
           : await this.resolveForgeService(resolvedCwd);
       if (!resolvedForge) {

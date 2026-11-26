@@ -6633,6 +6633,14 @@ export class AgentManager {
       this.responseControlEnabled && !config.internal && supportsResponseControl(config.provider);
     const daemonAppendSystemPrompt = [
       this.appendSystemPrompt.trim(),
+      config.internal
+        ? ""
+        : [
+            "Use Markdown links for concrete references in replies.",
+            "Use full HTTPS URLs for websites, GitHub and Linear. Prefer the exact URL returned by the tool.",
+            "For local files, prefer a path relative to your checkout, for example [Button.tsx:42](src/Button.tsx#L42).",
+            "Use absolute paths for files outside the checkout. Percent-encode spaces and literal # characters in path names.",
+          ].join(" "),
       enabled ? RESPONSE_CONTROL_INSTRUCTIONS : "",
     ]
       .filter(Boolean)

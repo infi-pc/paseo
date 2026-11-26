@@ -8,6 +8,7 @@ import {
 } from "./github-change-requests.js";
 import { z } from "zod";
 import {
+  canonicalGitHubPullRequestUrl,
   isGitHubHost,
   parseGitHubRemoteIdentity,
   parseGitHubRemoteUrl,
@@ -188,6 +189,8 @@ const GitHubIssueSummarySchema = z.object({
 });
 
 const GitHubPullRequestSummarySchema = z.object({
+  isDraft: z.boolean().optional(),
+  reviewDecision: z.string().nullish(),
   additions: z.number().optional(),
   deletions: z.number().optional(),
   statusCheckRollup: z.unknown().optional(),
@@ -1509,12 +1512,49 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     runOptions: GitHubCommandRunnerOptions,
     schema: z.ZodType<T>,
     emptyFallback: string,
+    explicitHost?: string,
   ): Promise<T> {
-    const stdout = await run(args, runOptions);
+    const stdout = await run(args, runOptions, explicitHost);
     return parseGitHubJsonOutput(stdout, schema, {
       args,
       cwd: runOptions.cwd,
       emptyFallback,
+    });
+  }
+
+  function previewPullRequest(cwd: string, prUrl: string, readOptions: ForgeReadOptions) {
+    return cached({
+      cwd,
+      method: "previewPullRequest",
+      args: { url: prUrl },
+      readOptions,
+      load: async (): Promise<SearchResult> => {
+        const item = await runGhJson(
+          [
+            "pr",
+            "view",
+            prUrl,
+            "--json",
+            "number,title,url,state,isDraft,reviewDecision,statusCheckRollup",
+          ],
+          { cwd },
+          GitHubPullRequestSummarySchema,
+          "{}",
+          "github.com",
+        );
+        return {
+          items: [
+            {
+              ...toPullRequestSummary(item),
+              kind: "change_request",
+              isDraft: item.isDraft,
+              reviewDecision: item.reviewDecision || undefined,
+            },
+          ],
+          featuresEnabled: true,
+          authState: "authenticated",
+        };
+      },
     });
   }
 
@@ -3052,28 +3092,33 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         throw new Error("ForgeService forced read requires a reason");
       }
 
-      const kinds = normalizeForgeSearchKinds(input.kinds);
+      const { cwd, query: rawQuery, limit, kinds: requestedKinds, ...readOptions } = input;
+      const kinds = normalizeForgeSearchKinds(requestedKinds);
       const shouldFetchIssues = kinds.includes("issue");
       const shouldFetchPullRequests = kinds.includes("change_request");
-      const readOptions: ForgeReadOptions = input.force
-        ? { force: true, reason: input.reason }
-        : { force: false, reason: input.reason };
-      const enterpriseHost = await resolveRepoHostCached(input.cwd).catch(() => null);
-      const query = normalizeGitHubSearchQuery(input.query, enterpriseHost);
+      const prUrl =
+        shouldFetchPullRequests && !shouldFetchIssues
+          ? canonicalGitHubPullRequestUrl(rawQuery)
+          : null;
+      if (prUrl) {
+        return previewPullRequest(cwd, prUrl, readOptions);
+      }
+      const enterpriseHost = await resolveRepoHostCached(cwd).catch(() => null);
+      const query = normalizeGitHubSearchQuery(rawQuery, enterpriseHost);
       const [issuesResult, prsResult] = await Promise.allSettled([
         shouldFetchIssues
           ? this.listIssues({
-              cwd: input.cwd,
+              cwd,
               query,
-              limit: input.limit,
+              limit,
               ...readOptions,
             })
           : Promise.resolve(null),
         shouldFetchPullRequests
           ? this.listPullRequests({
-              cwd: input.cwd,
+              cwd,
               query,
-              limit: input.limit,
+              limit,
               ...readOptions,
             })
           : Promise.resolve(null),
@@ -3100,8 +3145,8 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         return createUnavailableSearchResult(hasMissingCli ? "cli_missing" : "unauthenticated");
       }
 
-      if (shouldFetchIssues && issuesResult.status === "fulfilled") {
-        for (const item of issuesResult.value ?? []) {
+      if (issuesResult.status === "fulfilled" && issuesResult.value) {
+        for (const item of issuesResult.value) {
           items.push({
             kind: "issue",
             number: item.number,
@@ -3117,8 +3162,8 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
         }
       }
 
-      if (shouldFetchPullRequests && prsResult.status === "fulfilled") {
-        for (const item of prsResult.value ?? []) {
+      if (prsResult.status === "fulfilled" && prsResult.value) {
+        for (const item of prsResult.value) {
           items.push({
             ...(item.checks !== undefined ? { checks: item.checks } : {}),
             diffStat: item.diffStat,

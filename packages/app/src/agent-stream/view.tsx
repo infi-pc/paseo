@@ -805,6 +805,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             client={client}
             serverId={resolvedServerId}
             workspaceRoot={workspaceRoot}
+            enablePullRequestLinkPreviews
             onOpenWorkspaceFile={handleInlinePathPress}
             toast={toast}
           >

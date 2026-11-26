@@ -394,6 +394,8 @@ export interface SearchResult {
     diffStat?: DiffStat;
     checks?: PullRequestCheck[];
     kind: "issue" | "change_request";
+    isDraft?: boolean;
+    reviewDecision?: string;
     forge?: string;
     number: number;
     title: string;
