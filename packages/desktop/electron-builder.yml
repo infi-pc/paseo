@@ -30,6 +30,7 @@ asarUnpack:
   - "**/node_modules/typescript-language-server/**/*"
   - "**/node_modules/typescript/**/*"
   - dist/daemon/node-entrypoint-runner.js
+  - dist/daemon/daemon-release-loader.mjs
   - node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*
 extraResources:
   # Preserve physical compiler inputs, including .d.ts files omitted from packaged node_modules.

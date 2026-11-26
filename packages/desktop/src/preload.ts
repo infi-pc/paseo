@@ -76,7 +76,9 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:editable:syncNow"),
     getBranches: (): Promise<EditableBranchesSnapshot | null> =>
       ipcRenderer.invoke("paseo:editable:getBranches"),
-    loadBranch: (channel: string): Promise<{ ok: boolean; error?: string }> =>
+    loadBranch: (
+      channel: string,
+    ): Promise<{ ok: boolean; uiChanged?: boolean; daemonSwapped?: boolean; error?: string }> =>
       ipcRenderer.invoke("paseo:editable:loadBranch", channel),
     shipBranch: (slug: string): Promise<ShipBranchResult & { autoLoaded?: boolean }> =>
       ipcRenderer.invoke("paseo:editable:shipBranch", slug),

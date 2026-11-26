@@ -478,9 +478,10 @@ describe("Editable overlay", () => {
     expect(popover.textContent).toContain("behind-branch");
     expect(popover.textContent).toContain("question-only");
     expect(popover.textContent).toContain("No changes");
-    expect(popover.textContent).toContain("+ daemon");
+    expect(popover.textContent).toContain("UI");
+    expect(popover.textContent).toContain("Daemon");
     expect(popover.textContent).toContain("behind main");
-    expect(popover.textContent).toContain("Fallback UI");
+    expect(popover.textContent).toContain("Fallback");
 
     // Only the 2 branches with changes offer Load / Ship / Update to main; question-only only offers Chat + discard
     expect(screen.getAllByRole("button", { name: "Load" })).toHaveLength(2);
@@ -832,13 +833,21 @@ describe("Editable overlay", () => {
     });
   });
 
-  it("shows explanatory hover tooltips on + daemon, behind main, Draft, and Ready badges and allows merging daemon-only Ready branches without Load", async () => {
+  it("shows service badges with tooltips, enables Load with running-daemon warning on staged daemon branches, and handles unstaged daemon branches", async () => {
+    const loadBranch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, uiChanged: false, daemonSwapped: true });
     const shipBranch = vi
       .fn()
       .mockResolvedValue({ ok: true, fastForwarded: false, autoLoaded: false });
+    const daemonDigest = "d".repeat(64);
     const getBranches = vi.fn().mockResolvedValue({
       loadedChannel: "prod",
       loadedDigest: digest,
+      loadedDaemonDigest: null,
+      daemonRunning: true,
+      daemonListen: "127.0.0.1:6770",
+      mainDaemonGeneration: null,
       safeRenderer: false,
       main: {
         slug: "main",
@@ -848,12 +857,17 @@ describe("Editable overlay", () => {
         status: "ready",
         summary: "Main",
         releaseDigest: digest,
+        daemonReleaseDigest: null,
+        services: ["ui"],
         generation: 15,
         sourceSha: "1".repeat(40),
         behindMain: false,
         canFastForward: false,
         requiresDaemon: false,
         hasUpdate: false,
+        hasUiUpdate: false,
+        hasDaemonUpdate: false,
+        requiresDaemonRestartOnLoad: false,
         loaded: true,
         remoteOnly: false,
         agentId: null,
@@ -862,20 +876,25 @@ describe("Editable overlay", () => {
       },
       branches: [
         {
-          slug: "daemon-only-ready",
-          channel: "wip-daemon-only-ready",
-          branch: "ed/wip/daemon-only-ready",
+          slug: "daemon-staged-ready",
+          channel: "wip-daemon-staged-ready",
+          branch: "ed/wip/daemon-staged-ready",
           isMain: false,
           status: "ready",
           summary: "Enable Antigravity response metadata",
           releaseDigest: null,
-          generation: null,
+          daemonReleaseDigest: daemonDigest,
+          services: ["daemon"],
+          generation: 1,
           sourceSha: "2".repeat(40),
           hasChanges: true,
           behindMain: true,
           canFastForward: false,
           requiresDaemon: true,
           hasUpdate: false,
+          hasUiUpdate: false,
+          hasDaemonUpdate: false,
+          requiresDaemonRestartOnLoad: true,
           loaded: false,
           remoteOnly: false,
           agentId: "agent-1",
@@ -890,6 +909,8 @@ describe("Editable overlay", () => {
           status: "draft",
           summary: "Work in progress",
           releaseDigest: null,
+          daemonReleaseDigest: null,
+          services: ["ui"],
           generation: null,
           sourceSha: "3".repeat(40),
           hasChanges: true,
@@ -897,6 +918,9 @@ describe("Editable overlay", () => {
           canFastForward: false,
           requiresDaemon: false,
           hasUpdate: false,
+          hasUiUpdate: false,
+          hasDaemonUpdate: false,
+          requiresDaemonRestartOnLoad: false,
           loaded: false,
           remoteOnly: false,
           agentId: "agent-2",
@@ -909,31 +933,43 @@ describe("Editable overlay", () => {
       getStatus: vi.fn().mockResolvedValue(status),
       reportHealthy: vi.fn().mockResolvedValue(undefined),
       getBranches,
-      loadBranch: vi.fn().mockResolvedValue({ ok: true }),
+      loadBranch,
       shipBranch,
     } satisfies Partial<EditableDesktopBridge>;
     window.paseoDesktop = { editable: bridge as unknown as EditableDesktopBridge };
     setup();
 
     fireEvent.click(screen.getByRole("button", { name: "Editable Paseo status" }));
-    expect(await screen.findByText("daemon-only-ready")).toBeTruthy();
+    expect(await screen.findByText("daemon-staged-ready")).toBeTruthy();
 
-    // Daemon-only ready branch shows Ship (with update icon), not Load
-    expect(screen.queryByRole("button", { name: "Load" })).toBeNull();
+    // Staged daemon-only branch shows Load WITH amber warning icon + tooltip because :6770 is running
+    const loadBtn = screen.getByRole("button", { name: "Load" });
+    expect(document.querySelectorAll('[data-ed-daemon-restart-warn="true"]')).toHaveLength(1);
+    fireEvent.mouseEnter(loadBtn.parentElement!);
+    expect(screen.getByRole("tooltip").textContent).toContain(
+      "Will restart the running dev daemon (:6770)",
+    );
+    fireEvent.mouseLeave(loadBtn.parentElement!);
+    fireEvent.click(loadBtn);
+    await waitFor(() => expect(loadBranch).toHaveBeenCalledWith("wip-daemon-staged-ready"));
+
+    // Ship button shows update icon + tooltip for behind-main daemon branch
     expect(document.querySelectorAll('[data-ed-ship-update="true"]')).toHaveLength(1);
     const daemonShipBtn = screen.getByRole("button", { name: "Ship" });
     fireEvent.mouseEnter(daemonShipBtn.parentElement!);
     expect(screen.getByRole("tooltip").textContent).toContain(
-      "Updates with latest main and merges this server/daemon change",
+      "Updates with latest main, rebuilds the daemon in the background",
     );
     fireEvent.mouseLeave(daemonShipBtn.parentElement!);
     fireEvent.click(daemonShipBtn);
-    await waitFor(() => expect(shipBranch).toHaveBeenCalledWith("daemon-only-ready"));
+    await waitFor(() => expect(shipBranch).toHaveBeenCalledWith("daemon-staged-ready"));
 
-    // Hovering + daemon and Draft shows explanatory tooltips
-    const daemonBadge = screen.getByText("+ daemon");
+    // Hovering Daemon service badge & Draft badge shows explanatory tooltips
+    const daemonBadge = screen.getByText("Daemon");
     fireEvent.mouseEnter(daemonBadge);
-    expect(screen.getByRole("tooltip").textContent).toContain("no UI bundle to Load");
+    expect(screen.getByRole("tooltip").textContent).toContain(
+      "hot-swaps the local dev daemon (:6770)",
+    );
     fireEvent.mouseLeave(daemonBadge);
 
     const draftBadge = screen.getByText("Draft");

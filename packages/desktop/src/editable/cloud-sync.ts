@@ -5,14 +5,14 @@ import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises
 import path from "node:path";
 import { parseEnv, promisify } from "node:util";
 import { z } from "zod";
-import { DESKTOP_RUNTIME_VERSION } from "./constants.js";
+import { DAEMON_RUNTIME_VERSION, DESKTOP_RUNTIME_VERSION } from "./constants.js";
 import {
   isSafeRelativePath,
   resolveRegularFile,
   verifyReleaseDirectory,
   verifySignedEnvelope,
 } from "./crypto.js";
-import { parseReleaseManifest } from "./release-manifest.js";
+import { parseReleaseManifest, type EditableReleaseSurface } from "./release-manifest.js";
 import { channelManifestSchema, wipIndexSchema, type WipBranchPointer } from "./schema.js";
 
 const run = promisify(execFile);
@@ -91,20 +91,26 @@ async function readDownloadJson(response: Response): Promise<unknown> {
   return JSON.parse((await readDownload(response, MAX_JSON_BYTES)).toString("utf8"));
 }
 
+function runtimeVersionForSurface(surface: EditableReleaseSurface): string {
+  return surface === "daemon" ? DAEMON_RUNTIME_VERSION : DESKTOP_RUNTIME_VERSION;
+}
+
 async function downloadRelease(
   request: (url: string) => Promise<Response>,
   releaseUrl: string,
   pointer: { releaseDigest: string; sourceSha: string },
   trustedKey: string,
+  surface: EditableReleaseSurface = "electron-web",
 ) {
+  const expectedRuntime = runtimeVersionForSurface(surface);
   const manifestEnvelope = await readDownloadJson(await request(`${releaseUrl}/manifest.json`));
   if (!verifySignedEnvelope(manifestEnvelope, trustedKey)) {
     throw new Error("Invalid Cloud Shelf release signature");
   }
-  const manifest = parseReleaseManifest(manifestEnvelope.payload);
+  const manifest = parseReleaseManifest(manifestEnvelope.payload, surface);
   if (
     manifest.releaseDigest !== pointer.releaseDigest ||
-    manifest.runtimeVersion !== DESKTOP_RUNTIME_VERSION ||
+    manifest.runtimeVersion !== expectedRuntime ||
     manifest.sourceSha !== pointer.sourceSha
   ) {
     throw new Error("Cloud Shelf release manifest does not match its channel");
@@ -129,10 +135,13 @@ async function downloadRelease(
   return { manifestEnvelope, manifest, archiveBytes };
 }
 
-async function prepareReleaseStore(home: string): Promise<string> {
+async function prepareReleaseStore(
+  home: string,
+  surfaceName: EditableReleaseSurface = "electron-web",
+): Promise<string> {
   await mkdir(home, { recursive: true, mode: 0o700 });
   const releases = path.join(home, "releases");
-  const surface = path.join(releases, "electron-web");
+  const surface = path.join(releases, surfaceName);
   if (!(await lstat(home)).isDirectory())
     throw new Error("Unsafe Editable release store directory");
   for (const dir of [releases, surface]) {
@@ -240,7 +249,8 @@ export async function syncFromCloudShelf({
 
 export interface ChannelSyncResult {
   updated: boolean;
-  digest: string;
+  digest: string | null;
+  daemonDigest: string | null;
   generation: number;
   summary: string;
 }
@@ -248,7 +258,7 @@ export interface ChannelSyncResult {
 async function readCachedChannelMeta(
   channelDest: string,
   trustedKey: string,
-): Promise<{ generation: number; digest: string | null }> {
+): Promise<{ generation: number; digest: string | null; daemonDigest: string | null }> {
   try {
     const existingRaw = JSON.parse(await readFile(channelDest, "utf8")) as unknown;
     if (verifySignedEnvelope(existingRaw, trustedKey)) {
@@ -256,36 +266,46 @@ async function readCachedChannelMeta(
       return {
         generation: existingParsed.generation,
         digest: existingParsed.surfaces["electron-web"]?.releaseDigest ?? null,
+        daemonDigest: existingParsed.surfaces.daemon?.releaseDigest ?? null,
       };
     }
   } catch {
     // Missing or unreadable channel file
   }
-  return { generation: 0, digest: null };
+  return { generation: 0, digest: null, daemonDigest: null };
 }
 
 async function installReleaseFromCloud(input: {
   request: (url: string) => Promise<Response>;
   base: string;
+  surfaceName: EditableReleaseSurface;
   pointer: { releaseDigest: string; sourceSha: string };
   trustedKey: string;
-  surface: string;
+  surfaceDir: string;
   staging: string;
 }): Promise<void> {
-  const releaseUrl = `${input.base}/releases/electron-web/${input.pointer.releaseDigest}`;
+  const expectedRuntime = runtimeVersionForSurface(input.surfaceName);
+  const releaseUrl = `${input.base}/releases/${input.surfaceName}/${input.pointer.releaseDigest}`;
   const { manifestEnvelope, manifest, archiveBytes } = await downloadRelease(
     input.request,
     releaseUrl,
     input.pointer,
     input.trustedKey,
+    input.surfaceName,
   );
-  const archive = path.join(input.staging, "archive.tar.gz");
-  const extracted = path.join(input.staging, "release");
-  const target = path.join(input.surface, input.pointer.releaseDigest);
+  const archive = path.join(input.staging, `${input.surfaceName}-archive.tar.gz`);
+  const extracted = path.join(input.staging, `${input.surfaceName}-release`);
+  const target = path.join(input.surfaceDir, input.pointer.releaseDigest);
   await writeFile(archive, archiveBytes);
   await mkdir(extracted);
   await extractArchive(archive, extracted, new Set(manifest.files.map((file) => file.path)));
-  verifyReleaseDirectory(extracted, manifestEnvelope, input.trustedKey, DESKTOP_RUNTIME_VERSION);
+  verifyReleaseDirectory(
+    extracted,
+    manifestEnvelope,
+    input.trustedKey,
+    expectedRuntime,
+    input.surfaceName,
+  );
   await writeFile(path.join(extracted, "manifest.json"), JSON.stringify(manifestEnvelope), {
     flag: "wx",
   });
@@ -317,20 +337,108 @@ function buildShelfRequest(
   return { base, request };
 }
 
-/**
- * Downloads & verifies a signed channel (`prod` or `wip-<slug>`) from Cloud Shelf
- * into `home` without automatically reloading any window.
- */
-export async function syncChannelFromCloudShelf({
-  home,
-  configHome,
-  channel,
-  publicKey,
-  minGeneration = 0,
-  isQuarantined = () => false,
-  hasInstalledRelease = () => false,
-  fetchImpl = fetch,
-}: {
+function selectCompatibleSurfacePointer(
+  pointer:
+    | { releaseDigest: string; sourceSha: string; runtimeVersion: string; summary: string }
+    | undefined,
+  expectedRuntime: string,
+  isQuarantined: (digest: string) => boolean,
+) {
+  if (!pointer || pointer.runtimeVersion !== expectedRuntime) return null;
+  if (isQuarantined(pointer.releaseDigest)) return null;
+  return pointer;
+}
+
+type VerifiedChannelPayload = z.infer<typeof channelManifestSchema>;
+
+async function fetchVerifiedChannelEnvelope(input: {
+  request: (url: string) => Promise<Response>;
+  base: string;
+  channel: string;
+  trustedKey: string;
+  minGeneration: number;
+}): Promise<{ envelope: unknown; payload: VerifiedChannelPayload } | null> {
+  const chanRes = await input.request(`${input.base}/channels/${input.channel}.json`);
+  if (chanRes.status === 404) return null;
+  const envelope = await readDownloadJson(chanRes);
+  if (!verifySignedEnvelope(envelope, input.trustedKey)) {
+    throw new Error("Invalid Cloud Shelf channel signature");
+  }
+  const payload = channelManifestSchema.parse(envelope.payload);
+  if (payload.channel !== input.channel) throw new Error("Cloud Shelf channel name mismatch");
+  if (payload.generation < input.minGeneration) return null;
+  return { envelope, payload };
+}
+
+async function installMissingChannelSurfaces(input: {
+  home: string;
+  uiSurfaceDir: string;
+  staging: string;
+  request: (url: string) => Promise<Response>;
+  base: string;
+  trustedKey: string;
+  uiPointer: { releaseDigest: string; sourceSha: string } | null;
+  daemonPointer: { releaseDigest: string; sourceSha: string } | null;
+  uiInstalled: boolean;
+  daemonInstalled: boolean;
+}): Promise<void> {
+  if (input.uiPointer && !input.uiInstalled) {
+    await installReleaseFromCloud({
+      request: input.request,
+      base: input.base,
+      surfaceName: "electron-web",
+      pointer: input.uiPointer,
+      trustedKey: input.trustedKey,
+      surfaceDir: input.uiSurfaceDir,
+      staging: input.staging,
+    });
+  }
+  if (input.daemonPointer && !input.daemonInstalled) {
+    const daemonSurfaceDir = await prepareReleaseStore(input.home, "daemon");
+    await installReleaseFromCloud({
+      request: input.request,
+      base: input.base,
+      surfaceName: "daemon",
+      pointer: input.daemonPointer,
+      trustedKey: input.trustedKey,
+      surfaceDir: daemonSurfaceDir,
+      staging: input.staging,
+    });
+  }
+}
+
+function isChannelUpToDate(input: {
+  generation: number;
+  cached: { generation: number; digest: string | null; daemonDigest: string | null };
+  uiDigest: string | null;
+  daemonDigest: string | null;
+  uiInstalled: boolean;
+  daemonInstalled: boolean;
+}): boolean {
+  return (
+    input.generation === input.cached.generation &&
+    input.uiDigest === input.cached.digest &&
+    input.daemonDigest === input.cached.daemonDigest &&
+    input.uiInstalled &&
+    input.daemonInstalled
+  );
+}
+
+async function resolveChannelDestination(
+  home: string,
+  channel: string,
+): Promise<{ uiSurfaceDir: string; channelDest: string }> {
+  const uiSurfaceDir = await prepareReleaseStore(home, "electron-web");
+  const channelsDir = path.join(uiSurfaceDir, "channels");
+  await mkdir(channelsDir, { recursive: true, mode: 0o700 });
+  const channelDest =
+    channel === "prod"
+      ? path.join(uiSurfaceDir, "channel.json")
+      : path.join(channelsDir, `${channel}.json`);
+  return { uiSurfaceDir, channelDest };
+}
+
+interface SyncChannelOptions {
   home: string;
   configHome: string;
   channel: string;
@@ -338,64 +446,110 @@ export async function syncChannelFromCloudShelf({
   minGeneration?: number;
   isQuarantined?: (digest: string) => boolean;
   hasInstalledRelease?: (digest: string) => boolean;
+  isDaemonQuarantined?: (digest: string) => boolean;
+  hasInstalledDaemonRelease?: (digest: string) => boolean;
   fetchImpl?: typeof fetch;
-}): Promise<ChannelSyncResult | null> {
+}
+
+function resolveChannelTargets(payload: VerifiedChannelPayload, options: SyncChannelOptions) {
+  const uiPointer = selectCompatibleSurfacePointer(
+    payload.surfaces["electron-web"],
+    DESKTOP_RUNTIME_VERSION,
+    options.isQuarantined ?? (() => false),
+  );
+  const daemonPointer = selectCompatibleSurfacePointer(
+    payload.surfaces.daemon,
+    DAEMON_RUNTIME_VERSION,
+    options.isDaemonQuarantined ?? (() => false),
+  );
+  if (!uiPointer && !daemonPointer) return null;
+  const hasUi = options.hasInstalledRelease ?? (() => false);
+  const hasDaemon = options.hasInstalledDaemonRelease ?? (() => false);
+  return {
+    uiPointer,
+    daemonPointer,
+    uiDigest: uiPointer?.releaseDigest ?? null,
+    daemonDigest: daemonPointer?.releaseDigest ?? null,
+    uiInstalled: !uiPointer || hasUi(uiPointer.releaseDigest),
+    daemonInstalled: !daemonPointer || hasDaemon(daemonPointer.releaseDigest),
+    summary: uiPointer?.summary ?? daemonPointer?.summary ?? "",
+  };
+}
+
+/**
+ * Downloads & verifies a signed channel (`prod` or `wip-<slug>`) from Cloud Shelf
+ * into `home` (both `electron-web` and `daemon` surfaces when present) without
+ * automatically reloading any window or restarting the daemon.
+ */
+export async function syncChannelFromCloudShelf(
+  options: SyncChannelOptions,
+): Promise<ChannelSyncResult | null> {
+  const { home, configHome, channel, publicKey } = options;
   if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(channel)) {
     throw new Error(`Invalid Cloud Shelf channel name: ${channel}`);
   }
   const { cloudShelfUrl, readToken } = await readShelfConfig(configHome);
-  const { base, request } = buildShelfRequest(cloudShelfUrl, readToken, fetchImpl);
+  const { base, request } = buildShelfRequest(cloudShelfUrl, readToken, options.fetchImpl ?? fetch);
   const trustedKey = publicKey();
-  const chanRes = await request(`${base}/channels/${channel}.json`);
-  if (chanRes.status === 404) return null;
-  const channelEnvelope = await readDownloadJson(chanRes);
-  if (!verifySignedEnvelope(channelEnvelope, trustedKey)) {
-    throw new Error("Invalid Cloud Shelf channel signature");
-  }
-  const payload = channelManifestSchema.parse(channelEnvelope.payload);
-  if (payload.channel !== channel) throw new Error("Cloud Shelf channel name mismatch");
-  const pointer = payload.surfaces["electron-web"];
-  if (!pointer || pointer.runtimeVersion !== DESKTOP_RUNTIME_VERSION) return null;
-  if (payload.generation < minGeneration || isQuarantined(pointer.releaseDigest)) return null;
+  const fetched = await fetchVerifiedChannelEnvelope({
+    request,
+    base,
+    channel,
+    trustedKey,
+    minGeneration: options.minGeneration ?? 0,
+  });
+  if (!fetched) return null;
 
-  const surface = await prepareReleaseStore(home);
-  const channelsDir = path.join(surface, "channels");
-  await mkdir(channelsDir, { recursive: true, mode: 0o700 });
-  const channelDest =
-    channel === "prod"
-      ? path.join(surface, "channel.json")
-      : path.join(channelsDir, `${channel}.json`);
+  const { envelope: channelEnvelope, payload } = fetched;
+  const targets = resolveChannelTargets(payload, options);
+  if (!targets) return null;
 
+  const { uiSurfaceDir, channelDest } = await resolveChannelDestination(home, channel);
   const cached = await readCachedChannelMeta(channelDest, trustedKey);
   if (payload.generation < cached.generation) return null;
 
-  const alreadyInstalled = hasInstalledRelease(pointer.releaseDigest);
   if (
-    payload.generation === cached.generation &&
-    pointer.releaseDigest === cached.digest &&
-    alreadyInstalled
+    isChannelUpToDate({
+      generation: payload.generation,
+      cached,
+      uiDigest: targets.uiDigest,
+      daemonDigest: targets.daemonDigest,
+      uiInstalled: targets.uiInstalled,
+      daemonInstalled: targets.daemonInstalled,
+    })
   ) {
     return {
       updated: false,
-      digest: pointer.releaseDigest,
+      digest: targets.uiDigest,
+      daemonDigest: targets.daemonDigest,
       generation: payload.generation,
-      summary: pointer.summary,
+      summary: targets.summary,
     };
   }
 
-  const staging = await mkdtemp(path.join(surface, ".cloud-"));
+  const staging = await mkdtemp(path.join(uiSurfaceDir, ".cloud-"));
   try {
-    if (!alreadyInstalled) {
-      await installReleaseFromCloud({ request, base, pointer, trustedKey, surface, staging });
-    }
+    await installMissingChannelSurfaces({
+      home,
+      uiSurfaceDir,
+      staging,
+      request,
+      base,
+      trustedKey,
+      uiPointer: targets.uiPointer,
+      daemonPointer: targets.daemonPointer,
+      uiInstalled: targets.uiInstalled,
+      daemonInstalled: targets.daemonInstalled,
+    });
     const channelTmp = path.join(staging, "channel.json");
     writeFileSync(channelTmp, JSON.stringify(channelEnvelope) + "\n");
     renameSync(channelTmp, channelDest);
     return {
       updated: true,
-      digest: pointer.releaseDigest,
+      digest: targets.uiDigest,
+      daemonDigest: targets.daemonDigest,
       generation: payload.generation,
-      summary: pointer.summary,
+      summary: targets.summary,
     };
   } finally {
     await rm(staging, { recursive: true, force: true });

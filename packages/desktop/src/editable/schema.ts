@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const digestSchema = z.string().regex(/^[a-f0-9]{64}$/);
+export const editableServiceSchema = z.enum(["ui", "daemon", "desktop", "ios"]);
+export type EditableService = z.infer<typeof editableServiceSchema>;
 const sourceSha = z.string().regex(/^[a-f0-9]{40}$/);
 const timestamp = z.iso.datetime({ offset: true });
 const summary = z.string().max(200);
@@ -26,6 +28,7 @@ export const channelManifestSchema = z.object({
   surfaces: z.object({
     "electron-web": channelPointer.optional(),
     "ios-ota": channelPointer.optional(),
+    daemon: channelPointer.optional(),
   }),
 });
 
@@ -34,6 +37,8 @@ export const wipBranchPointerSchema = z.object({
   branch: z.string().startsWith("ed/wip/"),
   channel: channelName,
   releaseDigest: digestSchema.nullable(),
+  daemonReleaseDigest: digestSchema.nullable().optional(),
+  services: z.array(editableServiceSchema).optional(),
   sourceSha,
   summary,
   requiresDaemon: z.boolean(),
@@ -57,6 +62,10 @@ export const deviceStateSchema = z.object({
   previewUrl: z.string().nullable(),
   activeGeneration: z.number().int().nonnegative(),
   activeChannel: channelName.optional(),
+  activeDaemonDigest: digestSchema.nullable().optional(),
+  lastKnownGoodDaemonDigest: digestSchema.nullable().optional(),
+  quarantinedDaemonDigests: z.array(digestSchema).optional(),
+  activeDaemonGeneration: z.number().int().nonnegative().optional(),
 });
 
 export type DeviceState = z.infer<typeof deviceStateSchema>;

@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { app } from "electron";
 import {
   createNodeEntrypointInvocation as createSharedNodeEntrypointInvocation,
@@ -35,6 +36,59 @@ export function resolvePackagedNodeEntrypointRunnerPath(): string {
     "daemon",
     "node-entrypoint-runner.js",
   );
+}
+
+export function resolveDaemonReleaseLoaderPath(): string {
+  if (app.isPackaged) {
+    return assertPathExists({
+      label: "Bundled daemon release loader",
+      filePath: path.join(
+        process.resourcesPath,
+        "app.asar.unpacked",
+        "dist",
+        "daemon",
+        "daemon-release-loader.mjs",
+      ),
+    });
+  }
+  return assertPathExists({
+    label: "Daemon release loader",
+    filePath: path.join(__dirname, "daemon-release-loader.mjs"),
+  });
+}
+
+export function resolveDaemonReleaseFallbackRoot(): string {
+  if (app.isPackaged) {
+    return resolvePackagedAsarPath();
+  }
+  const serverPackage = resolveServerPackageInfo();
+  return path.resolve(serverPackage.root, "..", "..");
+}
+
+export interface EditableDaemonLaunchOverride {
+  releaseDir: string;
+  entryPath: string;
+  digest: string;
+  channel: string;
+}
+
+export function buildEditableDaemonEnv(
+  baseEnv: NodeJS.ProcessEnv,
+  override: EditableDaemonLaunchOverride,
+  loaderPath = resolveDaemonReleaseLoaderPath(),
+  fallbackRoot = resolveDaemonReleaseFallbackRoot(),
+): NodeJS.ProcessEnv {
+  const loaderFlag = `--import=${pathToFileURL(loaderPath).href}`;
+  const existingOptions = (baseEnv.NODE_OPTIONS ?? "")
+    .split(/\s+/)
+    .filter((token) => token.length > 0 && !token.includes("daemon-release-loader.mjs"));
+  return {
+    ...baseEnv,
+    NODE_OPTIONS: [...existingOptions, loaderFlag].join(" "),
+    PASEO_EDITABLE_DAEMON_DIR: override.releaseDir,
+    PASEO_EDITABLE_FALLBACK_ROOT: fallbackRoot,
+    PASEO_EDITABLE_DAEMON_DIGEST: override.digest,
+  };
 }
 
 export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {

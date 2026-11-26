@@ -1,7 +1,8 @@
 import { createHash, createPublicKey, verify } from "node:crypto";
 import { lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { parseReleaseManifest } from "./release-manifest.js";
+import { DAEMON_ENTRYPOINT_REL_PATH } from "./constants.js";
+import { parseReleaseManifest, type EditableReleaseSurface } from "./release-manifest.js";
 
 export function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -80,16 +81,22 @@ export function verifyReleaseDirectory(
   signedManifest: unknown,
   publicKeyPem: string,
   expectedRuntimeVersion: string,
+  expectedSurface: EditableReleaseSurface = "electron-web",
 ) {
   if (!verifySignedEnvelope(signedManifest, publicKeyPem)) {
     throw new Error("Invalid release signature");
   }
-  const manifest = parseReleaseManifest(signedManifest.payload);
-  if (manifest.runtimeVersion !== expectedRuntimeVersion)
-    throw new Error("Desktop runtime mismatch");
+  const manifest = parseReleaseManifest(signedManifest.payload, expectedSurface);
+  if (manifest.runtimeVersion !== expectedRuntimeVersion) {
+    throw new Error(
+      expectedSurface === "daemon" ? "Daemon runtime mismatch" : "Desktop runtime mismatch",
+    );
+  }
 
+  const requiredEntrypoint =
+    expectedSurface === "daemon" ? DAEMON_ENTRYPOINT_REL_PATH : "index.html";
   let previousPath = "";
-  let hasIndex = false;
+  let hasRequiredEntrypoint = false;
   for (const entry of manifest.files) {
     if (entry.path <= previousPath) throw new Error("Release files must be strictly sorted");
     previousPath = entry.path;
@@ -102,8 +109,10 @@ export function verifyReleaseDirectory(
     ) {
       throw new Error(`Release file integrity check failed: ${entry.path}`);
     }
-    if (entry.path === "index.html") hasIndex = true;
+    if (entry.path === requiredEntrypoint) hasRequiredEntrypoint = true;
   }
-  if (!hasIndex) throw new Error("Release manifest is missing index.html");
+  if (!hasRequiredEntrypoint) {
+    throw new Error(`Release manifest is missing ${requiredEntrypoint}`);
+  }
   return manifest;
 }

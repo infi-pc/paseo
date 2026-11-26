@@ -59,7 +59,7 @@ it("builds the Workshop prompt with intent-first instructions and no query or ex
       "- Only when the user asks you to make or change something (now or in a later turn of this chat):",
       "  1. Make the edit inside that worktree.",
       "  2. Run `paseo-ed verify <slug>` to check typecheck and lint.",
-      '  3. Run `paseo-ed stage <slug> --summary "<short summary>" --upload` to commit on the WIP branch, build the signed Electron preview, and publish to Cloud Shelf. Do NOT merge to main or run `paseo-ed ship` — the user will click Ship when ready.',
+      '  3. Run `paseo-ed stage <slug> --summary "<short summary>" --upload` to commit on the WIP branch, build the signed UI and/or Daemon release(s), and publish to Cloud Shelf so the user can hot-swap them live in Paseo Dev.app. Do NOT merge to main or run `paseo-ed ship` — the user will click Ship when ready.',
       "- To live-inspect the running Paseo Dev.app (screenshots, DOM, React props/hooks, matched CSS, console logs, network, perf/APM, or stores), run `paseo-ed app --help`.",
       "",
       "Locator context:",

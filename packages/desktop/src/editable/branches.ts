@@ -15,8 +15,14 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { syncChannelFromCloudShelf, syncWipIndexFromCloudShelf } from "./cloud-sync.js";
 import { resolveRegularFile, verifySignedEnvelope } from "./crypto.js";
+import type { EditableDaemonController, EditableDaemonRuntimeState } from "./daemon-swap.js";
 import type { EditableReleaseStore, RendererRelease } from "./release-store.js";
-import { wipIndexSchema, type WipBranchPointer } from "./schema.js";
+import {
+  editableServiceSchema,
+  wipIndexSchema,
+  type EditableService,
+  type WipBranchPointer,
+} from "./schema.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -31,6 +37,8 @@ const localBranchMetaSchema = z.object({
   status: z.enum(["working", "ready", "failed"]),
   summary: z.string().default(""),
   releaseDigest: z.string().nullable().default(null),
+  daemonReleaseDigest: z.string().nullable().default(null),
+  services: z.array(editableServiceSchema).optional(),
   sourceSha: z.string().default(""),
   generation: z.number().int().nullable().default(null),
   uploadedToCloud: z.boolean().default(false),
@@ -56,6 +64,8 @@ export interface EditableBranchEntry {
   status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
   releaseDigest: string | null;
+  daemonReleaseDigest: string | null;
+  services: EditableService[];
   generation: number | null;
   sourceSha: string | null;
   hasChanges: boolean;
@@ -63,6 +73,9 @@ export interface EditableBranchEntry {
   canFastForward: boolean;
   requiresDaemon: boolean;
   hasUpdate: boolean;
+  hasUiUpdate: boolean;
+  hasDaemonUpdate: boolean;
+  requiresDaemonRestartOnLoad: boolean;
   loaded: boolean;
   remoteOnly: boolean;
   agentId: string | null;
@@ -73,6 +86,10 @@ export interface EditableBranchEntry {
 export interface EditableBranchesSnapshot {
   loadedChannel: string;
   loadedDigest: string | null;
+  loadedDaemonDigest: string | null;
+  daemonRunning: boolean;
+  daemonListen: string | null;
+  mainDaemonGeneration: number | null;
   safeRenderer: boolean;
   main: EditableBranchEntry;
   branches: EditableBranchEntry[];
@@ -90,9 +107,17 @@ export interface ShipBranchResult {
   ok: boolean;
   fastForwarded?: boolean;
   releaseDigest?: string | null;
+  daemonReleaseDigest?: string | null;
   generation?: number;
   shouldAutoLoad?: boolean;
   error?: string;
+}
+
+export interface LoadBranchResult {
+  release: RendererRelease;
+  channel: string;
+  uiChanged: boolean;
+  daemonSwapped: boolean;
 }
 
 interface GitWorktreeInspection {
@@ -204,10 +229,56 @@ export interface EditableBranchManagerDeps {
   home: string;
   configHome: string;
   store: EditableReleaseStore;
+  daemonController?: EditableDaemonController;
   userHome?: string;
   cliBin?: string;
   fetchImpl?: typeof fetch;
   execCli?: (args: string[], env: NodeJS.ProcessEnv) => Promise<string>;
+}
+
+interface SnapshotContext {
+  loadedChannel: string;
+  loadedDigest: string | null;
+  safeRenderer: boolean;
+  prodDaemonDigest: string | null;
+  daemonState: EditableDaemonRuntimeState;
+}
+
+function pickPrimaryPointer(
+  uiPtr: ReturnType<EditableReleaseStore["getChannelPointer"]>,
+  daemonPtr: ReturnType<EditableReleaseStore["getDaemonChannelPointer"]>,
+) {
+  return uiPtr ?? daemonPtr;
+}
+
+function listPresentServices(hasUi: boolean, hasDaemon: boolean): EditableService[] {
+  const services: EditableService[] = [];
+  if (hasUi) services.push("ui");
+  if (hasDaemon) services.push("daemon");
+  return services;
+}
+
+function firstNonNull<T>(...values: Array<T | null | undefined>): T | null {
+  for (const v of values) {
+    if (v !== null && v !== undefined) return v;
+  }
+  return null;
+}
+
+function inferBranchServices(input: {
+  explicit?: EditableService[];
+  releaseDigest: string | null;
+  daemonReleaseDigest: string | null;
+  requiresDaemon: boolean;
+  requiresNative?: boolean;
+}): EditableService[] {
+  if (input.explicit && input.explicit.length > 0) return input.explicit;
+  const services = listPresentServices(
+    Boolean(input.releaseDigest),
+    Boolean(input.daemonReleaseDigest || input.requiresDaemon),
+  );
+  if (input.requiresNative) services.push("desktop");
+  return services;
 }
 
 export class EditableBranchManager {
@@ -244,64 +315,112 @@ export class EditableBranchManager {
     );
   }
 
-  private buildMainEntry(
-    baseBranch: string,
-    input: { loadedChannel: string; loadedDigest: string | null; safeRenderer: boolean },
-  ): EditableBranchEntry {
+  private hasDaemonDigestUpdate(
+    loaded: boolean,
+    targetDaemonDigest: string | null,
+    daemonState: EditableDaemonRuntimeState,
+  ): boolean {
+    if (!loaded || !targetDaemonDigest || this.deps.store.isDaemonQuarantined(targetDaemonDigest)) {
+      return false;
+    }
+    const currentDigest = daemonState.running
+      ? daemonState.runningDigest
+      : this.deps.store.activeDaemonDigest;
+    return targetDaemonDigest !== currentDigest;
+  }
+
+  private willRestartDaemonOnLoad(
+    targetDaemonDigest: string | null,
+    daemonState: EditableDaemonRuntimeState,
+  ): boolean {
+    if (!daemonState.running) return false;
+    return daemonState.runningDigest !== targetDaemonDigest;
+  }
+
+  private buildMainEntry(baseBranch: string, ctx: SnapshotContext): EditableBranchEntry {
     const prodPtr = this.deps.store.getChannelPointer("prod");
-    const loaded = !input.safeRenderer && input.loadedChannel === "prod";
+    const prodDaemonPtr = this.deps.store.getDaemonChannelPointer("prod");
+    const primary = pickPrimaryPointer(prodPtr, prodDaemonPtr);
+    const uiDigest = prodPtr?.digest ?? null;
+    const daemonDigest = prodDaemonPtr?.digest ?? null;
+    const loaded = !ctx.safeRenderer && ctx.loadedChannel === "prod";
+    const hasUiUpdate = this.hasDigestUpdate(loaded, uiDigest, ctx.loadedDigest);
+    const hasDaemonUpdate = this.hasDaemonDigestUpdate(loaded, daemonDigest, ctx.daemonState);
+    const generation = Math.max(prodPtr?.generation ?? 0, prodDaemonPtr?.generation ?? 0) || null;
+
     return {
       slug: "main",
       channel: "prod",
       branch: baseBranch,
       isMain: true,
       status: "ready",
-      summary: prodPtr?.summary ?? null,
-      releaseDigest: prodPtr?.digest ?? null,
-      generation: prodPtr?.generation ?? null,
-      sourceSha: prodPtr?.sourceSha ?? null,
+      summary: primary?.summary ?? null,
+      releaseDigest: uiDigest,
+      daemonReleaseDigest: daemonDigest,
+      services: listPresentServices(Boolean(uiDigest), Boolean(daemonDigest)),
+      generation,
+      sourceSha: primary?.sourceSha ?? null,
       hasChanges: false,
       behindMain: false,
       canFastForward: false,
       requiresDaemon: false,
-      hasUpdate: this.hasDigestUpdate(loaded, prodPtr?.digest ?? null, input.loadedDigest),
+      hasUpdate: hasUiUpdate || hasDaemonUpdate,
+      hasUiUpdate,
+      hasDaemonUpdate,
+      requiresDaemonRestartOnLoad: this.willRestartDaemonOnLoad(daemonDigest, ctx.daemonState),
       loaded,
       remoteOnly: false,
       agentId: null,
       error: null,
-      updatedAt: prodPtr?.updatedAt ?? null,
+      updatedAt: primary?.updatedAt ?? null,
     };
   }
 
-  private buildIndexedWipEntry(
-    ptr: WipBranchPointer,
-    input: { loadedChannel: string; loadedDigest: string | null; safeRenderer: boolean },
-  ): EditableBranchEntry {
+  private buildIndexedWipEntry(ptr: WipBranchPointer, ctx: SnapshotContext): EditableBranchEntry {
     const channelPtr = this.deps.store.getChannelPointer(ptr.channel);
+    const channelDaemonPtr = this.deps.store.getDaemonChannelPointer(ptr.channel);
+    const primary = pickPrimaryPointer(channelPtr, channelDaemonPtr);
     const digest = channelPtr?.digest ?? ptr.releaseDigest;
-    const loaded = !input.safeRenderer && input.loadedChannel === ptr.channel;
-    let status: EditableBranchEntry["status"] = digest ? "ready" : "idle";
+    const daemonDigest = firstNonNull(channelDaemonPtr?.digest, ptr.daemonReleaseDigest);
+    const loaded = !ctx.safeRenderer && ctx.loadedChannel === ptr.channel;
+    const targetDaemon = daemonDigest ?? ctx.prodDaemonDigest;
+    const hasUiUpdate = this.hasDigestUpdate(loaded, digest, ctx.loadedDigest);
+    const hasDaemonUpdate = this.hasDaemonDigestUpdate(loaded, targetDaemon, ctx.daemonState);
+    const hasArtifact = Boolean(digest || daemonDigest);
+    let status: EditableBranchEntry["status"] = hasArtifact ? "ready" : "idle";
     if (this.shippingSlugs.has(ptr.slug)) status = "shipping";
+
     return {
       slug: ptr.slug,
       channel: ptr.channel,
       branch: ptr.branch,
       isMain: false,
       status,
-      summary: channelPtr?.summary ?? (ptr.summary || null),
+      summary: firstNonNull(primary?.summary, ptr.summary || null),
       releaseDigest: digest,
-      generation: channelPtr?.generation ?? null,
-      sourceSha: channelPtr?.sourceSha ?? ptr.sourceSha,
-      hasChanges: Boolean(digest),
+      daemonReleaseDigest: daemonDigest,
+      services: inferBranchServices({
+        explicit: ptr.services,
+        releaseDigest: digest,
+        daemonReleaseDigest: daemonDigest,
+        requiresDaemon: ptr.requiresDaemon,
+        requiresNative: ptr.requiresNative,
+      }),
+      generation: primary?.generation ?? null,
+      sourceSha: primary?.sourceSha ?? ptr.sourceSha,
+      hasChanges: hasArtifact,
       behindMain: false,
       canFastForward: false,
-      requiresDaemon: ptr.requiresDaemon,
-      hasUpdate: this.hasDigestUpdate(loaded, digest, input.loadedDigest),
+      requiresDaemon: ptr.requiresDaemon || Boolean(daemonDigest),
+      hasUpdate: hasUiUpdate || hasDaemonUpdate,
+      hasUiUpdate,
+      hasDaemonUpdate,
+      requiresDaemonRestartOnLoad: this.willRestartDaemonOnLoad(targetDaemon, ctx.daemonState),
       loaded,
       remoteOnly: true,
       agentId: null,
       error: this.shipErrors.get(ptr.slug) ?? null,
-      updatedAt: channelPtr?.updatedAt ?? ptr.updatedAt,
+      updatedAt: primary?.updatedAt ?? ptr.updatedAt,
     };
   }
 
@@ -310,11 +429,14 @@ export class EditableBranchManager {
       return {
         channel: `wip-${slug}`,
         digest: null as string | null,
+        daemonDigest: null as string | null,
+        services: undefined as EditableService[] | undefined,
         sha: null as string | null,
         branch: `ed/wip/${slug}`,
         summary: null as string | null,
         generation: null as number | null,
         requiresDaemon: false,
+        requiresNative: false,
         agentId: null as string | null,
         error: null as string | null,
         updatedAt: null as string | null,
@@ -323,11 +445,14 @@ export class EditableBranchManager {
     return {
       channel: meta.channel,
       digest: meta.releaseDigest,
+      daemonDigest: meta.daemonReleaseDigest,
+      services: meta.services,
       sha: meta.sourceSha,
       branch: meta.branch,
       summary: meta.summary || null,
       generation: meta.generation,
       requiresDaemon: meta.requiresDaemon,
+      requiresNative: meta.requiresNative,
       agentId: meta.agentId,
       error: meta.error,
       updatedAt: meta.updatedAt || null,
@@ -336,23 +461,17 @@ export class EditableBranchManager {
 
   private mergeChannelRelease(
     channelPtr: ReturnType<EditableReleaseStore["getChannelPointer"]>,
+    daemonPtr: ReturnType<EditableReleaseStore["getDaemonChannelPointer"]>,
     defaults: ReturnType<EditableBranchManager["extractMetaDefaults"]>,
   ) {
-    if (!channelPtr) {
-      return {
-        releaseDigest: defaults.digest,
-        releaseSha: defaults.sha,
-        summary: defaults.summary,
-        generation: defaults.generation,
-        updatedAt: defaults.updatedAt,
-      };
-    }
+    const primary = pickPrimaryPointer(channelPtr, daemonPtr);
     return {
-      releaseDigest: channelPtr.digest,
-      releaseSha: channelPtr.sourceSha,
-      summary: channelPtr.summary ?? defaults.summary,
-      generation: channelPtr.generation,
-      updatedAt: channelPtr.updatedAt,
+      releaseDigest: firstNonNull(channelPtr?.digest, defaults.digest),
+      daemonReleaseDigest: firstNonNull(daemonPtr?.digest, defaults.daemonDigest),
+      releaseSha: firstNonNull(primary?.sourceSha, defaults.sha),
+      summary: firstNonNull(primary?.summary, defaults.summary),
+      generation: firstNonNull(primary?.generation, defaults.generation),
+      updatedAt: firstNonNull(primary?.updatedAt, defaults.updatedAt),
     };
   }
 
@@ -361,12 +480,12 @@ export class EditableBranchManager {
     meta: LocalBranchMeta | null,
     hasChanges: boolean,
     stagedMatchesHead: boolean,
-    releaseDigest: string | null,
+    hasAnyRelease: boolean,
     shipErr: string | null,
   ): EditableBranchEntry["status"] {
     if (this.shippingSlugs.has(slug)) return "shipping";
     if (shipErr || meta?.status === "failed") return "failed";
-    if (hasChanges && (stagedMatchesHead || (meta?.status === "ready" && releaseDigest))) {
+    if (hasChanges && (stagedMatchesHead || (meta?.status === "ready" && hasAnyRelease))) {
       return "ready";
     }
     if (hasChanges) return "draft";
@@ -380,10 +499,13 @@ export class EditableBranchManager {
     requiresDaemon: boolean;
     meta: LocalBranchMeta | null;
     releaseDigest: string | null;
+    daemonReleaseDigest: string | null;
     releaseSha: string | null;
   }): boolean {
     if (!input.hasChanges || input.dirty) return false;
-    if (input.releaseDigest && input.releaseSha === input.headSha) return true;
+    if ((input.releaseDigest || input.daemonReleaseDigest) && input.releaseSha === input.headSha) {
+      return true;
+    }
     return Boolean(
       input.requiresDaemon &&
       input.meta?.status === "ready" &&
@@ -394,7 +516,7 @@ export class EditableBranchManager {
   private buildLocalWipEntry(
     info: GitWorktreeInspection,
     hasRemote: boolean,
-    input: { loadedChannel: string; loadedDigest: string | null; safeRenderer: boolean },
+    ctx: SnapshotContext,
   ): EditableBranchEntry | null {
     const meta = readLocalBranchMeta(this.deps.configHome, info.slug);
     const hasChanges = info.aheadOfMain > 0 || info.dirty;
@@ -402,7 +524,8 @@ export class EditableBranchManager {
 
     const defaults = this.extractMetaDefaults(info.slug, meta);
     const channelPtr = this.deps.store.getChannelPointer(defaults.channel);
-    const release = this.mergeChannelRelease(channelPtr, defaults);
+    const daemonPtr = this.deps.store.getDaemonChannelPointer(defaults.channel);
+    const release = this.mergeChannelRelease(channelPtr, daemonPtr, defaults);
     const stagedMatchesHead = this.isStagedAtHead({
       hasChanges,
       dirty: info.dirty,
@@ -410,10 +533,16 @@ export class EditableBranchManager {
       requiresDaemon: defaults.requiresDaemon,
       meta,
       releaseDigest: release.releaseDigest,
+      daemonReleaseDigest: release.daemonReleaseDigest,
       releaseSha: release.releaseSha,
     });
-    const loaded = !input.safeRenderer && input.loadedChannel === defaults.channel;
+    const loaded = !ctx.safeRenderer && ctx.loadedChannel === defaults.channel;
     const shipErr = this.shipErrors.get(info.slug) ?? null;
+    const uiDigest = hasChanges ? release.releaseDigest : null;
+    const daemonDigest = hasChanges ? release.daemonReleaseDigest : null;
+    const targetDaemon = daemonDigest ?? ctx.prodDaemonDigest;
+    const hasUiUpdate = this.hasDigestUpdate(loaded, uiDigest, ctx.loadedDigest);
+    const hasDaemonUpdate = this.hasDaemonDigestUpdate(loaded, targetDaemon, ctx.daemonState);
 
     return {
       slug: info.slug,
@@ -425,22 +554,31 @@ export class EditableBranchManager {
         meta,
         hasChanges,
         stagedMatchesHead,
-        release.releaseDigest,
+        Boolean(release.releaseDigest || release.daemonReleaseDigest),
         shipErr,
       ),
       summary: release.summary,
-      releaseDigest: hasChanges ? release.releaseDigest : null,
+      releaseDigest: uiDigest,
+      daemonReleaseDigest: daemonDigest,
+      services: hasChanges
+        ? inferBranchServices({
+            explicit: defaults.services,
+            releaseDigest: uiDigest,
+            daemonReleaseDigest: daemonDigest,
+            requiresDaemon: defaults.requiresDaemon,
+            requiresNative: defaults.requiresNative,
+          })
+        : [],
       generation: hasChanges ? release.generation : null,
       sourceSha: info.headSha,
       hasChanges,
       behindMain: info.behindMain > 0,
       canFastForward: hasChanges && info.behindMain === 0 && !info.dirty && stagedMatchesHead,
-      requiresDaemon: defaults.requiresDaemon,
-      hasUpdate: this.hasDigestUpdate(
-        loaded,
-        hasChanges ? release.releaseDigest : null,
-        input.loadedDigest,
-      ),
+      requiresDaemon: defaults.requiresDaemon || Boolean(daemonDigest),
+      hasUpdate: hasUiUpdate || hasDaemonUpdate,
+      hasUiUpdate,
+      hasDaemonUpdate,
+      requiresDaemonRestartOnLoad: this.willRestartDaemonOnLoad(targetDaemon, ctx.daemonState),
       loaded,
       remoteOnly: false,
       agentId: defaults.agentId,
@@ -455,14 +593,29 @@ export class EditableBranchManager {
     safeRenderer: boolean;
   }): Promise<EditableBranchesSnapshot> {
     const config = readLocalConfig(this.deps.configHome);
-    const main = this.buildMainEntry(config.baseBranch, input);
+    const daemonState: EditableDaemonRuntimeState = this.deps.daemonController
+      ? await this.deps.daemonController.getRunningState()
+      : {
+          running: false,
+          listen: null,
+          pid: null,
+          runningDigest: this.deps.store.activeDaemonDigest,
+          runningChannel: null,
+        };
+    const prodDaemonPtr = this.deps.store.getDaemonChannelPointer("prod");
+    const ctx: SnapshotContext = {
+      ...input,
+      prodDaemonDigest: prodDaemonPtr?.digest ?? null,
+      daemonState,
+    };
+    const main = this.buildMainEntry(config.baseBranch, ctx);
     const bySlug = new Map<string, EditableBranchEntry>();
 
     const indexed = readVerifiedWipIndex([this.deps.home, this.deps.configHome], () =>
       this.deps.store.publicKey(),
     );
     for (const ptr of indexed) {
-      bySlug.set(ptr.slug, this.buildIndexedWipEntry(ptr, input));
+      bySlug.set(ptr.slug, this.buildIndexedWipEntry(ptr, ctx));
     }
 
     const worktreesDir = path.join(this.deps.configHome, "worktrees");
@@ -481,7 +634,7 @@ export class EditableBranchManager {
     );
     for (const info of inspections) {
       if (!info) continue;
-      const entry = this.buildLocalWipEntry(info, bySlug.has(info.slug), input);
+      const entry = this.buildLocalWipEntry(info, bySlug.has(info.slug), ctx);
       if (entry) bySlug.set(info.slug, entry);
     }
 
@@ -493,6 +646,12 @@ export class EditableBranchManager {
     return {
       loadedChannel: input.loadedChannel,
       loadedDigest: input.loadedDigest,
+      loadedDaemonDigest: daemonState.running
+        ? daemonState.runningDigest
+        : this.deps.store.activeDaemonDigest,
+      daemonRunning: daemonState.running,
+      daemonListen: daemonState.listen,
+      mainDaemonGeneration: prodDaemonPtr?.generation ?? null,
       safeRenderer: input.safeRenderer,
       main,
       branches,
@@ -507,16 +666,23 @@ export class EditableBranchManager {
     return this.syncing;
   }
 
-  private async runSyncAll(loadedChannel: string): Promise<{ updated: boolean }> {
-    let anyUpdated = false;
-    const common = {
+  private syncOptions() {
+    return {
       home: this.deps.home,
       configHome: this.deps.configHome,
       publicKey: () => this.deps.store.publicKey(),
       isQuarantined: (digest: string) => this.deps.store.isQuarantined(digest),
       hasInstalledRelease: (digest: string) => this.deps.store.hasInstalledRelease(digest),
+      isDaemonQuarantined: (digest: string) => this.deps.store.isDaemonQuarantined(digest),
+      hasInstalledDaemonRelease: (digest: string) =>
+        this.deps.store.hasInstalledDaemonRelease(digest),
       fetchImpl: this.deps.fetchImpl,
     };
+  }
+
+  private async runSyncAll(loadedChannel: string): Promise<{ updated: boolean }> {
+    let anyUpdated = false;
+    const common = this.syncOptions();
 
     try {
       const prodRes = await syncChannelFromCloudShelf({ ...common, channel: "prod" });
@@ -542,7 +708,7 @@ export class EditableBranchManager {
       channelsToSync.add(loadedChannel);
     }
     for (const ptr of wipPointers) {
-      if (ptr.releaseDigest) channelsToSync.add(ptr.channel);
+      if (ptr.releaseDigest || ptr.daemonReleaseDigest) channelsToSync.add(ptr.channel);
     }
 
     for (const channel of channelsToSync) {
@@ -557,32 +723,100 @@ export class EditableBranchManager {
     return { updated: anyUpdated };
   }
 
-  async loadBranch(channel: string): Promise<{ release: RendererRelease; channel: string }> {
+  private async ensureChannelSynced(channel: string): Promise<void> {
+    const uiPtr = this.deps.store.getChannelPointer(channel);
+    const daemonPtr = this.deps.store.getDaemonChannelPointer(channel);
+    const missingUi = uiPtr && !this.deps.store.hasInstalledRelease(uiPtr.digest);
+    const missingDaemon = daemonPtr && !this.deps.store.hasInstalledDaemonRelease(daemonPtr.digest);
+    if (!uiPtr || !daemonPtr || missingUi || missingDaemon) {
+      await syncChannelFromCloudShelf({ ...this.syncOptions(), channel }).catch(() => null);
+    }
+  }
+
+  private async applyTargetDaemon(
+    targetDaemonDigest: string | null,
+    channel: string,
+    generation?: number,
+  ): Promise<boolean> {
+    if (this.deps.daemonController) {
+      const swapRes = await this.deps.daemonController.applyDaemonTarget({
+        targetDigest: targetDaemonDigest,
+        channel,
+        generation,
+      });
+      if (!swapRes.ok) {
+        throw new Error(swapRes.error ?? "Failed to swap dev daemon");
+      }
+      return swapRes.swapped;
+    }
+    if (targetDaemonDigest !== this.deps.store.activeDaemonDigest) {
+      this.deps.store.switchDaemonRelease(targetDaemonDigest, generation, channel);
+    }
+    return false;
+  }
+
+  async loadBranch(
+    channel: string,
+    options?: { currentLoadedDigest?: string | null },
+  ): Promise<LoadBranchResult> {
     if (!CHANNEL_RE.test(channel)) {
       throw new Error(`Invalid branch channel: ${channel}`);
     }
-    let ptr = this.deps.store.getChannelPointer(channel);
-    if (!ptr || !this.deps.store.hasInstalledRelease(ptr.digest)) {
-      await syncChannelFromCloudShelf({
-        home: this.deps.home,
-        configHome: this.deps.configHome,
-        channel,
-        publicKey: () => this.deps.store.publicKey(),
-        isQuarantined: (d) => this.deps.store.isQuarantined(d),
-        hasInstalledRelease: (d) => this.deps.store.hasInstalledRelease(d),
-        fetchImpl: this.deps.fetchImpl,
-      }).catch(() => null);
-      ptr = this.deps.store.getChannelPointer(channel);
+    await this.ensureChannelSynced(channel);
+    if (channel !== "prod") {
+      await this.ensureChannelSynced("prod");
     }
-    if (!ptr) {
-      if (channel === "prod") {
-        const release = this.deps.store.switchToChannel("prod", null);
-        return { release, channel: "prod" };
+
+    const channelUiPtr = this.deps.store.getChannelPointer(channel);
+    const channelDaemonPtr = this.deps.store.getDaemonChannelPointer(channel);
+    if (channel !== "prod" && !channelUiPtr && !channelDaemonPtr) {
+      throw new Error(`No signed UI or Daemon build is ready for ${channel} yet`);
+    }
+
+    const prodUiPtr = this.deps.store.getChannelPointer("prod");
+    const prodDaemonPtr = this.deps.store.getDaemonChannelPointer("prod");
+    const targetUiPtr = channelUiPtr ?? prodUiPtr;
+    const targetDaemonDigest = (channelDaemonPtr ?? prodDaemonPtr)?.digest ?? null;
+    const daemonSwapped = await this.applyTargetDaemon(
+      targetDaemonDigest,
+      channel,
+      channel === "prod" ? prodDaemonPtr?.generation : undefined,
+    );
+
+    const prevUiDigest =
+      options?.currentLoadedDigest !== undefined
+        ? options.currentLoadedDigest
+        : this.deps.store.activeRelease.releaseDigest;
+    const release = this.deps.store.switchToChannel(
+      channel,
+      targetUiPtr?.digest ?? null,
+      channel === "prod" ? prodUiPtr?.generation : undefined,
+    );
+    return {
+      release,
+      channel,
+      uiChanged: release.releaseDigest !== prevUiDigest,
+      daemonSwapped,
+    };
+  }
+
+  private async shouldAutoLoadAfterShip(input: {
+    slug: string;
+    loadedChannel: string;
+    fastForwarded: boolean;
+    publishedUiDigest: string | null;
+    publishedDaemonDigest: string | null;
+  }): Promise<boolean> {
+    if (!input.fastForwarded) return false;
+    const onWip = input.loadedChannel === `wip-${input.slug}`;
+    if (input.loadedChannel !== "prod" && !onWip) return false;
+    if (input.publishedDaemonDigest && this.deps.daemonController) {
+      const runningState = await this.deps.daemonController.getRunningState();
+      if (runningState.running && runningState.runningDigest !== input.publishedDaemonDigest) {
+        return false;
       }
-      throw new Error(`No signed UI build is ready for ${channel} yet`);
     }
-    const release = this.deps.store.switchToChannel(channel, ptr.digest, ptr.generation);
-    return { release, channel };
+    return Boolean(input.publishedUiDigest || (input.publishedDaemonDigest && onWip));
   }
 
   async shipBranch(slug: string, options: { loadedChannel: string }): Promise<ShipBranchResult> {
@@ -600,33 +834,31 @@ export class EditableBranchManager {
         ok?: boolean;
         fastForwarded?: boolean;
         electronPublish?: { releaseDigest?: string; generation?: number } | null;
+        daemonPublish?: { releaseDigest?: string; generation?: number } | null;
       };
       if (!parsed.ok) {
         throw new Error("Ship verification failed");
       }
 
-      // Sync prod channel cache locally so main immediately reflects the new generation
-      await syncChannelFromCloudShelf({
-        home: this.deps.home,
-        configHome: this.deps.configHome,
-        channel: "prod",
-        publicKey: () => this.deps.store.publicKey(),
-        isQuarantined: (d) => this.deps.store.isQuarantined(d),
-        hasInstalledRelease: (d) => this.deps.store.hasInstalledRelease(d),
-        fetchImpl: this.deps.fetchImpl,
-      }).catch(() => null);
+      await syncChannelFromCloudShelf({ ...this.syncOptions(), channel: "prod" }).catch(() => null);
 
       const fastForwarded = parsed.fastForwarded === true;
-      const shouldAutoLoad =
-        fastForwarded &&
-        Boolean(parsed.electronPublish?.releaseDigest) &&
-        (options.loadedChannel === "prod" || options.loadedChannel === `wip-${slug}`);
+      const publishedUiDigest = parsed.electronPublish?.releaseDigest ?? null;
+      const publishedDaemonDigest = parsed.daemonPublish?.releaseDigest ?? null;
+      const shouldAutoLoad = await this.shouldAutoLoadAfterShip({
+        slug,
+        loadedChannel: options.loadedChannel,
+        fastForwarded,
+        publishedUiDigest,
+        publishedDaemonDigest,
+      });
 
       return {
         ok: true,
         fastForwarded,
-        releaseDigest: parsed.electronPublish?.releaseDigest ?? null,
-        generation: parsed.electronPublish?.generation,
+        releaseDigest: publishedUiDigest,
+        daemonReleaseDigest: publishedDaemonDigest,
+        generation: parsed.electronPublish?.generation ?? parsed.daemonPublish?.generation,
         shouldAutoLoad,
       };
     } catch (error) {
@@ -694,6 +926,7 @@ export class EditableBranchManager {
             status: "working",
             summary: "",
             releaseDigest: null,
+            daemonReleaseDigest: null,
             sourceSha: "",
             generation: null,
             uploadedToCloud: false,

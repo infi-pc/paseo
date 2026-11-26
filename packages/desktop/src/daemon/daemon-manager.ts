@@ -37,7 +37,12 @@ import {
   sendLocalTransportMessage,
   closeLocalTransportSession,
 } from "./local-transport.js";
-import { createNodeEntrypointInvocation, resolveDaemonRunnerEntrypoint } from "./runtime-paths.js";
+import {
+  buildEditableDaemonEnv,
+  createNodeEntrypointInvocation,
+  resolveDaemonRunnerEntrypoint,
+  type EditableDaemonLaunchOverride,
+} from "./runtime-paths.js";
 import {
   ExternalCliCommandError,
   runExternalCliJsonCommand,
@@ -61,6 +66,15 @@ import { tailFile } from "../diagnostics/tail-file.js";
 
 const DAEMON_LOG_FILENAME = "daemon.log";
 let ownedLaunch: { home: string; instance: DaemonInstance } | null = null;
+let daemonLaunchHooks: {
+  resolveEditableDaemonLaunch?: () => EditableDaemonLaunchOverride | null;
+  onEditableDaemonStarted?: (info: {
+    home: string;
+    instance: DaemonInstance;
+    digest: string | null;
+    channel: string;
+  }) => void;
+} = {};
 
 type DesktopDaemonState = "starting" | "running" | "stopped" | "errored";
 const DESKTOP_DAEMON_STOP_REASON_VALUES = [
@@ -70,6 +84,7 @@ const DESKTOP_DAEMON_STOP_REASON_VALUES = [
   "quit",
   "app_update",
   "version_mismatch",
+  "editable_swap",
   "restart",
 ] as const;
 export type DesktopDaemonStopReason = (typeof DESKTOP_DAEMON_STOP_REASON_VALUES)[number];
@@ -287,7 +302,11 @@ function assertBuiltInDaemonManagementEnabled(settings: DesktopSettings): void {
   }
 }
 
-async function startDaemon(): Promise<DesktopDaemonStatus> {
+export async function startDesktopDaemon(options?: {
+  override?: EditableDaemonLaunchOverride | null;
+  skipVersionMismatchCheck?: boolean;
+  timeoutMs?: number;
+}): Promise<DesktopDaemonStatus> {
   assertBuiltInDaemonManagementEnabled(await getDesktopSettingsStore().get());
 
   const current = await resolveDesktopDaemonStatus();
@@ -300,7 +319,7 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
     desktopManaged: current.desktopManaged,
   });
   if (current.status === "running" || current.status === "starting") {
-    if (shouldRestartForVersion(current)) {
+    if (!options?.skipVersionMismatchCheck && shouldRestartForVersion(current)) {
       logDesktopDaemonLifecycle("daemon version mismatch, restarting", {
         appVersion: normalizeVersion(resolveDesktopAppVersion()),
         daemonVersion: normalizeVersion(current.version),
@@ -312,28 +331,48 @@ async function startDaemon(): Promise<DesktopDaemonStatus> {
   }
 
   const home = getPaseoHome();
+  const launchOverride =
+    options?.override !== undefined
+      ? options.override
+      : (daemonLaunchHooks.resolveEditableDaemonLaunch?.() ?? null);
+  const entrypoint = launchOverride
+    ? { entryPath: launchOverride.entryPath, execArgv: [] }
+    : resolveDaemonRunnerEntrypoint();
+  const baseEnv = launchOverride
+    ? buildEditableDaemonEnv(process.env, launchOverride)
+    : process.env;
   const invocation = createNodeEntrypointInvocation({
-    entrypoint: resolveDaemonRunnerEntrypoint(),
+    entrypoint,
     argvMode: "node-script",
     args: [],
-    baseEnv: process.env,
+    baseEnv,
   });
   try {
     await startDaemonInstance({
       home,
-      timeoutMs: 30_000,
+      timeoutMs: options?.timeoutMs ?? 30_000,
       ...invocation,
       env: { ...invocation.env, PASEO_CLI: getBundledCliShimPath() },
       mode: "managed",
       desktopManaged: true,
       onAcquired: (instance) => {
         ownedLaunch = { home, instance };
+        daemonLaunchHooks.onEditableDaemonStarted?.({
+          home,
+          instance,
+          digest: launchOverride?.digest ?? null,
+          channel: launchOverride?.channel ?? "prod",
+        });
       },
     });
   } catch (error) {
     if (!(error instanceof DaemonInstanceError && error.code === "DAEMON_NOT_READY")) throw error;
   }
   return resolveDesktopDaemonStatus();
+}
+
+async function startDaemon(): Promise<DesktopDaemonStatus> {
+  return startDesktopDaemon();
 }
 
 export async function stopDesktopDaemon(
@@ -375,9 +414,9 @@ export async function stopDesktopDaemon(
   return resolveDesktopDaemonStatus();
 }
 
-/** An app update or a version mismatch replaces the daemon with the one this Desktop bundles. */
+/** An app update, version mismatch, or editable hot-swap replaces the daemon. */
 function isReplacement(reason: DesktopDaemonStopReason): boolean {
-  return reason === "app_update" || reason === "version_mismatch";
+  return reason === "app_update" || reason === "version_mismatch" || reason === "editable_swap";
 }
 
 /**
@@ -500,6 +539,14 @@ async function resolveRequestedReleaseChannel(
 export interface DaemonManagerOptions {
   // FORK(editable): authorize the isolated local Workshop daemon when managed by desktop.
   readWorkshopLocalCredential?: (listen: string) => Promise<string | null>;
+  // FORK(editable): resolve signed hot-swapped daemon releases for the isolated dev sandbox.
+  resolveEditableDaemonLaunch?: () => EditableDaemonLaunchOverride | null;
+  onEditableDaemonStarted?: (info: {
+    home: string;
+    instance: DaemonInstance;
+    digest: string | null;
+    channel: string;
+  }) => void;
 }
 
 export function createDaemonCommandHandlers(
@@ -586,6 +633,10 @@ export function createDaemonCommandHandlers(
 }
 
 export function registerDaemonManager(options?: DaemonManagerOptions): void {
+  daemonLaunchHooks = {
+    resolveEditableDaemonLaunch: options?.resolveEditableDaemonLaunch,
+    onEditableDaemonStarted: options?.onEditableDaemonStarted,
+  };
   const handlers = createDaemonCommandHandlers(options);
 
   ipcMain.handle(

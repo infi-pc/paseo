@@ -66,6 +66,70 @@ export function EditableHoverTooltip({
   );
 }
 
+function renderDaemonRestartWarnIcon(_color: string) {
+  return (
+    <svg
+      data-ed-daemon-restart-warn="true"
+      width={12}
+      height={12}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="#fbbf24"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </svg>
+  );
+}
+
+export function formatDaemonRestartWarning(
+  t: (key: string) => string,
+  daemonListen?: string | null,
+): string {
+  const port = daemonListen?.split(":").at(-1) || "6770";
+  return t("editable.tooltipDaemonRestartWarn").replace("{{port}}", port);
+}
+
+export function EditableLoadButton({
+  label,
+  variant = "ghost",
+  disabled,
+  restartsRunningDaemon = false,
+  daemonListen = null,
+  onPress,
+}: {
+  label: string;
+  variant?: "default" | "ghost";
+  disabled: boolean;
+  restartsRunningDaemon?: boolean;
+  daemonListen?: string | null;
+  onPress: () => void;
+}) {
+  const { t } = useTranslation();
+  const button = (
+    <Button
+      size="sm"
+      variant={variant}
+      leftIcon={restartsRunningDaemon ? renderDaemonRestartWarnIcon : undefined}
+      disabled={disabled}
+      onPress={onPress}
+    >
+      {label}
+    </Button>
+  );
+  if (!restartsRunningDaemon) return button;
+  return (
+    <EditableHoverTooltip tooltip={formatDaemonRestartWarning(t, daemonListen)}>
+      {button}
+    </EditableHoverTooltip>
+  );
+}
+
 function renderUpdateBeforeShipIcon(color: string) {
   return (
     <svg
@@ -91,27 +155,32 @@ function renderUpdateBeforeShipIcon(color: string) {
 function resolveShipTooltip(
   canFastForward: boolean,
   hasUiBuild: boolean,
+  hasDaemonBuild: boolean,
   t: (key: string) => string,
 ): string {
   if (canFastForward) {
-    return hasUiBuild ? t("editable.tooltipShipFast") : t("editable.tooltipShipFastDaemon");
+    if (hasDaemonBuild && !hasUiBuild) return t("editable.tooltipShipFastDaemon");
+    return t("editable.tooltipShipFast");
   }
+  if (hasDaemonBuild && !hasUiBuild) return t("editable.tooltipShipUpdateDaemon");
   return hasUiBuild ? t("editable.tooltipShipUpdate") : t("editable.tooltipShipUpdateDaemon");
 }
 
 export function EditableShipButton({
   canFastForward,
   hasUiBuild,
+  hasDaemonBuild = false,
   disabled,
   onPress,
 }: {
   canFastForward: boolean;
   hasUiBuild: boolean;
+  hasDaemonBuild?: boolean;
   disabled: boolean;
   onPress: () => void;
 }) {
   const { t } = useTranslation();
-  const tooltip = resolveShipTooltip(canFastForward, hasUiBuild, t);
+  const tooltip = resolveShipTooltip(canFastForward, hasUiBuild, hasDaemonBuild, t);
   return (
     <EditableHoverTooltip tooltip={tooltip}>
       <Button

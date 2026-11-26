@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { StreamItem, ToolCallItem } from "@/types/stream";
 import type { EditableBranchEntry, EditableReferencedElement } from "./types";
-import { EditableShipButton } from "./EditableTooltip.web";
+import { EditableLoadButton, EditableShipButton } from "./EditableTooltip.web";
 import {
   getAssistantDisplayText,
   getLatestRecommendedPrompts,
@@ -687,18 +687,24 @@ function resolveBranchActionFlags(
   hasShip: boolean,
 ) {
   if (!branch) {
-    return { canLoad: false, canShip: false, hasUpdate: false, canFastForward: false };
+    return {
+      canLoad: false,
+      canShip: false,
+      hasUpdate: false,
+      canFastForward: false,
+      restartsDaemon: false,
+    };
   }
-  const hasChanges = Boolean(branch.hasChanges ?? branch.releaseDigest);
+  const hasChanges = Boolean(
+    branch.hasChanges ?? (branch.releaseDigest || branch.daemonReleaseDigest),
+  );
+  const hasLoadableBuild = Boolean(branch.releaseDigest || branch.daemonReleaseDigest);
   return {
-    canLoad:
-      hasLoad &&
-      hasChanges &&
-      Boolean(branch.releaseDigest) &&
-      (!branch.loaded || branch.hasUpdate),
+    canLoad: hasLoad && hasChanges && hasLoadableBuild && (!branch.loaded || branch.hasUpdate),
     canShip: hasShip && hasChanges && branch.status === "ready",
     hasUpdate: branch.hasUpdate,
     canFastForward: branch.canFastForward,
+    restartsDaemon: Boolean(branch.requiresDaemonRestartOnLoad),
   };
 }
 
@@ -735,19 +741,19 @@ function ChatHeaderActions({
   return (
     <div style={headerActionsStyle}>
       {flags.canLoad ? (
-        <Button
-          size="sm"
+        <EditableLoadButton
+          label={flags.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
           variant={flags.hasUpdate ? "default" : "ghost"}
           disabled={busy}
+          restartsRunningDaemon={flags.restartsDaemon}
           onPress={handleLoad}
-        >
-          {flags.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
-        </Button>
+        />
       ) : null}
       {flags.canShip ? (
         <EditableShipButton
           canFastForward={flags.canFastForward}
           hasUiBuild={Boolean(branch?.releaseDigest)}
+          hasDaemonBuild={Boolean(branch?.daemonReleaseDigest || branch?.requiresDaemon)}
           disabled={busy}
           onPress={handleShip}
         />

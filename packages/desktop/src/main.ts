@@ -1017,6 +1017,7 @@ async function bootstrap(): Promise<void> {
   ensureNotificationCenterRegistration();
   registerDaemonManager({
     readWorkshopLocalCredential: (listen) => workshopDaemon.readLocalCredential(listen),
+    ...editableRuntime.daemonLaunchHooks(),
   });
   registerWindowManager({ mode: DESKTOP_WINDOW_CHROME_MODE });
   registerDialogHandlers();

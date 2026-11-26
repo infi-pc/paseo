@@ -92,6 +92,8 @@ export interface EditableWorkshopDaemonStatus {
   error: string | null;
 }
 
+export type EditableService = "ui" | "daemon" | "desktop" | "ios";
+
 export interface EditableBranchEntry {
   slug: string;
   channel: string;
@@ -100,6 +102,8 @@ export interface EditableBranchEntry {
   status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
   releaseDigest: string | null;
+  daemonReleaseDigest?: string | null;
+  services?: EditableService[];
   generation: number | null;
   sourceSha: string | null;
   hasChanges?: boolean;
@@ -107,6 +111,9 @@ export interface EditableBranchEntry {
   canFastForward: boolean;
   requiresDaemon: boolean;
   hasUpdate: boolean;
+  hasUiUpdate?: boolean;
+  hasDaemonUpdate?: boolean;
+  requiresDaemonRestartOnLoad?: boolean;
   loaded: boolean;
   remoteOnly: boolean;
   agentId: string | null;
@@ -117,6 +124,10 @@ export interface EditableBranchEntry {
 export interface EditableBranchesSnapshot {
   loadedChannel: string;
   loadedDigest: string | null;
+  loadedDaemonDigest?: string | null;
+  daemonRunning?: boolean;
+  daemonListen?: string | null;
+  mainDaemonGeneration?: number | null;
   safeRenderer: boolean;
   main: EditableBranchEntry;
   branches: EditableBranchEntry[];
@@ -135,15 +146,19 @@ export interface EditableShipBranchResult {
   fastForwarded?: boolean;
   autoLoaded?: boolean;
   releaseDigest?: string | null;
+  daemonReleaseDigest?: string | null;
   generation?: number;
   error?: string;
 }
 
 export interface EditableDesktopStatus {
   runtimeVersion: string;
+  daemonRuntimeVersion?: string;
   activeDigest: string | null;
+  activeDaemonDigest?: string | null;
   releaseDigest: string | null;
   availableDigest: string | null;
+  availableDaemonDigest?: string | null;
   lastKnownGoodDigest: string | null;
   quarantinedDigests: string[];
   previewUrl: string | null;
@@ -164,7 +179,9 @@ export interface EditableDesktopBridge {
   syncFromCloudShelf?: () => Promise<{ ok: boolean; updated?: boolean; error?: string }>;
   syncNow?: () => Promise<{ ok: boolean; updated?: boolean; error?: string }>;
   getBranches?: () => Promise<EditableBranchesSnapshot | null>;
-  loadBranch?: (channel: string) => Promise<{ ok: boolean; error?: string }>;
+  loadBranch?: (
+    channel: string,
+  ) => Promise<{ ok: boolean; uiChanged?: boolean; daemonSwapped?: boolean; error?: string }>;
   shipBranch?: (slug: string) => Promise<EditableShipBranchResult>;
   createBranch?: (input: {
     slug: string;

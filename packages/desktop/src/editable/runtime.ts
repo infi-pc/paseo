@@ -11,6 +11,7 @@ import {
 import { EditableBranchManager } from "./branches.js";
 import { syncFromCloudShelf } from "./cloud-sync.js";
 import { EDITABLE_APP_SCHEME, resolveEditableHome } from "./constants.js";
+import { EditableDaemonController } from "./daemon-swap.js";
 import {
   EditableInspectorServer,
   asInspectorWindow,
@@ -47,6 +48,7 @@ export class EditableDesktopRuntime {
   private readonly home = resolveEditableHome();
   private cloudSync: Promise<boolean> | undefined;
   private readonly store: EditableReleaseStore;
+  private readonly daemonController: EditableDaemonController | null;
   private readonly branchManager: EditableBranchManager | null;
   private readonly inspectorServer: EditableInspectorServer | null;
   private autoSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -72,11 +74,18 @@ export class EditableDesktopRuntime {
       home: this.home,
       publicKeyHome: options.cloudShelfHome,
     });
+    this.daemonController = options.cloudShelfHome
+      ? new EditableDaemonController({
+          store: this.store,
+          warn: options.warn,
+        })
+      : null;
     this.branchManager = options.cloudShelfHome
       ? new EditableBranchManager({
           home: this.home,
           configHome: options.cloudShelfHome,
           store: this.store,
+          daemonController: this.daemonController ?? undefined,
         })
       : null;
     this.inspectorServer = options.cloudShelfHome
@@ -135,10 +144,16 @@ export class EditableDesktopRuntime {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
     });
-    ipcMain.handle("paseo:editable:useRecoveryRenderer", (event) => {
+    ipcMain.handle("paseo:editable:useRecoveryRenderer", async (event) => {
       const win = this.requireWindow(event);
+      if (this.daemonController) {
+        await this.daemonController.resetToBuiltIn().catch(this.options.warn);
+      }
       setImmediate(
-        () => void this.navigate(win, this.store.useRecoveryRenderer()).catch(this.options.warn),
+        () =>
+          void this.navigate(win, this.store.useRecoveryRenderer(), undefined, "builtin").catch(
+            this.options.warn,
+          ),
       );
     });
     ipcMain.handle("paseo:editable:setPreviewUrl", (event, url: unknown) => {
@@ -204,12 +219,22 @@ export class EditableDesktopRuntime {
         return { ok: false, error: "Invalid branch channel" };
       }
       try {
-        const { release, channel: resolvedChannel } = await this.branchManager.loadBranch(channel);
-        setImmediate(
-          () =>
-            void this.navigate(win, release, undefined, resolvedChannel).catch(this.options.warn),
-        );
-        return { ok: true };
+        const currentDigest = this.store.getWindowRelease(win.id)?.releaseDigest ?? null;
+        const {
+          release,
+          channel: resolvedChannel,
+          uiChanged,
+          daemonSwapped,
+        } = await this.branchManager.loadBranch(channel, { currentLoadedDigest: currentDigest });
+        if (uiChanged) {
+          setImmediate(
+            () =>
+              void this.navigate(win, release, undefined, resolvedChannel).catch(this.options.warn),
+          );
+        } else {
+          this.store.pin(win.id, release, resolvedChannel);
+        }
+        return { ok: true, uiChanged, daemonSwapped };
       } catch (error) {
         return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
@@ -224,10 +249,17 @@ export class EditableDesktopRuntime {
       if (!result.ok) return result;
       if (result.shouldAutoLoad) {
         try {
-          const { release } = await this.branchManager.loadBranch("prod");
-          setImmediate(
-            () => void this.navigate(win, release, undefined, "prod").catch(this.options.warn),
-          );
+          const currentDigest = this.store.getWindowRelease(win.id)?.releaseDigest ?? null;
+          const { release, uiChanged } = await this.branchManager.loadBranch("prod", {
+            currentLoadedDigest: currentDigest,
+          });
+          if (uiChanged) {
+            setImmediate(
+              () => void this.navigate(win, release, undefined, "prod").catch(this.options.warn),
+            );
+          } else {
+            this.store.pin(win.id, release, "prod");
+          }
           return { ...result, autoLoaded: true };
         } catch (error) {
           return {
@@ -297,10 +329,17 @@ export class EditableDesktopRuntime {
       const result = await this.branchManager.discardBranch(slug);
       if (result.ok && loadedChannel === `wip-${slug}`) {
         try {
-          const { release } = await this.branchManager.loadBranch("prod");
-          setImmediate(
-            () => void this.navigate(win, release, undefined, "prod").catch(this.options.warn),
-          );
+          const currentDigest = this.store.getWindowRelease(win.id)?.releaseDigest ?? null;
+          const { release, uiChanged } = await this.branchManager.loadBranch("prod", {
+            currentLoadedDigest: currentDigest,
+          });
+          if (uiChanged) {
+            setImmediate(
+              () => void this.navigate(win, release, undefined, "prod").catch(this.options.warn),
+            );
+          } else {
+            this.store.pin(win.id, release, "prod");
+          }
         } catch (error) {
           this.options.warn(error);
         }
@@ -449,8 +488,22 @@ export class EditableDesktopRuntime {
     }
   }
 
-  useRecoveryRenderer(): Promise<void> {
-    return this.navigateFromMenu(this.store.useRecoveryRenderer(), "builtin");
+  daemonLaunchHooks() {
+    const controller = this.daemonController;
+    if (!controller) return {};
+    return {
+      resolveEditableDaemonLaunch: () => controller.resolveLaunchOverride(),
+      onEditableDaemonStarted: (info: Parameters<EditableDaemonController["recordStarted"]>[0]) => {
+        controller.recordStarted(info);
+      },
+    };
+  }
+
+  async useRecoveryRenderer(): Promise<void> {
+    if (this.daemonController) {
+      await this.daemonController.resetToBuiltIn().catch(this.options.warn);
+    }
+    await this.navigateFromMenu(this.store.useRecoveryRenderer(), "builtin");
   }
 
   async reloadLatestRenderer(): Promise<void> {
