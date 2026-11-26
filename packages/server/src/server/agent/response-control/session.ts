@@ -14,7 +14,7 @@ Use double-quoted XML attributes. Escape ampersands as &amp;, quotes as &quot;, 
 Put the footer after all user-facing content. Never include it in progress updates, reasoning, tool calls, or examples. Paseo hides this footer and uses it for naming and completion notifications.`;
 
 export function supportsResponseControl(provider: string): boolean {
-  return ["claude", "codex", "opencode", "pi"].includes(provider);
+  return ["claude", "codex", "opencode", "pi", "antigravity"].includes(provider);
 }
 
 interface TurnResponse {
