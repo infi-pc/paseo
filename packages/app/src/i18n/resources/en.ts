@@ -238,6 +238,14 @@ export const en = {
       changesRequested: "Changes requested",
       reviewRequired: "Review required",
       check: "{{name}}: {{status}}",
+      moreChecks_one: "+{{count}} more check",
+      moreChecks_other: "+{{count}} more checks",
+      ci: {
+        success: "Checks passed",
+        failure: "Checks failed",
+        pending: "Checks pending",
+        ignored: "Checks skipped or cancelled",
+      },
     },
     actions: {
       save: "Save",

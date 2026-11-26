@@ -1,9 +1,9 @@
 import { canonicalGitHubPullRequestUrl } from "@getpaseo/protocol/git-remote";
-import { ForgeSearchItemSchema } from "@getpaseo/protocol/messages";
+import { ForgeSearchItemSchema, type ForgeSearchItem } from "@getpaseo/protocol/messages";
 import { useFetchQuery } from "@/data/query";
 import { GitPullRequestDraft } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { Text } from "react-native";
+import { Text, View } from "react-native";
 import { forwardRef, useCallback, useMemo, useState, type ComponentProps } from "react";
 import type {
   CodeBlockRendererProps,
@@ -14,6 +14,8 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useAssistantFileLinkEnvironment, useFileLink } from "@/assistant-file-links";
 import { MARKDOWN_COPY_RECOGNIZED_LINK_ATTRIBUTE } from "@/assistant-selection-copy/markup";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
+import { classifyCheck, countCheckPresentations } from "@/git/check-presentation";
+import { CheckPresentationIcon } from "@/git/check-presentation.view";
 import { mapCheckStatus } from "@/git/pull-request-panel/check-status";
 import { useHostFeature } from "@/runtime/host-features";
 import { useForgeShorthand } from "@/git/forge-shorthand";
@@ -42,9 +44,13 @@ const LINK_HOVER_STYLE = { textDecoration: "underline" } as const;
 const INLINE_STATUS_STYLE = {
   display: "inline-flex",
   width: 13,
+  height: 13,
   marginInlineEnd: 4,
   verticalAlign: "text-bottom",
 } as const;
+
+const PR_LINK_STYLE = { whiteSpace: "nowrap", overflowWrap: "normal" } as const;
+const WRAPPING_LINK_STYLE = { overflowWrap: "anywhere" } as const;
 
 function WebLink({ link, anchorProps, children }: LinkRendererProps) {
   const forgeShorthand = useForgeShorthand();
@@ -69,10 +75,10 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
   const anchorStyle = useMemo(
     () => ({
       ...anchorProps.style,
-      overflowWrap: "anywhere" as const,
+      ...(prUrl ? PR_LINK_STYLE : WRAPPING_LINK_STYLE),
       ...(hovered ? LINK_HOVER_STYLE : null),
     }),
-    [anchorProps.style, hovered],
+    [anchorProps.style, hovered, prUrl],
   );
   // Selection copy pastes a link Paseo recognized as the text the reply showed.
   const recognized = isRecognizedLink(link);
@@ -100,13 +106,17 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
       <TooltipTrigger asChild onHoverIn={onHoverIn} onFocus={onHoverIn}>
         <InlineLinkTrigger>{anchor}</InlineLinkTrigger>
       </TooltipTrigger>
-      {tooltip ? (
+      {prUrl ? (
+        <TooltipContent side="top" align="start" maxWidth={380} style={styles.prSurface}>
+          <PullRequestDetails {...preview} url={prUrl} />
+        </TooltipContent>
+      ) : null}
+      {!prUrl && tooltip ? (
         <TooltipContent side="top" align="start" maxWidth={520}>
           <Text selectable={false} style={styles.tooltipPath}>
             {tooltip}
             {absolutePath ? `\n${absolutePath}` : ""}
           </Text>
-          {prUrl ? <PullRequestDetails {...preview} /> : null}
         </TooltipContent>
       ) : null}
     </Tooltip>
@@ -148,30 +158,66 @@ function usePullRequestPreview(
   const state = pr?.state.toLowerCase();
   const iconState: ComponentProps<typeof PullRequestStateIcon>["state"] | null =
     state === "open" || state === "closed" || state === "merged" ? state : null;
-  return { pr, iconState, isDraft: iconState === "open" && pr?.isDraft, query, supported };
+  const checkStatus = useMemo(() => summarizeCheckStatus(pr?.checks), [pr?.checks]);
+  return {
+    pr,
+    checkStatus,
+    iconState,
+    isDraft: iconState === "open" && pr?.isDraft,
+    query,
+    supported,
+  };
 }
 
 type PullRequestPreview = ReturnType<typeof usePullRequestPreview>;
 
-function InlinePullRequestStatus({ iconState, isDraft }: PullRequestPreview) {
+function InlinePullRequestStatus({ iconState, isDraft, checkStatus }: PullRequestPreview) {
   const { t } = useTranslation();
   let icon = null;
   if (isDraft) icon = <GitPullRequestDraft size={13} />;
   else if (iconState) icon = <PullRequestStateIcon state={iconState} size={13} />;
   return (
-    <span
-      aria-label={
-        iconState ? t(`workspace.git.pr.states.${isDraft ? "draft" : iconState}`) : undefined
-      }
-      role={iconState ? "img" : undefined}
-      style={INLINE_STATUS_STYLE}
-    >
-      {icon}
-    </span>
+    <>
+      <span
+        aria-label={
+          iconState ? t(`workspace.git.pr.states.${isDraft ? "draft" : iconState}`) : undefined
+        }
+        role={iconState ? "img" : undefined}
+        style={INLINE_STATUS_STYLE}
+      >
+        {icon}
+      </span>
+      <span
+        aria-label={checkStatus ? t(`common.linkPreview.ci.${checkStatus}`) : undefined}
+        role={checkStatus ? "img" : undefined}
+        style={INLINE_STATUS_STYLE}
+      >
+        {checkStatus ? <CheckPresentationIcon presentation={checkStatus} size={13} /> : null}
+      </span>
+    </>
   );
 }
 
-function PullRequestDetails({ pr, iconState, isDraft, query, supported }: PullRequestPreview) {
+function summarizeCheckStatus(
+  checks: ForgeSearchItem["checks"],
+): "failure" | "pending" | "success" | "ignored" | null {
+  if (!checks?.length) return null;
+  const counts = countCheckPresentations(checks);
+  if (counts.failure) return "failure";
+  if (counts.pending) return "pending";
+  if (counts.success) return "success";
+  return "ignored";
+}
+
+function PullRequestDetails({
+  pr,
+  iconState,
+  isDraft,
+  query,
+  supported,
+  checkStatus,
+  url,
+}: PullRequestPreview & { url: string }) {
   const { t } = useTranslation();
   let title = pr?.title || t("common.linkPreview.unavailable");
   if (!supported) title = t("common.linkPreview.unsupportedHost");
@@ -182,18 +228,66 @@ function PullRequestDetails({ pr, iconState, isDraft, query, supported }: PullRe
     ? t(`workspace.git.pr.states.${isDraft ? "draft" : iconState}`)
     : null;
   const status = [stateLabel, reviewKey ? t(reviewKey) : null].filter(Boolean).join(" · ");
-  const checks = pr?.checks?.slice(0, 5).map((check) =>
-    t("common.linkPreview.check", {
-      name: check.name,
-      status: t(
-        `workspace.git.pr.accessibility.checkStatus.${CHECK_LABELS[mapCheckStatus(check.status)]}`,
-      ),
-    }),
-  );
+  const [, owner, repo, , number] = new URL(url).pathname.split("/");
   return (
-    <Text selectable={false} style={styles.tooltipPath}>
-      {[title, status, ...(checks ?? [])].filter(Boolean).join("\n")}
-    </Text>
+    <View style={styles.prDetails}>
+      <Text style={styles.secondary} numberOfLines={1}>{`${owner}/${repo} #${number}`}</Text>
+      <Text style={styles.prTitle} numberOfLines={3}>
+        {title}
+      </Text>
+      {status ? <Text style={styles.secondary}>{status}</Text> : null}
+      {checkStatus && pr?.checks ? (
+        <PullRequestChecks checks={pr.checks} status={checkStatus} />
+      ) : null}
+    </View>
+  );
+}
+
+function PullRequestChecks({
+  checks,
+  status,
+}: {
+  checks: NonNullable<ForgeSearchItem["checks"]>;
+  status: NonNullable<PullRequestPreview["checkStatus"]>;
+}) {
+  const { t } = useTranslation();
+  const order = {
+    failure: 0,
+    pending: 1,
+    success: 2,
+    ignored: 3,
+    manual: 1,
+    warning: 0,
+    actionRequired: 0,
+  };
+  const visibleChecks = [...checks]
+    .sort((a, b) => order[classifyCheck(a)] - order[classifyCheck(b)])
+    .slice(0, 5);
+  return (
+    <View style={styles.checks}>
+      <View style={styles.checkRow}>
+        <CheckPresentationIcon presentation={status} size={14} />
+        <Text style={styles.prTitle}>{t(`common.linkPreview.ci.${status}`)}</Text>
+      </View>
+      {visibleChecks.map((check) => (
+        <View key={`${check.workflow}:${check.name}:${check.url}`} style={styles.checkRow}>
+          <CheckPresentationIcon presentation={classifyCheck(check)} size={12} />
+          <Text style={styles.secondary} numberOfLines={1}>
+            {t("common.linkPreview.check", {
+              name: check.name,
+              status: t(
+                `workspace.git.pr.accessibility.checkStatus.${CHECK_LABELS[mapCheckStatus(check.status)]}`,
+              ),
+            })}
+          </Text>
+        </View>
+      ))}
+      {checks.length > visibleChecks.length ? (
+        <Text style={styles.secondary}>
+          {t("common.linkPreview.moreChecks", { count: checks.length - visibleChecks.length })}
+        </Text>
+      ) : null}
+    </View>
   );
 }
 
@@ -236,6 +330,30 @@ const CHECK_LABELS = {
 } as const;
 
 const styles = StyleSheet.create((theme) => ({
+  prSurface: {
+    backgroundColor: theme.colors.surface2,
+    padding: theme.spacing[3],
+    borderRadius: theme.borderRadius.lg,
+  },
+  prDetails: { gap: theme.spacing[1] },
+  prTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.sm,
+    fontWeight: theme.fontWeight.semibold,
+  },
+  secondary: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    flexShrink: 1,
+  },
+  checks: {
+    borderTopWidth: theme.borderWidth[1],
+    borderTopColor: theme.colors.border,
+    marginTop: theme.spacing[1],
+    paddingTop: theme.spacing[2],
+    gap: theme.spacing[1],
+  },
+  checkRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
   tooltipPath: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,

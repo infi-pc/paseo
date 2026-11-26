@@ -124,6 +124,8 @@ it("loads exact PR details on keyboard focus and keeps the original link destina
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Fix checkout");
     await expect.element(page.getByRole("tooltip")).toHaveTextContent("Build: Passed");
     await expect.element(page.getByRole("img", { name: "Merged" })).toBeInTheDocument();
+    await expect.element(page.getByRole("img", { name: "Checks passed" })).toBeInTheDocument();
+    expect(getComputedStyle(page.getByRole("link").element()).whiteSpace).toBe("nowrap");
     await expect.element(page.getByRole("link")).toHaveAttribute("href", href);
     expect(searchForge).toHaveBeenCalledExactlyOnceWith({
       cwd: "/workspace",
