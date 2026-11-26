@@ -360,5 +360,57 @@ describe("EditableBranchManager", () => {
     );
     const slowShip = await manager.shipBranch("behind-branch", { loadedChannel: "prod" });
     expect(slowShip).toMatchObject({ ok: true, fastForwarded: false, shouldAutoLoad: false });
+
+    // Staged daemon-only branch (requiresDaemon: true, releaseDigest: null) reports ready + canFastForward
+    const wtDaemon = path.join(configHome, "worktrees", "daemon-only");
+    git(["worktree", "add", "-b", "ed/wip/daemon-only", wtDaemon, "main"], repoDir);
+    writeFileSync(path.join(wtDaemon, "daemon.txt"), "server-only change\n");
+    git(["add", "daemon.txt"], wtDaemon);
+    git(["commit", "-m", "daemon only"], wtDaemon);
+    const daemonSha = git(["rev-parse", "HEAD"], wtDaemon);
+    writeFileSync(
+      path.join(configHome, "branches", "daemon-only.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        slug: "daemon-only",
+        branch: "ed/wip/daemon-only",
+        channel: "wip-daemon-only",
+        status: "ready",
+        summary: "Enable Antigravity response metadata",
+        releaseDigest: null,
+        sourceSha: daemonSha,
+        generation: null,
+        uploadedToCloud: false,
+        requiresDaemon: true,
+        requiresNative: false,
+        agentId: "agent-daemon",
+        error: null,
+        updatedAt: "2026-11-26T09:53:00.000Z",
+      }),
+    );
+    const snapDaemon = await manager.getSnapshot({
+      loadedChannel: "prod",
+      loadedDigest: mainRel.releaseDigest,
+      safeRenderer: false,
+    });
+    const daemonBranch = snapDaemon.branches.find((b) => b.slug === "daemon-only");
+    expect(daemonBranch).toMatchObject({
+      status: "ready",
+      hasChanges: true,
+      requiresDaemon: true,
+      releaseDigest: null,
+      canFastForward: true,
+    });
+
+    // Fast-forward ship of a daemon-only branch does not auto-reload renderer (no electronPublish)
+    execCli.mockResolvedValueOnce(
+      JSON.stringify({
+        ok: true,
+        fastForwarded: true,
+        electronPublish: null,
+      }),
+    );
+    const daemonShip = await manager.shipBranch("daemon-only", { loadedChannel: "prod" });
+    expect(daemonShip).toMatchObject({ ok: true, fastForwarded: true, shouldAutoLoad: false });
   });
 });

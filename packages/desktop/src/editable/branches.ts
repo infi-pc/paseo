@@ -360,17 +360,35 @@ export class EditableBranchManager {
     slug: string,
     meta: LocalBranchMeta | null,
     hasChanges: boolean,
-    releaseMatchesHead: boolean,
+    stagedMatchesHead: boolean,
     releaseDigest: string | null,
     shipErr: string | null,
   ): EditableBranchEntry["status"] {
     if (this.shippingSlugs.has(slug)) return "shipping";
     if (shipErr || meta?.status === "failed") return "failed";
-    if (hasChanges && (releaseMatchesHead || (meta?.status === "ready" && releaseDigest))) {
+    if (hasChanges && (stagedMatchesHead || (meta?.status === "ready" && releaseDigest))) {
       return "ready";
     }
     if (hasChanges) return "draft";
     return "idle";
+  }
+
+  private isStagedAtHead(input: {
+    hasChanges: boolean;
+    dirty: boolean;
+    headSha: string;
+    requiresDaemon: boolean;
+    meta: LocalBranchMeta | null;
+    releaseDigest: string | null;
+    releaseSha: string | null;
+  }): boolean {
+    if (!input.hasChanges || input.dirty) return false;
+    if (input.releaseDigest && input.releaseSha === input.headSha) return true;
+    return Boolean(
+      input.requiresDaemon &&
+      input.meta?.status === "ready" &&
+      input.meta.sourceSha === input.headSha,
+    );
   }
 
   private buildLocalWipEntry(
@@ -385,9 +403,15 @@ export class EditableBranchManager {
     const defaults = this.extractMetaDefaults(info.slug, meta);
     const channelPtr = this.deps.store.getChannelPointer(defaults.channel);
     const release = this.mergeChannelRelease(channelPtr, defaults);
-    const releaseMatchesHead = Boolean(
-      hasChanges && release.releaseDigest && release.releaseSha === info.headSha && !info.dirty,
-    );
+    const stagedMatchesHead = this.isStagedAtHead({
+      hasChanges,
+      dirty: info.dirty,
+      headSha: info.headSha,
+      requiresDaemon: defaults.requiresDaemon,
+      meta,
+      releaseDigest: release.releaseDigest,
+      releaseSha: release.releaseSha,
+    });
     const loaded = !input.safeRenderer && input.loadedChannel === defaults.channel;
     const shipErr = this.shipErrors.get(info.slug) ?? null;
 
@@ -400,7 +424,7 @@ export class EditableBranchManager {
         info.slug,
         meta,
         hasChanges,
-        releaseMatchesHead,
+        stagedMatchesHead,
         release.releaseDigest,
         shipErr,
       ),
@@ -410,7 +434,7 @@ export class EditableBranchManager {
       sourceSha: info.headSha,
       hasChanges,
       behindMain: info.behindMain > 0,
-      canFastForward: hasChanges && info.behindMain === 0 && !info.dirty && releaseMatchesHead,
+      canFastForward: hasChanges && info.behindMain === 0 && !info.dirty && stagedMatchesHead,
       requiresDaemon: defaults.requiresDaemon,
       hasUpdate: this.hasDigestUpdate(
         loaded,
@@ -595,6 +619,7 @@ export class EditableBranchManager {
       const fastForwarded = parsed.fastForwarded === true;
       const shouldAutoLoad =
         fastForwarded &&
+        Boolean(parsed.electronPublish?.releaseDigest) &&
         (options.loadedChannel === "prod" || options.loadedChannel === `wip-${slug}`);
 
       return {

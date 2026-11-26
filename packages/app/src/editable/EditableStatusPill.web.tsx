@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { getOverlayRoot } from "@/lib/overlay-root";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { EditableChatView } from "./EditableChatView.web";
 import type {
@@ -362,7 +364,11 @@ function MainBranchRow({
             </Button>
           ) : null}
           {row.loaded && !row.hasUpdate ? (
-            <span style={loadedBadgeStyle}>{t("editable.loadedBadge")}</span>
+            <InfoBadge
+              label={t("editable.loadedBadge")}
+              tooltip={t("editable.tooltipLoaded")}
+              style={loadedBadgeStyle}
+            />
           ) : null}
           {!row.loaded && hasLoadBranch ? (
             <Button size="sm" variant="ghost" disabled={busy} onPress={handleLoad}>
@@ -376,32 +382,131 @@ function MainBranchRow({
   );
 }
 
-function WipBranchStatusBadge({ row }: { row: MergedBranchRow }) {
-  const { t } = useTranslation();
-  if (row.loaded) return <span style={loadedBadgeStyle}>{t("editable.loadedBadge")}</span>;
+function InfoBadge({
+  label,
+  tooltip,
+  style,
+}: {
+  label: string;
+  tooltip: string;
+  style: React.CSSProperties;
+}) {
+  const badgeRef = useRef<HTMLSpanElement | null>(null);
+  const [pos, setPos] = useState<{ right: number; bottom: number } | null>(null);
+
+  const show = useStableEvent(() => {
+    const el = badgeRef.current;
+    if (!el || typeof window === "undefined") return;
+    const rect = el.getBoundingClientRect();
+    setPos({
+      right: Math.max(12, window.innerWidth - rect.right),
+      bottom: Math.max(12, window.innerHeight - rect.top + 6),
+    });
+  });
+  const hide = useStableEvent(() => setPos(null));
+
+  const floatingStyle = useMemo(
+    () =>
+      pos
+        ? ({
+            ...badgeTooltipStyle,
+            right: pos.right,
+            bottom: pos.bottom,
+          } as const)
+        : null,
+    [pos],
+  );
+
+  return (
+    <span
+      ref={badgeRef}
+      title={tooltip}
+      tabIndex={0}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      style={style}
+    >
+      {label}
+      {floatingStyle && typeof document !== "undefined"
+        ? createPortal(
+            <div role="tooltip" data-ed-overlay="true" style={floatingStyle}>
+              {tooltip}
+            </div>,
+            getOverlayRoot(),
+          )
+        : null}
+    </span>
+  );
+}
+
+function resolveStatusBadgeProps(
+  row: MergedBranchRow,
+  t: (key: string) => string,
+): { label: string; tooltip: string; style: React.CSSProperties } {
+  if (row.loaded) {
+    return {
+      label: t("editable.loadedBadge"),
+      tooltip: t("editable.tooltipLoaded"),
+      style: loadedBadgeStyle,
+    };
+  }
   if (row.status === "shipping") {
-    return (
-      <span style={workingBadgeStyle}>
-        {row.behindMain ? t("editable.updatingBranch") : t("editable.shippingBranch")}
-      </span>
-    );
+    return {
+      label: row.behindMain ? t("editable.updatingBranch") : t("editable.shippingBranch"),
+      tooltip: row.behindMain ? t("editable.tooltipUpdating") : t("editable.tooltipShipping"),
+      style: workingBadgeStyle,
+    };
   }
   if (row.status === "working") {
-    return <span style={workingBadgeStyle}>{t("editable.workingBadge")}</span>;
+    return {
+      label: t("editable.workingBadge"),
+      tooltip: t("editable.tooltipWorking"),
+      style: workingBadgeStyle,
+    };
   }
   if (row.status === "failed") {
-    return <span style={failedBadgeStyle}>{t("editable.failedBadge")}</span>;
+    return {
+      label: t("editable.failedBadge"),
+      tooltip: row.error || t("editable.tooltipFailed"),
+      style: failedBadgeStyle,
+    };
   }
   if (row.status === "ready") {
-    return <span style={readyBadgeStyle}>{t("editable.readyBadge")}</span>;
+    return {
+      label: t("editable.readyBadge"),
+      tooltip: row.releaseDigest
+        ? t("editable.tooltipReadyUi")
+        : t("editable.tooltipReadyDaemonOnly"),
+      style: readyBadgeStyle,
+    };
   }
   if (row.status === "draft") {
-    return <span style={warnTagStyle}>{t("editable.draftBadge")}</span>;
+    return {
+      label: t("editable.draftBadge"),
+      tooltip: t("editable.tooltipDraft"),
+      style: warnTagStyle,
+    };
   }
   if (row.hasUnreadReply) {
-    return <span style={workingBadgeStyle}>{t("editable.repliedBadge")}</span>;
+    return {
+      label: t("editable.repliedBadge"),
+      tooltip: t("editable.tooltipReplied"),
+      style: workingBadgeStyle,
+    };
   }
-  return <span style={mutedBadgeStyle}>{t("editable.noChangesBadge")}</span>;
+  return {
+    label: t("editable.noChangesBadge"),
+    tooltip: t("editable.tooltipNoChanges"),
+    style: mutedBadgeStyle,
+  };
+}
+
+function WipBranchStatusBadge({ row }: { row: MergedBranchRow }) {
+  const { t } = useTranslation();
+  const badge = resolveStatusBadgeProps(row, t);
+  return <InfoBadge label={badge.label} tooltip={badge.tooltip} style={badge.style} />;
 }
 
 function WipBranchActions({
@@ -500,9 +605,23 @@ function WipBranchRow({
           <span style={branchNameStyle}>{row.slug}</span>
         </div>
         <div style={inlineActionsStyle}>
-          {row.requiresDaemon ? <span style={warnTagStyle}>{t("editable.daemonTag")}</span> : null}
+          {row.requiresDaemon ? (
+            <InfoBadge
+              label={t("editable.daemonTag")}
+              tooltip={
+                row.releaseDigest
+                  ? t("editable.tooltipDaemonWithUi")
+                  : t("editable.tooltipDaemonOnly")
+              }
+              style={warnTagStyle}
+            />
+          ) : null}
           {row.hasChanges && row.behindMain ? (
-            <span style={mutedBadgeStyle}>{t("editable.behindMain")}</span>
+            <InfoBadge
+              label={t("editable.behindMain")}
+              tooltip={t("editable.tooltipBehindMain")}
+              style={mutedBadgeStyle}
+            />
           ) : null}
           <WipBranchStatusBadge row={row} />
         </div>
@@ -1504,6 +1623,7 @@ const mutedBadgeStyle = {
   borderRadius: 4,
   background: "rgba(148, 163, 184, 0.14)",
   color: "#94a3b8",
+  cursor: "help",
 } as const;
 
 const loadedBadgeStyle = {
@@ -1513,6 +1633,7 @@ const loadedBadgeStyle = {
   borderRadius: 4,
   background: "rgba(34, 197, 94, 0.18)",
   color: "#4ade80",
+  cursor: "help",
 } as const;
 
 const readyBadgeStyle = {
@@ -1522,6 +1643,7 @@ const readyBadgeStyle = {
   borderRadius: 4,
   background: "rgba(34, 197, 94, 0.12)",
   color: "#86efac",
+  cursor: "help",
 } as const;
 
 const workingBadgeStyle = {
@@ -1531,6 +1653,7 @@ const workingBadgeStyle = {
   borderRadius: 4,
   background: "rgba(65, 145, 251, 0.18)",
   color: "#93c5fd",
+  cursor: "help",
 } as const;
 
 const failedBadgeStyle = {
@@ -1540,6 +1663,7 @@ const failedBadgeStyle = {
   borderRadius: 4,
   background: "rgba(239, 68, 68, 0.18)",
   color: "#fca5a5",
+  cursor: "help",
 } as const;
 
 const warnTagStyle = {
@@ -1548,6 +1672,22 @@ const warnTagStyle = {
   borderRadius: 4,
   background: "rgba(245, 158, 11, 0.18)",
   color: "#fcd34d",
+  cursor: "help",
+} as const;
+
+const badgeTooltipStyle = {
+  position: "fixed",
+  zIndex: 999999,
+  maxWidth: 240,
+  padding: "6px 8px",
+  borderRadius: 6,
+  background: "#0b0e14",
+  color: "#e2e8f0",
+  border: "1px solid rgba(255, 255, 255, 0.18)",
+  boxShadow: "0 10px 26px rgba(0, 0, 0, 0.65)",
+  font: "400 11px/15px system-ui, -apple-system, sans-serif",
+  whiteSpace: "normal",
+  pointerEvents: "none",
 } as const;
 
 const previewBannerStyle = {

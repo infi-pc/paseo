@@ -39,6 +39,24 @@ export const en = {
     failedBadge: "Failed",
     behindMain: "behind main",
     daemonTag: "+ daemon",
+    tooltipLoaded: "Currently running in this window.",
+    tooltipReadyUi: "Verified and built — ready to Load in this window or merge to main.",
+    tooltipReadyDaemonOnly:
+      "Verified server/daemon change — no UI bundle to Load; ready to merge to main.",
+    tooltipDraft:
+      "Has uncommitted or unstaged edits — ask the agent in Chat to verify and stage before loading or merging.",
+    tooltipNoChanges: "Discussion only — no code edits in this worktree yet.",
+    tooltipWorking: "Workshop agent is currently working on this branch.",
+    tooltipReplied: "The Workshop agent replied — open Chat to read it.",
+    tooltipFailed: "Verification or shipping failed — open Chat for details.",
+    tooltipShipping: "Fast-forwarding this branch onto main…",
+    tooltipUpdating: "Merging with main and rebuilding in the background…",
+    tooltipBehindMain:
+      "Main has newer commits since this branch started. Merging will combine with main first.",
+    tooltipDaemonOnly:
+      "Changes Paseo server/daemon code only — no UI bundle to Load. Merge to main and restart/update the daemon to apply.",
+    tooltipDaemonWithUi:
+      "Also changes Paseo server/daemon code. Load previews UI changes only; daemon changes apply after merging and restarting the daemon.",
     branchesLabel: "Branches",
     fallbackUi: "Fallback UI",
     targetOn: "On:",

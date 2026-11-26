@@ -824,4 +824,106 @@ describe("Editable overlay", () => {
       isFollowUp: true,
     });
   });
+
+  it("shows explanatory hover tooltips on + daemon, behind main, Draft, and Ready badges and allows merging daemon-only Ready branches without Load", async () => {
+    const shipBranch = vi
+      .fn()
+      .mockResolvedValue({ ok: true, fastForwarded: false, autoLoaded: false });
+    const getBranches = vi.fn().mockResolvedValue({
+      loadedChannel: "prod",
+      loadedDigest: digest,
+      safeRenderer: false,
+      main: {
+        slug: "main",
+        channel: "prod",
+        branch: "feat/editable-paseo-desktop",
+        isMain: true,
+        status: "ready",
+        summary: "Main",
+        releaseDigest: digest,
+        generation: 15,
+        sourceSha: "1".repeat(40),
+        behindMain: false,
+        canFastForward: false,
+        requiresDaemon: false,
+        hasUpdate: false,
+        loaded: true,
+        remoteOnly: false,
+        agentId: null,
+        error: null,
+        updatedAt: "2026-11-26T10:00:00.000Z",
+      },
+      branches: [
+        {
+          slug: "daemon-only-ready",
+          channel: "wip-daemon-only-ready",
+          branch: "ed/wip/daemon-only-ready",
+          isMain: false,
+          status: "ready",
+          summary: "Enable Antigravity response metadata",
+          releaseDigest: null,
+          generation: null,
+          sourceSha: "2".repeat(40),
+          hasChanges: true,
+          behindMain: true,
+          canFastForward: false,
+          requiresDaemon: true,
+          hasUpdate: false,
+          loaded: false,
+          remoteOnly: false,
+          agentId: "agent-1",
+          error: null,
+          updatedAt: "2026-11-26T10:01:00.000Z",
+        },
+        {
+          slug: "unstaged-draft",
+          channel: "wip-unstaged-draft",
+          branch: "ed/wip/unstaged-draft",
+          isMain: false,
+          status: "draft",
+          summary: "Work in progress",
+          releaseDigest: null,
+          generation: null,
+          sourceSha: "3".repeat(40),
+          hasChanges: true,
+          behindMain: false,
+          canFastForward: false,
+          requiresDaemon: false,
+          hasUpdate: false,
+          loaded: false,
+          remoteOnly: false,
+          agentId: "agent-2",
+          error: null,
+          updatedAt: "2026-11-26T10:02:00.000Z",
+        },
+      ],
+    });
+    const bridge = {
+      getStatus: vi.fn().mockResolvedValue(status),
+      reportHealthy: vi.fn().mockResolvedValue(undefined),
+      getBranches,
+      loadBranch: vi.fn().mockResolvedValue({ ok: true }),
+      shipBranch,
+    } satisfies Partial<EditableDesktopBridge>;
+    window.paseoDesktop = { editable: bridge as unknown as EditableDesktopBridge };
+    setup();
+
+    fireEvent.click(screen.getByRole("button", { name: "Editable Paseo status" }));
+    expect(await screen.findByText("daemon-only-ready")).toBeTruthy();
+
+    // Daemon-only ready branch shows Update to main, not Load
+    expect(screen.queryByRole("button", { name: "Load" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Update to main" }));
+    await waitFor(() => expect(shipBranch).toHaveBeenCalledWith("daemon-only-ready"));
+
+    // Hovering + daemon and Draft shows explanatory tooltips
+    const daemonBadge = screen.getByText("+ daemon");
+    fireEvent.mouseEnter(daemonBadge);
+    expect(screen.getByRole("tooltip").textContent).toContain("no UI bundle to Load");
+    fireEvent.mouseLeave(daemonBadge);
+
+    const draftBadge = screen.getByText("Draft");
+    fireEvent.mouseEnter(draftBadge);
+    expect(screen.getByRole("tooltip").textContent).toContain("uncommitted or unstaged edits");
+  });
 });
