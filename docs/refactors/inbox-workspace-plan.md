@@ -100,10 +100,10 @@ aggregation in the sidebar. Exclude internal helper sessions. A missing parent d
 hydration must not hide a workspace; retain the workspace row and resolve session
 placement using existing directory/detail data once available.
 
-Default Running and Inbox groups to expanded. Default project workspace children to
-collapsed and remember expansion per device. Show aggregate work/attention indicators
-on collapsed rows. Use a collapsed Snoozed section in the global view, with a count and
-deadlines; project views retain snoozed workspaces with a snooze indicator.
+Keep Running, Inbox, and Snoozed visible whenever they contain workspaces. Snoozed
+shows a count and deadlines. Project views retain snoozed workspaces with a snooze
+indicator. Default project workspace children to collapsed and remember expansion per
+device. Show aggregate work/attention indicators on collapsed rows.
 
 Use existing activity timestamps with stable identity tie-breaks for section and child
 ordering. Reuse an available execution-start timestamp for Running if it exists; do not

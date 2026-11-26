@@ -1,10 +1,5 @@
-import { ChevronDown, ChevronRight } from "lucide-react-native";
-import { DensityIcon } from "@/components/ui/density-icon";
-import { PressHighlight } from "@/components/ui/press-highlight";
 import type { InboxSection } from "./navigation/model";
 import { SidebarSessionsContext, WorkspaceSessionRows } from "./navigation/session-rows";
-import { sectionPreferenceKey } from "./navigation/use-navigation";
-import { useSidebarCollapsedSectionsStore } from "@/stores/sidebar-collapsed-sections-store";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { useWorkspaceRowPress } from "../../../modules/paseo-press-feedback";
 import { memo, useCallback, useMemo, useState, useContext, type ReactNode, type Ref } from "react";
@@ -85,38 +80,30 @@ export function SidebarFlatWorkspaceList({
         {sections.map((section) =>
           section.workspaces.length ? (
             <View key={section.id}>
-              <InboxSectionHeader
-                id={section.id}
-                collapsed={section.collapsed}
-                count={section.workspaces.length}
-              />
-              {!section.collapsed
-                ? section.workspaces.map((workspace) => (
-                    <View key={workspace.workspaceKey}>
-                      <StatusWorkspaceRow
-                        workspace={workspace}
-                        section={section.id}
-                        {...buildStatusRowProjectPresentation({
-                          workspace,
-                          projectIconByProjectViewKey,
-                          hostBadgeByServerId,
-                        })}
-                        shortcutNumber={
-                          shortcutIndexByWorkspaceKey.get(workspace.workspaceKey) ?? null
-                        }
-                        showShortcutBadge={showShortcutBadges}
-                        canPin={supportsPinningByServerId.get(workspace.serverId) === true}
-                        onToggleWorkspacePin={onToggleWorkspacePin}
-                        onWorkspacePress={onWorkspacePress}
-                      />
-                      <WorkspaceSessionRows
-                        workspace={workspace}
-                        section={section.id}
-                        onPress={onWorkspacePress}
-                      />
-                    </View>
-                  ))
-                : null}
+              <InboxSectionHeader id={section.id} count={section.workspaces.length} />
+              {section.workspaces.map((workspace) => (
+                <View key={workspace.workspaceKey}>
+                  <StatusWorkspaceRow
+                    workspace={workspace}
+                    section={section.id}
+                    {...buildStatusRowProjectPresentation({
+                      workspace,
+                      projectIconByProjectViewKey,
+                      hostBadgeByServerId,
+                    })}
+                    shortcutNumber={shortcutIndexByWorkspaceKey.get(workspace.workspaceKey) ?? null}
+                    showShortcutBadge={showShortcutBadges}
+                    canPin={supportsPinningByServerId.get(workspace.serverId) === true}
+                    onToggleWorkspacePin={onToggleWorkspacePin}
+                    onWorkspacePress={onWorkspacePress}
+                  />
+                  <WorkspaceSessionRows
+                    workspace={workspace}
+                    section={section.id}
+                    onPress={onWorkspacePress}
+                  />
+                </View>
+              ))}
             </View>
           ) : null,
         )}
@@ -152,38 +139,14 @@ export function SidebarFlatWorkspaceList({
   );
 }
 
-function InboxSectionHeader({
-  id,
-  collapsed,
-  count,
-}: {
-  id: InboxSection;
-  collapsed: boolean;
-  count: number;
-}) {
+function InboxSectionHeader({ id, count }: { id: InboxSection; count: number }) {
   const { t } = useTranslation();
-  const toggle = useSidebarCollapsedSectionsStore((state) => state.toggleProjectCollapsed);
-  const press = useCallback(() => toggle(sectionPreferenceKey(id)), [toggle, id]);
-  const state = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
   return (
-    <PressHighlight
-      accessibilityRole="button"
-      accessibilityState={state}
-      aria-expanded={!collapsed}
-      onPress={press}
-      style={styles.sectionHeader}
-      highlightStyle={styles.workspaceRowPressed}
-      testID={`sidebar-section-${id}`}
-    >
-      <DensityIcon
-        icon={collapsed ? ChevronRight : ChevronDown}
-        size="xs"
-        color="foregroundMuted"
-      />
-      <Text style={styles.sectionTitle}>
+    <View style={styles.sectionHeader} testID={`sidebar-section-${id}`}>
+      <Text accessibilityRole="header" style={styles.sectionTitle}>
         {t(`inboxSections.${id}`)} · {count}
       </Text>
-    </PressHighlight>
+    </View>
   );
 }
 
@@ -739,11 +702,7 @@ function getStatusWorkspaceRowStyle({
 
 const styles = StyleSheet.create((theme) => ({
   sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
     padding: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
   },
   sectionTitle: {
     color: theme.colors.foregroundMuted,
