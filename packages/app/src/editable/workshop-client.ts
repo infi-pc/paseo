@@ -18,7 +18,7 @@ type WorkshopClient = Pick<
   | "listAvailableProviders"
   | "sendAgentMessage"
 > &
-  Partial<Pick<DaemonClient, "getProvidersSnapshot">>;
+  Partial<Pick<DaemonClient, "getProvidersSnapshot" | "updateAgent">>;
 
 const PREFERRED_AUTO_REVIEW_MODES = ["auto-review", "auto"] as const;
 
@@ -220,10 +220,16 @@ export function buildWorkshopPrompt(
   return sections.join("\n");
 }
 
+function deriveProvisionalTitle(request: string): string | undefined {
+  const normalized = request.trim().replace(/\s+/g, " ").slice(0, 60).trim();
+  return normalized || undefined;
+}
+
 async function ensureWorkshopAgent(input: {
   client: WorkshopClient;
   target: WorkshopTarget;
   slug: string;
+  request: string;
   isFollowUp?: boolean;
   worktreePath?: string;
   rememberAgent: (agentId: string, slug: string) => Promise<void>;
@@ -247,13 +253,17 @@ async function ensureWorkshopAgent(input: {
     input.worktreePath ??
     (await resolveWorkshopCwd(input.client, input.target.workshopCwd ?? DEFAULT_WORKSHOP_CWD));
   const modeId = await resolveWorkshopModeId(input.client, provider.provider, cwd);
-  // Leave title unset so Paseo starts the chat in automatic naming mode and populates
-  // a short topic title + icon from <paseo-meta>, while still respecting manual renames.
+  // Seed a clean provisional title from the user's request so sendAgentMessage does not
+  // derive a provisional title from the Workshop system preamble, then switch to automatic
+  // naming so <paseo-meta title="..." icon="..." /> names the chat on turn 1.
+  const provisionalTitle = deriveProvisionalTitle(input.request);
   const agent = await input.client.createAgent({
+    ...(provisionalTitle ? { title: provisionalTitle } : {}),
     provider: provider.provider,
     cwd,
     ...(modeId ? { modeId } : {}),
   });
+  await input.client.updateAgent?.(agent.id, { namingMode: "automatic" }).catch(() => undefined);
   await input.rememberAgent(agent.id, input.slug);
   return { kind: "ready", agentId: agent.id, reused: false };
 }
@@ -282,6 +292,7 @@ export async function sendWorkshopEdit(input: {
     client,
     target: input.target,
     slug,
+    request: input.request,
     isFollowUp: input.isFollowUp,
     worktreePath,
     rememberAgent: input.rememberAgent,

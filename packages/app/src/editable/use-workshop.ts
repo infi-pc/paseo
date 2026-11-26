@@ -114,7 +114,40 @@ function pickTrimmed(...values: Array<string | null | undefined>): string | null
 }
 
 function isLegacyWorkshopTitle(title: string | null): boolean {
-  return Boolean(title && (title.startsWith("Editable: ") || title === "Editable Paseo Workshop"));
+  return Boolean(
+    title &&
+    (title.startsWith("Editable: ") ||
+      title === "Editable Paseo Workshop" ||
+      title.startsWith("You are the Editable Paseo Workshop")),
+  );
+}
+
+function maybeRepairPreambleTitle(
+  client: {
+    updateAgent?: (id: string, updates: { namingMode?: "automatic" | "manual" }) => Promise<void>;
+  },
+  id: string,
+  agent: { title?: string | null; responseMetadata?: { namingMode?: string } },
+): void {
+  if (
+    agent.title?.startsWith("You are the Editable Paseo Workshop") &&
+    agent.responseMetadata?.namingMode !== "automatic"
+  ) {
+    void client.updateAgent?.(id, { namingMode: "automatic" }).catch(() => undefined);
+  }
+}
+
+function syncBranchDisplayMeta(
+  slug: string,
+  meta: { title: string | null; icon: string | null },
+  syncedMeta: Map<string, string>,
+  bridge: EditableDesktopBridge | undefined,
+): void {
+  if (!meta.title && !meta.icon) return;
+  const sig = `${meta.title ?? ""}\u0000${meta.icon ?? ""}`;
+  if (syncedMeta.get(slug) === sig) return;
+  syncedMeta.set(slug, sig);
+  void bridge?.updateBranchMeta?.(slug, meta).catch(() => undefined);
 }
 
 function resolveAgentDisplayMeta(agent: {
@@ -265,16 +298,11 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
           if (agent.status) nextStatuses[slug] = agent.status;
           if (agent.status === "initializing" || agent.status === "running") nextRunning.add(slug);
           const { title, icon, reply } = resolveAgentDisplayMeta(agent);
+          maybeRepairPreambleTitle(client, id, agent);
           if (reply) nextReplies[slug] = reply;
           if (title) nextTitles[slug] = title;
           if (icon) nextIcons[slug] = icon;
-          if (title || icon) {
-            const sig = `${title ?? ""}\u0000${icon ?? ""}`;
-            if (syncedMetaRef.current.get(slug) !== sig) {
-              syncedMetaRef.current.set(slug, sig);
-              void bridge?.updateBranchMeta?.(slug, { title, icon }).catch(() => undefined);
-            }
-          }
+          syncBranchDisplayMeta(slug, { title, icon }, syncedMetaRef.current, bridge);
         }),
       );
       if (stopped) return;
