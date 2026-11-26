@@ -1,3 +1,5 @@
+import type { DiffStat } from "@getpaseo/protocol/diff-stat";
+
 export interface EditableHealthDigest {
   recentErrors: number;
   latestError: string | null;
@@ -99,8 +101,11 @@ export interface EditableBranchEntry {
   channel: string;
   branch: string;
   isMain: boolean;
+  title?: string | null;
+  icon?: string | null;
   status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
+  diffStat?: DiffStat | null;
   releaseDigest: string | null;
   daemonReleaseDigest?: string | null;
   services?: EditableService[];
@@ -189,6 +194,10 @@ export interface EditableDesktopBridge {
     agentId?: string;
   }) => Promise<EditableCreateBranchResult>;
   attachBranchAgent?: (slug: string, agentId: string) => Promise<{ ok: boolean; error?: string }>;
+  updateBranchMeta?: (
+    slug: string,
+    patch: { title?: string | null; icon?: string | null },
+  ) => Promise<{ ok: boolean; error?: string }>;
   captureScreenshot?: (input?: {
     rect?: { x: number; y: number; width: number; height: number } | null;
     full?: boolean;

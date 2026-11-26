@@ -131,6 +131,88 @@ const optimisticWorkshop = {
   },
   agentStatuses: {},
 };
+const emptyLineStat = { additions: 0, deletions: 0 };
+const titleDiffBranchesFixture = {
+  loadedChannel: "wip-we-have-tnik",
+  loadedDigest: digest,
+  safeRenderer: false,
+  main: {
+    slug: "main",
+    channel: "prod",
+    branch: "feat/editable-paseo-desktop",
+    isMain: true,
+    status: "ready" as const,
+    summary: "Enable Antigravity response metadata",
+    releaseDigest: digest,
+    generation: 21,
+    sourceSha: "1".repeat(40),
+    behindMain: false,
+    canFastForward: false,
+    requiresDaemon: false,
+    hasUpdate: false,
+    loaded: false,
+    remoteOnly: false,
+    agentId: null,
+    error: null,
+    updatedAt: "2026-11-26T17:04:32.000Z",
+  },
+  branches: [
+    {
+      slug: "we-have-tnik",
+      channel: "wip-we-have-tnik",
+      branch: "ed/wip/we-have-tnik",
+      isMain: false,
+      title: "PR Link Icons",
+      icon: "🔗",
+      status: "ready" as const,
+      summary: "Render PR links with status icons in markdown tables.",
+      diffStat: {
+        additions: 48,
+        deletions: 7,
+        breakdown: {
+          code: { additions: 12, deletions: 3 },
+          components: { additions: 6, deletions: 1 },
+          styles: emptyLineStat,
+          ci: emptyLineStat,
+          config: emptyLineStat,
+          tooling: emptyLineStat,
+          otherCode: emptyLineStat,
+          comments: emptyLineStat,
+          docs: { additions: 10, deletions: 0 },
+          tests: { additions: 20, deletions: 3 },
+          generated: emptyLineStat,
+          formatting: emptyLineStat,
+          blank: emptyLineStat,
+          other: emptyLineStat,
+          commentsIncluded: emptyLineStat,
+        },
+      },
+      releaseDigest: digest,
+      services: ["ui" as const],
+      generation: 1,
+      sourceSha: "2".repeat(40),
+      hasChanges: true,
+      behindMain: false,
+      canFastForward: true,
+      requiresDaemon: false,
+      hasUpdate: false,
+      loaded: true,
+      remoteOnly: false,
+      agentId: "agent-1",
+      error: null,
+      updatedAt: "2026-11-26T18:20:00.000Z",
+    },
+  ],
+};
+const titleDiffWorkshopFixture = {
+  editing: false,
+  hostId: "workshop",
+  agentReplies: {
+    "we-have-tnik": "Aligned the PR icon vertically and restaged the UI.",
+  },
+  unreadReplySlugs: ["we-have-tnik"],
+};
+
 const noopPick = () => {};
 const status: EditableDesktopStatus = {
   runtimeVersion: "desktop-1",
@@ -975,5 +1057,47 @@ describe("Editable overlay", () => {
     const draftBadge = screen.getByText("Draft");
     fireEvent.mouseEnter(draftBadge);
     expect(screen.getByRole("tooltip").textContent).toContain("uncommitted or unstaged edits");
+  });
+
+  it("displays chat title, feature summary + latest turn separately, and production-only diff stat with hover drilldown", async () => {
+    render(
+      <EditableStatusPill
+        bridge={undefined}
+        status={status}
+        workshopDaemon={null}
+        branches={titleDiffBranchesFixture}
+        workshop={titleDiffWorkshopFixture}
+        onPick={noopPick}
+        layer={100}
+      />,
+    );
+
+    // Bottom-right pill shows the chat title instead of raw slug
+    expect(screen.getByRole("status").textContent).toBe("PR Link Icons");
+
+    fireEvent.click(screen.getByRole("button", { name: "Editable Paseo status" }));
+    expect(screen.getByText("🔗 PR Link Icons")).toBeTruthy();
+    expect(screen.getByText("Render PR links with status icons in markdown tables.")).toBeTruthy();
+    expect(screen.getByText("Aligned the PR icon vertically and restaged the UI.")).toBeTruthy();
+
+    // Inline diff badge shows ONLY production changes (+18 -4), NOT total (+48 -7)
+    const diffBadge = document.querySelector('[data-ed-diff-stat="true"]') as HTMLElement;
+    expect(diffBadge).toBeTruthy();
+    expect(diffBadge.textContent).toBe("+18-4");
+
+    // Hovering opens the Paseo category drilldown showing Total, Production, and subcategories
+    fireEvent.mouseEnter(diffBadge);
+    const drilldown = document.querySelector('[data-ed-diff-drilldown="true"]') as HTMLElement;
+    expect(drilldown).toBeTruthy();
+    expect(drilldown.textContent).toContain("Total");
+    expect(drilldown.textContent).toContain("+48-7");
+    expect(drilldown.textContent).toContain("Production");
+    expect(drilldown.textContent).toContain("+18-4");
+    expect(drilldown.textContent).toContain("Code · JS/TS");
+    expect(drilldown.textContent).toContain("Components · JSX/TSX");
+    expect(drilldown.textContent).toContain("Tests");
+    expect(drilldown.textContent).toContain("Docs");
+    fireEvent.mouseLeave(diffBadge);
+    expect(document.querySelector('[data-ed-diff-drilldown="true"]')).toBeNull();
   });
 });

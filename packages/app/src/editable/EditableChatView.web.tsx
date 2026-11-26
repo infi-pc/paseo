@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { StreamItem, ToolCallItem } from "@/types/stream";
 import type { EditableBranchEntry, EditableReferencedElement } from "./types";
+import { EditableDiffStat } from "./EditableDiffStat.web";
 import { EditableLoadButton, EditableShipButton } from "./EditableTooltip.web";
 import {
   getAssistantDisplayText,
@@ -47,6 +48,7 @@ export interface EditableChatViewProps {
   agentId: string | null | undefined;
   slug?: string | null;
   title: string;
+  icon?: string | null;
   locatorChip?: string | null;
   branch?: EditableBranchEntry | null;
   draftControls?: EditableChatDraftControls;
@@ -740,6 +742,7 @@ function ChatHeaderActions({
 
   return (
     <div style={headerActionsStyle}>
+      <EditableDiffStat diffStat={branch?.hasChanges ? branch.diffStat : null} />
       {flags.canLoad ? (
         <EditableLoadButton
           label={flags.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
@@ -1112,6 +1115,7 @@ export function EditableChatView({
   agentId,
   slug,
   title,
+  icon,
   locatorChip,
   branch,
   draftControls,
@@ -1221,7 +1225,7 @@ export function EditableChatView({
     <div style={compact && isDraftMode ? containerCompactStyle : containerStyle}>
       <ChatHeaderBar
         title={title}
-        icon={latestMeta?.icon ?? null}
+        icon={icon ?? latestMeta?.icon ?? null}
         subtitle={resolveHeaderSubtitle(locatorChip, latestMeta?.title, title)}
         branch={branch}
         agentId={agentId}

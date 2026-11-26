@@ -36,6 +36,8 @@ export const wipBranchPointerSchema = z.object({
   slug: slugName,
   branch: z.string().startsWith("ed/wip/"),
   channel: channelName,
+  title: z.string().max(120).nullable().optional(),
+  icon: z.string().max(32).nullable().optional(),
   releaseDigest: digestSchema.nullable(),
   daemonReleaseDigest: digestSchema.nullable().optional(),
   services: z.array(editableServiceSchema).optional(),

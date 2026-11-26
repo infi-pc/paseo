@@ -413,4 +413,117 @@ describe("EditableBranchManager", () => {
     const daemonShip = await manager.shipBranch("daemon-only", { loadedChannel: "prod" });
     expect(daemonShip).toMatchObject({ ok: true, fastForwarded: true, shouldAutoLoad: false });
   });
+
+  it("computes Paseo diffStat breakdown vs baseBranch, persists branch title/icon, and picks newest main surface summary", async () => {
+    const root = makeTempDir();
+    const home = path.join(root, "dev-editable");
+    const configHome = path.join(root, "shared-editable");
+    const builtIn = path.join(root, "builtin");
+    mkdirSync(builtIn, { recursive: true });
+    writeFileSync(path.join(builtIn, "index.html"), "<html>builtin</html>");
+
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    mkdirSync(path.join(configHome, "keys"), { recursive: true });
+    writeFileSync(path.join(configHome, "keys", "signing.public.pem"), publicKeyPem);
+    writeFileSync(
+      path.join(configHome, "config.json"),
+      JSON.stringify({ baseBranch: "main", channel: "prod" }),
+    );
+
+    const repoDir = path.join(configHome, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    const git = (args: string[], cwd = repoDir) =>
+      execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
+    git(["init", "-b", "main"]);
+    git(["config", "user.email", "test@example.com"]);
+    git(["config", "user.name", "Test"]);
+    writeFileSync(path.join(repoDir, "app.ts"), "export const a = 1;\n");
+    git(["add", "-A"]);
+    git(["commit", "-m", "base"]);
+    const baseSha = git(["rev-parse", "HEAD"]);
+
+    // Create WIP with production .ts code + .test.ts + .md docs
+    const wt = path.join(configHome, "worktrees", "feature-icons");
+    git(["worktree", "add", "-b", "ed/wip/feature-icons", wt, baseSha]);
+    writeFileSync(path.join(wt, "app.ts"), "export const a = 1;\nexport const b = 2;\n");
+    writeFileSync(path.join(wt, "app.test.ts"), "expect(1).toBe(1);\nexpect(2).toBe(2);\n");
+    writeFileSync(path.join(wt, "README.md"), "# Notes\n");
+    git(["add", "-A"], wt);
+    git(["commit", "-m", "Add b with tests and docs"], wt);
+    const wipSha = git(["rev-parse", "HEAD"], wt);
+
+    // Channel where daemon surface is NEWER than electron-web surface
+    const uiRel = writeSignedRelease(configHome, privateKeyPem, publicKeyPem, {
+      sourceSha: baseSha,
+      summary: "Older UI change",
+      html: "<html>ui</html>",
+    });
+    const prodChannelPath = path.join(configHome, "releases", "electron-web", "channel.json");
+    mkdirSync(path.dirname(prodChannelPath), { recursive: true });
+    writeFileSync(
+      prodChannelPath,
+      JSON.stringify(
+        signEnvelope(
+          {
+            schemaVersion: 1,
+            kind: "channel",
+            channel: "prod",
+            generation: 21,
+            updatedAt: "2026-11-26T17:04:32.000Z",
+            surfaces: {
+              "electron-web": {
+                releaseDigest: uiRel.releaseDigest,
+                sourceSha: baseSha,
+                runtimeVersion: "desktop-1",
+                archiveUrl: "https://example.test/ui.tar.gz",
+                manifestUrl: "https://example.test/ui.json",
+                summary: "Older UI change",
+                updatedAt: "2026-11-26T16:00:00.000Z",
+              },
+              daemon: {
+                releaseDigest: "d".repeat(64),
+                sourceSha: wipSha,
+                runtimeVersion: "daemon-1",
+                archiveUrl: "https://example.test/daemon.tar.gz",
+                manifestUrl: "https://example.test/daemon.json",
+                summary: "Enable Antigravity response metadata",
+                updatedAt: "2026-11-26T17:04:32.000Z",
+              },
+            },
+          },
+          privateKeyPem,
+          publicKeyPem,
+        ),
+      ),
+    );
+
+    const store = new EditableReleaseStore({
+      builtInDistDir: builtIn,
+      home,
+      publicKeyHome: configHome,
+    });
+    const manager = new EditableBranchManager({ home, configHome, store });
+    expect(manager.attachBranchAgent("feature-icons", "agent-icons")).toEqual({ ok: true });
+    expect(
+      manager.updateBranchMeta("feature-icons", { title: "PR Link Icons", icon: "🔗" }),
+    ).toEqual({ ok: true });
+
+    const snap = await manager.getSnapshot({
+      loadedChannel: "prod",
+      loadedDigest: uiRel.releaseDigest,
+      safeRenderer: false,
+    });
+    expect(snap.main.summary).toBe("Enable Antigravity response metadata");
+
+    const branch = snap.branches.find((b) => b.slug === "feature-icons");
+    expect(branch?.title).toBe("PR Link Icons");
+    expect(branch?.icon).toBe("🔗");
+    expect(branch?.diffStat?.additions).toBe(4);
+    expect(branch?.diffStat?.deletions).toBe(0);
+    expect(branch?.diffStat?.breakdown?.code).toEqual({ additions: 1, deletions: 0 });
+    expect(branch?.diffStat?.breakdown?.tests).toEqual({ additions: 2, deletions: 0 });
+    expect(branch?.diffStat?.breakdown?.docs).toEqual({ additions: 1, deletions: 0 });
+  });
 });

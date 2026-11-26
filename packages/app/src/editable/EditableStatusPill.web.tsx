@@ -1,3 +1,4 @@
+import type { DiffStat } from "@getpaseo/protocol/diff-stat";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -5,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { EditableChatView } from "./EditableChatView.web";
+import { EditableDiffStat } from "./EditableDiffStat.web";
 import {
   EditableHoverTooltip,
   EditableLoadButton,
@@ -45,6 +47,8 @@ export interface EditableStatusWorkshopInfo {
   pendingBranches?: Record<string, { slug: string; request: string; createdAt: string }>;
   agentStatuses?: Record<string, string>;
   agentReplies?: Record<string, string>;
+  agentTitles?: Record<string, string>;
+  agentIcons?: Record<string, string>;
   unreadReplySlugs?: string[];
   runningSlugs?: string[];
   lastRequest?: string | null;
@@ -131,10 +135,15 @@ function useDismissPopover(
 interface MergedBranchRow {
   slug: string;
   channel: string;
+  branch: string;
   isMain: boolean;
+  title: string | null;
+  icon: string | null;
   status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
+  initialRequest: string | null;
   replyPreview: string | null;
+  diffStat: DiffStat | null;
   hasUnreadReply: boolean;
   generation: number | null;
   releaseDigest: string | null;
@@ -202,10 +211,15 @@ function buildMainRow(
   return {
     slug: "main",
     channel: "prod",
+    branch: b?.branch ?? "main",
     isMain: true,
+    title: null,
+    icon: null,
     status: "ready",
     summary: pickFirst(b?.summary, status?.releaseSummary),
+    initialRequest: null,
     replyPreview: null,
+    diffStat: null,
     hasUnreadReply: false,
     generation: pickFirst(b?.generation, statusGen),
     releaseDigest: pickFirst(b?.releaseDigest, status?.releaseDigest),
@@ -225,20 +239,29 @@ function buildMainRow(
 
 function buildPendingWipRow(
   rec: { slug: string; request: string; agentId: string | null },
-  liveStatus: string | undefined,
-  replyPreview: string | null,
-  hasUnreadReply: boolean,
+  live: {
+    status: string | undefined;
+    replyPreview: string | null;
+    title: string | null;
+    icon: string | null;
+    hasUnreadReply: boolean;
+  },
 ): MergedBranchRow {
   const running =
-    liveStatus === "running" || liveStatus === "initializing" || liveStatus === undefined;
+    live.status === "running" || live.status === "initializing" || live.status === undefined;
   return {
     slug: rec.slug,
     channel: `wip-${rec.slug}`,
+    branch: `ed/wip/${rec.slug}`,
     isMain: false,
+    title: live.title,
+    icon: live.icon,
     status: running ? "working" : "idle",
-    summary: rec.request,
-    replyPreview,
-    hasUnreadReply,
+    summary: null,
+    initialRequest: rec.request,
+    replyPreview: live.replyPreview,
+    diffStat: null,
+    hasUnreadReply: live.hasUnreadReply,
     generation: null,
     releaseDigest: null,
     daemonReleaseDigest: null,
@@ -290,6 +313,8 @@ function mergeWipEntryRow(
     clientAgent: EditableBranchAgentRecord | undefined;
     pending: { slug: string; request: string } | undefined;
     liveStatus: string | undefined;
+    liveTitle: string | null;
+    liveIcon: string | null;
     replyPreview: string | null;
     hasUnreadReply: boolean;
     shippingSlugs: Set<string>;
@@ -311,10 +336,15 @@ function mergeWipEntryRow(
   return {
     slug: b.slug,
     channel: b.channel,
+    branch: b.branch,
     isMain: false,
+    title: pickFirst(ctx.liveTitle, b.title),
+    icon: pickFirst(ctx.liveIcon, b.icon),
     status: mergedStatus,
-    summary: pickFirst(b.summary, ctx.pending?.request, ctx.clientAgent?.request),
+    summary: b.summary || null,
+    initialRequest: pickFirst(ctx.pending?.request, ctx.clientAgent?.request),
     replyPreview: ctx.replyPreview,
+    diffStat: hasChanges ? (b.diffStat ?? null) : null,
     hasUnreadReply: ctx.hasUnreadReply,
     generation: b.generation,
     releaseDigest,
@@ -350,6 +380,21 @@ function resolveLoadedContext(
   return { loadedChannel, safe, statusUpdate };
 }
 
+function readWorkshopSlugLive(
+  slug: string,
+  workshop: EditableStatusWorkshopInfo,
+  unreadSet: Set<string>,
+  fallbackStatus?: string,
+) {
+  return {
+    status: workshop.agentStatuses?.[slug] ?? fallbackStatus,
+    replyPreview: workshop.agentReplies?.[slug] ?? null,
+    title: workshop.agentTitles?.[slug] ?? null,
+    icon: workshop.agentIcons?.[slug] ?? null,
+    hasUnreadReply: unreadSet.has(slug),
+  };
+}
+
 function buildBranchRows(
   status: EditableDesktopStatus | null,
   branches: EditableBranchesSnapshot | null,
@@ -358,8 +403,6 @@ function buildBranchRows(
 ): { main: MergedBranchRow; wips: MergedBranchRow[] } {
   const { loadedChannel, safe, statusUpdate } = resolveLoadedContext(status, branches);
   const main = buildMainRow(status, branches, loadedChannel, safe, statusUpdate);
-  const agentStatuses = workshop.agentStatuses ?? {};
-  const agentReplies = workshop.agentReplies ?? {};
   const unreadSet = new Set(workshop.unreadReplySlugs ?? []);
   const clientAgents = workshop.branchAgents ?? {};
   const pendingBranches = workshop.pendingBranches ?? {};
@@ -371,22 +414,23 @@ function buildBranchRows(
       pending.slug,
       buildPendingWipRow(
         { slug: pending.slug, request: pending.request, agentId: rec?.agentId ?? null },
-        agentStatuses[pending.slug] ?? "initializing",
-        agentReplies[pending.slug] ?? null,
-        unreadSet.has(pending.slug),
+        readWorkshopSlugLive(pending.slug, workshop, unreadSet, "initializing"),
       ),
     );
   }
 
   for (const b of branches?.branches ?? []) {
+    const live = readWorkshopSlugLive(b.slug, workshop, unreadSet);
     bySlug.set(
       b.slug,
       mergeWipEntryRow(b, {
         clientAgent: clientAgents[b.slug],
         pending: pendingBranches[b.slug],
-        liveStatus: agentStatuses[b.slug],
-        replyPreview: agentReplies[b.slug] ?? null,
-        hasUnreadReply: unreadSet.has(b.slug),
+        liveStatus: live.status,
+        liveTitle: live.title,
+        liveIcon: live.icon,
+        replyPreview: live.replyPreview,
+        hasUnreadReply: live.hasUnreadReply,
         shippingSlugs,
         statusUpdate,
       }),
@@ -395,12 +439,9 @@ function buildBranchRows(
 
   for (const rec of Object.values(clientAgents)) {
     if (bySlug.has(rec.slug)) continue;
-    const st = agentStatuses[rec.slug];
-    if (st !== "closed" && st !== "archived") {
-      bySlug.set(
-        rec.slug,
-        buildPendingWipRow(rec, st, agentReplies[rec.slug] ?? null, unreadSet.has(rec.slug)),
-      );
+    const live = readWorkshopSlugLive(rec.slug, workshop, unreadSet);
+    if (live.status !== "closed" && live.status !== "archived") {
+      bySlug.set(rec.slug, buildPendingWipRow(rec, live));
     }
   }
 
@@ -720,6 +761,17 @@ function WipBranchActions({
   );
 }
 
+function resolveWipCardTexts(row: MergedBranchRow): {
+  featureSummary: string | null;
+  turnSummary: string | null;
+} {
+  const rawSummary = row.summary?.trim() || null;
+  const rawReply = row.replyPreview?.trim() || null;
+  const featureSummary = rawSummary ?? (!rawReply ? row.initialRequest?.trim() || null : null);
+  const turnSummary = rawReply && rawReply !== featureSummary ? rawReply : null;
+  return { featureSummary, turnSummary };
+}
+
 function WipBranchRow({
   row,
   branches,
@@ -751,15 +803,18 @@ function WipBranchRow({
   });
 
   const isBusyRow = busy || row.status === "shipping";
-  const showReplyPreview = Boolean(row.replyPreview && (!row.hasChanges || row.hasUnreadReply));
-  const subtitle = showReplyPreview ? row.replyPreview : row.summary;
+  const displayName = row.title || row.slug;
+  const { featureSummary, turnSummary } = resolveWipCardTexts(row);
 
   return (
     <div style={row.loaded ? branchRowActiveStyle : branchRowStyle}>
       <div style={rowBetweenStyle}>
         <div style={titleRowStyle}>
           <StatusDot tone={tone} pulse={pulse} />
-          <span style={branchNameStyle}>{row.slug}</span>
+          <span style={branchNameStyle} title={row.title ? row.branch : undefined}>
+            {row.icon ? `${row.icon} ` : ""}
+            {displayName}
+          </span>
         </div>
         <div style={inlineActionsStyle}>
           <ServiceBadges row={row} />
@@ -774,24 +829,28 @@ function WipBranchRow({
         </div>
       </div>
 
-      {subtitle ? (
-        <div style={showReplyPreview ? replyPreviewStyle : summaryStyle}>
-          {truncate(subtitle, 96)}
+      {featureSummary ? <div style={summaryStyle}>{truncate(featureSummary, 96)}</div> : null}
+      {turnSummary ? (
+        <div style={row.hasUnreadReply ? replyPreviewStyle : replyPreviewReadStyle}>
+          {truncate(turnSummary, 96)}
         </div>
       ) : null}
       {row.error ? <div style={errorTextStyle}>{truncate(row.error, 100)}</div> : null}
 
-      <WipBranchActions
-        row={row}
-        daemonListen={branches?.daemonListen ?? null}
-        isBusyRow={isBusyRow}
-        canOpenChat={canOpenChat}
-        canManage={canManage}
-        onLoad={handleLoad}
-        onShip={handleShip}
-        onDiscard={handleDiscard}
-        onChat={handleChat}
-      />
+      <div style={actionsFooterStyle}>
+        <WipBranchActions
+          row={row}
+          daemonListen={branches?.daemonListen ?? null}
+          isBusyRow={isBusyRow}
+          canOpenChat={canOpenChat}
+          canManage={canManage}
+          onLoad={handleLoad}
+          onShip={handleShip}
+          onDiscard={handleDiscard}
+          onChat={handleChat}
+        />
+        <EditableDiffStat diffStat={row.hasChanges ? row.diffStat : null} />
+      </div>
     </div>
   );
 }
@@ -1240,7 +1299,7 @@ function resolvePillLabel(input: {
   if (input.failed) return input.t("editable.desktopFailed");
   if (input.preview) return input.t("editable.preview");
   if (input.recovery) return input.t("editable.fallbackUi");
-  if (input.loadedWip) return truncate(input.loadedWip.slug, 22);
+  if (input.loadedWip) return truncate(input.loadedWip.title || input.loadedWip.slug, 22);
   return formatMainPill(input.status, input.main, input.t);
 }
 
@@ -1381,7 +1440,8 @@ function StatusPopoverPanel({
           serverId={workshop.hostId}
           agentId={activeChatRow.agentId}
           slug={activeChatRow.slug}
-          title={activeChatRow.slug}
+          title={activeChatRow.title || activeChatRow.slug}
+          icon={activeChatRow.icon}
           branch={activeChatBranch}
           referencedElements={chatReferences.referencedElements}
           onRemoveReference={chatReferences.onRemoveReference}
@@ -1705,7 +1765,13 @@ const pillBadgeStyle = {
 } as const;
 
 const titleTextStyle = { fontSize: 13, fontWeight: 600 } as const;
-const branchNameStyle = { fontWeight: 600, fontSize: 12 } as const;
+const branchNameStyle = {
+  fontWeight: 600,
+  fontSize: 12,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+} as const;
 const errorTextStyle = { color: "#f87171", fontSize: 11 } as const;
 
 const rowBetweenStyle = {
@@ -1784,7 +1850,15 @@ const replyPreviewStyle = {
   color: "#e2e8f0",
   fontSize: 11,
   lineHeight: "15px",
-  borderLeft: "2px solid rgba(65, 145, 251, 0.55)",
+  borderLeft: "2px solid rgba(65, 145, 251, 0.7)",
+  paddingLeft: 6,
+} as const;
+
+const replyPreviewReadStyle = {
+  color: "#94a3b8",
+  fontSize: 11,
+  lineHeight: "15px",
+  borderLeft: "2px solid rgba(148, 163, 184, 0.3)",
   paddingLeft: 6,
 } as const;
 
@@ -1872,11 +1946,18 @@ const previewBannerStyle = {
   fontSize: 11,
 } as const;
 
+const actionsFooterStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  marginTop: 2,
+} as const;
+
 const actionsRowStyle = {
   display: "flex",
   flexWrap: "wrap",
   gap: 4,
-  marginTop: 2,
 } as const;
 
 const chatPopoverWrapStyle = {

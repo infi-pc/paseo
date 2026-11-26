@@ -96,14 +96,44 @@ function resolveBranchSendTarget(input: {
 async function prepareWorktreeForSend(
   bridge: EditableDesktopBridge | undefined,
   slug: string,
-  summary: string,
 ): Promise<string | null> {
   if (!bridge?.createBranch) return null;
-  const created = await bridge.createBranch({ slug, summary: summary.slice(0, 120) });
+  const created = await bridge.createBranch({ slug });
   if (!created.ok) {
     throw new Error(created.error ?? `Failed to create worktree ${slug}`);
   }
   return created.worktreePath ?? null;
+}
+
+function pickTrimmed(...values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (trimmed) return trimmed;
+  }
+  return null;
+}
+
+function isLegacyWorkshopTitle(title: string | null): boolean {
+  return Boolean(title && (title.startsWith("Editable: ") || title === "Editable Paseo Workshop"));
+}
+
+function resolveAgentDisplayMeta(agent: {
+  title?: string | null;
+  icon?: string | null;
+  responseMetadata?: {
+    automaticTitle?: string;
+    automaticIcon?: string;
+    icon?: string;
+    lastTurn?: { message?: string };
+  };
+}): { title: string | null; icon: string | null; reply: string | null } {
+  const meta = agent.responseMetadata;
+  const rawTitle = pickTrimmed(agent.title);
+  const autoTitle = pickTrimmed(meta?.automaticTitle);
+  const title = !rawTitle || isLegacyWorkshopTitle(rawTitle) ? autoTitle : rawTitle;
+  const icon = pickTrimmed(meta?.icon, meta?.automaticIcon, agent.icon);
+  const reply = pickTrimmed(meta?.lastTurn?.message);
+  return { title, icon, reply };
 }
 
 export function useWorkshop(options: UseWorkshopOptions = {}) {
@@ -117,6 +147,8 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
   const [workshopError, setWorkshopError] = useState<string | null>(null);
   const [agentStatuses, setAgentStatuses] = useState<Record<string, string>>({});
   const [agentReplies, setAgentReplies] = useState<Record<string, string>>({});
+  const [agentTitles, setAgentTitles] = useState<Record<string, string>>({});
+  const [agentIcons, setAgentIcons] = useState<Record<string, string>>({});
   const [unreadReplySlugs, setUnreadReplySlugs] = useState<string[]>([]);
   const [pendingBranches, setPendingBranches] = useState<
     Record<string, { slug: string; request: string; createdAt: string }>
@@ -124,6 +156,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
   const locked = useRef(false);
   const pendingSlugsRef = useRef<Set<string>>(new Set());
   const prevRunningRef = useRef<Set<string>>(new Set());
+  const syncedMetaRef = useRef<Map<string, string>>(new Map());
   const configRef = useRef<EditableWorkshopConfig | null>(null);
   configRef.current = config;
 
@@ -221,15 +254,27 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     const sample = async () => {
       const nextStatuses: Record<string, string> = {};
       const nextReplies: Record<string, string> = {};
+      const nextTitles: Record<string, string> = {};
+      const nextIcons: Record<string, string> = {};
       const nextRunning = new Set<string>();
       await Promise.all(
         trackedEntries.map(async ([slug, id]) => {
           const result = await client.fetchAgent({ agentId: id, timeout: 5000 }).catch(() => null);
-          const status = result?.agent.status;
-          if (status) nextStatuses[slug] = status;
-          if (status === "initializing" || status === "running") nextRunning.add(slug);
-          const reply = result?.agent.responseMetadata?.lastTurn?.message?.trim();
+          const agent = result?.agent;
+          if (!agent) return;
+          if (agent.status) nextStatuses[slug] = agent.status;
+          if (agent.status === "initializing" || agent.status === "running") nextRunning.add(slug);
+          const { title, icon, reply } = resolveAgentDisplayMeta(agent);
           if (reply) nextReplies[slug] = reply;
+          if (title) nextTitles[slug] = title;
+          if (icon) nextIcons[slug] = icon;
+          if (title || icon) {
+            const sig = `${title ?? ""}\u0000${icon ?? ""}`;
+            if (syncedMetaRef.current.get(slug) !== sig) {
+              syncedMetaRef.current.set(slug, sig);
+              void bridge?.updateBranchMeta?.(slug, { title, icon }).catch(() => undefined);
+            }
+          }
         }),
       );
       if (stopped) return;
@@ -241,6 +286,8 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
       }
       setAgentStatuses(nextStatuses);
       setAgentReplies(nextReplies);
+      setAgentTitles(nextTitles);
+      setAgentIcons(nextIcons);
 
       // If any branch agent just finished its turn, mark unread reply + sync immediately.
       const newlyFinished: string[] = [];
@@ -324,8 +371,21 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         const client = getHostRuntimeStore().getClient(effectiveHostId);
         void client?.archiveAgent(targetAgentId).catch(() => undefined);
       }
+      syncedMetaRef.current.delete(slug);
       setUnreadReplySlugs((prev) => prev.filter((item) => item !== slug));
       setAgentReplies((prev) => {
+        if (!(slug in prev)) return prev;
+        const next = { ...prev };
+        delete next[slug];
+        return next;
+      });
+      setAgentTitles((prev) => {
+        if (!(slug in prev)) return prev;
+        const next = { ...prev };
+        delete next[slug];
+        return next;
+      });
+      setAgentIcons((prev) => {
         if (!(slug in prev)) return prev;
         const next = { ...prev };
         delete next[slug];
@@ -443,7 +503,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         targetCwd = targetCwd ?? ready.repoDir;
       }
 
-      const worktreePath = await prepareWorktreeForSend(bridge, slug, trimmedRequest);
+      const worktreePath = await prepareWorktreeForSend(bridge, slug);
       void refreshDesktop?.();
       const target: EditableWorkshopConfig = {
         ...config,
@@ -512,6 +572,8 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     pendingBranches,
     agentStatuses,
     agentReplies,
+    agentTitles,
+    agentIcons,
     unreadReplySlugs,
     runningSlugs,
     lastRequest: config?.lastRequest ?? null,

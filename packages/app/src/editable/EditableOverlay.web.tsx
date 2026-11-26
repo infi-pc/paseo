@@ -233,6 +233,20 @@ function buildInlineLiveProps(
   };
 }
 
+function resolveInlineHeaderMeta(
+  inlineChat: { slug: string; agentId: string } | null,
+  inlineBranch: { title?: string | null; icon?: string | null } | null,
+  prompt: ReturnType<typeof useEditablePrompt>,
+  selectedLabel: string,
+): { title: string; icon: string | null } {
+  if (!inlineChat) return { title: selectedLabel, icon: null };
+  const slug = inlineChat.slug;
+  return {
+    title: prompt.agentTitles?.[slug] ?? inlineBranch?.title ?? slug,
+    icon: prompt.agentIcons?.[slug] ?? inlineBranch?.icon ?? null,
+  };
+}
+
 function SelectedElementChat({
   selected,
   inlineChat,
@@ -318,6 +332,13 @@ function SelectedElementChat({
     onSendReferencedToTarget,
   });
 
+  const { title: inlineTitle, icon: inlineIcon } = resolveInlineHeaderMeta(
+    inlineChat,
+    inlineBranch,
+    prompt,
+    selectedLabel,
+  );
+
   return (
     <InlinePopover
       rect={rect}
@@ -327,13 +348,14 @@ function SelectedElementChat({
       onDismiss={onClose}
       suppressDismiss={suppressDismiss}
       keepOpenOnAltClick={Boolean(inlineChat)}
-      label={inlineChat ? inlineChat.slug : t("editable.placeholder")}
+      label={inlineChat ? inlineTitle : t("editable.placeholder")}
     >
       <EditableChatView
         serverId={prompt.hostId}
         agentId={inlineChat?.agentId ?? null}
         slug={inlineChat?.slug ?? null}
-        title={inlineChat ? inlineChat.slug : selectedLabel}
+        title={inlineTitle}
+        icon={inlineIcon}
         locatorChip={inlineChat ? selectedLabel : null}
         branch={inlineBranch}
         draftControls={draftControls}

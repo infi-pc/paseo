@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -12,6 +12,8 @@ import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import type { DiffStat } from "@getpaseo/protocol/diff-stat";
+import { readBranchDiffStat } from "@getpaseo/server/change-stats";
 import { z } from "zod";
 import { syncChannelFromCloudShelf, syncWipIndexFromCloudShelf } from "./cloud-sync.js";
 import { resolveRegularFile, verifySignedEnvelope } from "./crypto.js";
@@ -34,6 +36,8 @@ const localBranchMetaSchema = z.object({
   slug: z.string(),
   branch: z.string(),
   channel: z.string(),
+  title: z.string().nullable().optional().default(null),
+  icon: z.string().nullable().optional().default(null),
   status: z.enum(["working", "ready", "failed"]),
   summary: z.string().default(""),
   releaseDigest: z.string().nullable().default(null),
@@ -61,8 +65,11 @@ export interface EditableBranchEntry {
   channel: string;
   branch: string;
   isMain: boolean;
+  title: string | null;
+  icon: string | null;
   status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
+  diffStat: DiffStat | null;
   releaseDigest: string | null;
   daemonReleaseDigest: string | null;
   services: EditableService[];
@@ -122,11 +129,17 @@ export interface LoadBranchResult {
 
 interface GitWorktreeInspection {
   slug: string;
+  worktreeDir: string;
   headSha: string;
+  mergeBase: string | null;
   dirty: boolean;
+  dirtySignature: string;
   behindMain: number;
   aheadOfMain: number;
 }
+
+const DIRTY_DIFF_CACHE_TTL_MS = 5_000;
+const MAX_DIFF_STAT_CACHE_ENTRIES = 64;
 
 function buildCliEnv(configHome: string, userHome: string): NodeJS.ProcessEnv {
   const localBin = path.join(userHome, ".local", "bin");
@@ -156,17 +169,27 @@ async function inspectWorktree(
   slug: string,
 ): Promise<GitWorktreeInspection | null> {
   try {
-    const headSha = await runGit(["rev-parse", "HEAD"], worktreeDir);
-    const statusOut = await runGit(["status", "--porcelain"], worktreeDir);
+    const [headSha, statusOut, mergeBaseOut] = await Promise.all([
+      runGit(["rev-parse", "HEAD"], worktreeDir),
+      runGit(["status", "--porcelain"], worktreeDir),
+      runGit(["merge-base", "HEAD", baseBranch], worktreeDir).catch(() => ""),
+    ]);
     const counts = await runGit(
       ["rev-list", "--left-right", "--count", `${baseBranch}...${headSha}`],
       repoDir,
     ).catch(() => "0\t0");
     const [behindStr, aheadStr] = counts.split(/\s+/);
+    const dirty = statusOut.length > 0;
+    const dirtySignature = dirty
+      ? createHash("sha1").update(statusOut).digest("hex").slice(0, 12)
+      : "";
     return {
       slug,
+      worktreeDir,
       headSha,
-      dirty: statusOut.length > 0,
+      mergeBase: mergeBaseOut || null,
+      dirty,
+      dirtySignature,
       behindMain: Number(behindStr ?? 0) || 0,
       aheadOfMain: Number(aheadStr ?? 0) || 0,
     };
@@ -248,6 +271,9 @@ function pickPrimaryPointer(
   uiPtr: ReturnType<EditableReleaseStore["getChannelPointer"]>,
   daemonPtr: ReturnType<EditableReleaseStore["getDaemonChannelPointer"]>,
 ) {
+  if (uiPtr && daemonPtr) {
+    return daemonPtr.updatedAt > uiPtr.updatedAt ? daemonPtr : uiPtr;
+  }
   return uiPtr ?? daemonPtr;
 }
 
@@ -284,9 +310,47 @@ function inferBranchServices(input: {
 export class EditableBranchManager {
   private readonly shippingSlugs = new Set<string>();
   private readonly shipErrors = new Map<string, string>();
+  private readonly diffStatCache = new Map<
+    string,
+    { value: DiffStat | null; computedAt: number }
+  >();
+  private readonly diffStatInFlight = new Map<string, Promise<DiffStat | null>>();
   private syncing: Promise<{ updated: boolean }> | null = null;
 
   constructor(private readonly deps: EditableBranchManagerDeps) {}
+
+  private readCachedDiffStat(
+    info: GitWorktreeInspection,
+    baseBranch: string,
+  ): Promise<DiffStat | null> {
+    if (!info.mergeBase) return Promise.resolve(null);
+    const cacheKey = info.dirty
+      ? `${info.worktreeDir}:${info.mergeBase}:${info.headSha}:dirty:${info.dirtySignature}`
+      : `${info.worktreeDir}:${info.mergeBase}:${info.headSha}:clean`;
+    const cached = this.diffStatCache.get(cacheKey);
+    if (cached && (!info.dirty || Date.now() - cached.computedAt < DIRTY_DIFF_CACHE_TTL_MS)) {
+      return Promise.resolve(cached.value);
+    }
+    const existing = this.diffStatInFlight.get(cacheKey);
+    if (existing) return existing;
+
+    const load = readBranchDiffStat({ cwd: info.worktreeDir, baseRef: baseBranch })
+      .catch(() => null)
+      .then((value) => {
+        this.diffStatCache.set(cacheKey, { value, computedAt: Date.now() });
+        while (this.diffStatCache.size > MAX_DIFF_STAT_CACHE_ENTRIES) {
+          const oldest = this.diffStatCache.keys().next().value;
+          if (!oldest) break;
+          this.diffStatCache.delete(oldest);
+        }
+        return value;
+      })
+      .finally(() => {
+        this.diffStatInFlight.delete(cacheKey);
+      });
+    this.diffStatInFlight.set(cacheKey, load);
+    return load;
+  }
 
   private cliPath(): string {
     return (
@@ -353,8 +417,11 @@ export class EditableBranchManager {
       channel: "prod",
       branch: baseBranch,
       isMain: true,
+      title: null,
+      icon: null,
       status: "ready",
       summary: primary?.summary ?? null,
+      diffStat: null,
       releaseDigest: uiDigest,
       daemonReleaseDigest: daemonDigest,
       services: listPresentServices(Boolean(uiDigest), Boolean(daemonDigest)),
@@ -376,27 +443,36 @@ export class EditableBranchManager {
     };
   }
 
+  private resolveIndexedWipStatus(
+    slug: string,
+    hasArtifact: boolean,
+  ): EditableBranchEntry["status"] {
+    if (this.shippingSlugs.has(slug)) return "shipping";
+    return hasArtifact ? "ready" : "idle";
+  }
+
   private buildIndexedWipEntry(ptr: WipBranchPointer, ctx: SnapshotContext): EditableBranchEntry {
     const channelPtr = this.deps.store.getChannelPointer(ptr.channel);
     const channelDaemonPtr = this.deps.store.getDaemonChannelPointer(ptr.channel);
     const primary = pickPrimaryPointer(channelPtr, channelDaemonPtr);
-    const digest = channelPtr?.digest ?? ptr.releaseDigest;
+    const digest = firstNonNull(channelPtr?.digest, ptr.releaseDigest);
     const daemonDigest = firstNonNull(channelDaemonPtr?.digest, ptr.daemonReleaseDigest);
     const loaded = !ctx.safeRenderer && ctx.loadedChannel === ptr.channel;
     const targetDaemon = daemonDigest ?? ctx.prodDaemonDigest;
     const hasUiUpdate = this.hasDigestUpdate(loaded, digest, ctx.loadedDigest);
     const hasDaemonUpdate = this.hasDaemonDigestUpdate(loaded, targetDaemon, ctx.daemonState);
     const hasArtifact = Boolean(digest || daemonDigest);
-    let status: EditableBranchEntry["status"] = hasArtifact ? "ready" : "idle";
-    if (this.shippingSlugs.has(ptr.slug)) status = "shipping";
 
     return {
       slug: ptr.slug,
       channel: ptr.channel,
       branch: ptr.branch,
       isMain: false,
-      status,
+      title: ptr.title ?? null,
+      icon: ptr.icon ?? null,
+      status: this.resolveIndexedWipStatus(ptr.slug, hasArtifact),
       summary: firstNonNull(primary?.summary, ptr.summary || null),
+      diffStat: null,
       releaseDigest: digest,
       daemonReleaseDigest: daemonDigest,
       services: inferBranchServices({
@@ -407,7 +483,7 @@ export class EditableBranchManager {
         requiresNative: ptr.requiresNative,
       }),
       generation: primary?.generation ?? null,
-      sourceSha: primary?.sourceSha ?? ptr.sourceSha,
+      sourceSha: firstNonNull(primary?.sourceSha, ptr.sourceSha),
       hasChanges: hasArtifact,
       behindMain: false,
       canFastForward: false,
@@ -420,7 +496,7 @@ export class EditableBranchManager {
       remoteOnly: true,
       agentId: null,
       error: this.shipErrors.get(ptr.slug) ?? null,
-      updatedAt: primary?.updatedAt ?? ptr.updatedAt,
+      updatedAt: firstNonNull(primary?.updatedAt, ptr.updatedAt),
     };
   }
 
@@ -428,6 +504,8 @@ export class EditableBranchManager {
     if (!meta) {
       return {
         channel: `wip-${slug}`,
+        title: null as string | null,
+        icon: null as string | null,
         digest: null as string | null,
         daemonDigest: null as string | null,
         services: undefined as EditableService[] | undefined,
@@ -444,6 +522,8 @@ export class EditableBranchManager {
     }
     return {
       channel: meta.channel,
+      title: meta.title || null,
+      icon: meta.icon || null,
       digest: meta.releaseDigest,
       daemonDigest: meta.daemonReleaseDigest,
       services: meta.services,
@@ -516,6 +596,7 @@ export class EditableBranchManager {
   private buildLocalWipEntry(
     info: GitWorktreeInspection,
     hasRemote: boolean,
+    diffStat: DiffStat | null,
     ctx: SnapshotContext,
   ): EditableBranchEntry | null {
     const meta = readLocalBranchMeta(this.deps.configHome, info.slug);
@@ -549,6 +630,8 @@ export class EditableBranchManager {
       channel: defaults.channel,
       branch: defaults.branch,
       isMain: false,
+      title: defaults.title,
+      icon: defaults.icon,
       status: this.resolveLocalWipStatus(
         info.slug,
         meta,
@@ -558,6 +641,7 @@ export class EditableBranchManager {
         shipErr,
       ),
       summary: release.summary,
+      diffStat: hasChanges ? diffStat : null,
       releaseDigest: uiDigest,
       daemonReleaseDigest: daemonDigest,
       services: hasChanges
@@ -632,9 +716,17 @@ export class EditableBranchManager {
         inspectWorktree(repoDir, path.join(worktreesDir, slug), config.baseBranch, slug),
       ),
     );
-    for (const info of inspections) {
+    const diffStats = await Promise.all(
+      inspections.map((info) =>
+        info && (info.aheadOfMain > 0 || info.dirty)
+          ? this.readCachedDiffStat(info, config.baseBranch)
+          : Promise.resolve(null),
+      ),
+    );
+    for (let i = 0; i < inspections.length; i += 1) {
+      const info = inspections[i];
       if (!info) continue;
-      const entry = this.buildLocalWipEntry(info, bySlug.has(info.slug), ctx);
+      const entry = this.buildLocalWipEntry(info, bySlug.has(info.slug), diffStats[i] ?? null, ctx);
       if (entry) bySlug.set(info.slug, entry);
     }
 
@@ -909,6 +1001,38 @@ export class EditableBranchManager {
     }
   }
 
+  private writeLocalBranchMetaFile(slug: string, meta: LocalBranchMeta): void {
+    const dir = path.join(this.deps.configHome, "branches");
+    mkdirSync(dir, { recursive: true });
+    const filePath = path.join(dir, `${slug}.json`);
+    const tmp = `${filePath}.${randomUUID()}.tmp`;
+    writeFileSync(tmp, `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+    renameSync(tmp, filePath);
+  }
+
+  private defaultLocalBranchMeta(slug: string, now: string): LocalBranchMeta {
+    return {
+      schemaVersion: 1,
+      slug,
+      branch: `ed/wip/${slug}`,
+      channel: `wip-${slug}`,
+      title: null,
+      icon: null,
+      status: "working",
+      summary: "",
+      releaseDigest: null,
+      daemonReleaseDigest: null,
+      sourceSha: "",
+      generation: null,
+      uploadedToCloud: false,
+      requiresDaemon: false,
+      requiresNative: false,
+      agentId: null,
+      error: null,
+      updatedAt: now,
+    };
+  }
+
   attachBranchAgent(slug: string, agentId: string): { ok: boolean; error?: string } {
     if (!SLUG_RE.test(slug) || !agentId.trim()) {
       return { ok: false, error: "Invalid branch slug or agentId" };
@@ -916,32 +1040,41 @@ export class EditableBranchManager {
     try {
       const existing = readLocalBranchMeta(this.deps.configHome, slug);
       const now = new Date().toISOString();
-      const next: LocalBranchMeta = existing
-        ? { ...existing, agentId, updatedAt: now }
-        : {
-            schemaVersion: 1,
-            slug,
-            branch: `ed/wip/${slug}`,
-            channel: `wip-${slug}`,
-            status: "working",
-            summary: "",
-            releaseDigest: null,
-            daemonReleaseDigest: null,
-            sourceSha: "",
-            generation: null,
-            uploadedToCloud: false,
-            requiresDaemon: false,
-            requiresNative: false,
-            agentId,
-            error: null,
-            updatedAt: now,
-          };
-      const dir = path.join(this.deps.configHome, "branches");
-      mkdirSync(dir, { recursive: true });
-      const filePath = path.join(dir, `${slug}.json`);
-      const tmp = `${filePath}.${randomUUID()}.tmp`;
-      writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-      renameSync(tmp, filePath);
+      const next: LocalBranchMeta = {
+        ...(existing ?? this.defaultLocalBranchMeta(slug, now)),
+        agentId,
+        updatedAt: now,
+      };
+      this.writeLocalBranchMetaFile(slug, next);
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  updateBranchMeta(
+    slug: string,
+    patch: { title?: string | null; icon?: string | null },
+  ): { ok: boolean; error?: string } {
+    if (!SLUG_RE.test(slug)) {
+      return { ok: false, error: "Invalid branch slug" };
+    }
+    try {
+      const existing = readLocalBranchMeta(this.deps.configHome, slug);
+      if (!existing) return { ok: true };
+      const nextTitle =
+        patch.title !== undefined ? patch.title?.trim().slice(0, 120) || null : existing.title;
+      const nextIcon =
+        patch.icon !== undefined ? patch.icon?.trim().slice(0, 32) || null : existing.icon;
+      if (nextTitle === existing.title && nextIcon === existing.icon) {
+        return { ok: true };
+      }
+      this.writeLocalBranchMetaFile(slug, {
+        ...existing,
+        title: nextTitle,
+        icon: nextIcon,
+        updatedAt: new Date().toISOString(),
+      });
       return { ok: true };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };

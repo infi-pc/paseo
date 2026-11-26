@@ -89,6 +89,11 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     }): Promise<CreateBranchResult> => ipcRenderer.invoke("paseo:editable:createBranch", input),
     attachBranchAgent: (slug: string, agentId: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("paseo:editable:attachBranchAgent", slug, agentId),
+    updateBranchMeta: (
+      slug: string,
+      patch: { title?: string | null; icon?: string | null },
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("paseo:editable:updateBranchMeta", slug, patch),
     captureScreenshot: (input?: {
       rect?: ScreenshotRectInput | null;
       full?: boolean;

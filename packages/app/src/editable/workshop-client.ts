@@ -104,14 +104,14 @@ async function resolveWorkshopCwd(client: WorkshopClient, rawCwd: string): Promi
   return match;
 }
 
-function buildIntentGuidelines(slugPlaceholder: string, summaryHint: string): string[] {
+function buildIntentGuidelines(slugPlaceholder: string): string[] {
   return [
     "Respond based on what the user is actually asking:",
     '- If the user is asking a question, brainstorming, seeking your opinion, or exploring (for example "what do you think?", "why does…?", "how does…?", "could we…?"): ONLY inspect the code and answer concisely. Do NOT modify files, commit, or run `paseo-ed stage` until the user explicitly asks to implement a change.',
     "- Only when the user asks you to make or change something (now or in a later turn of this chat):",
     `  1. Make the edit inside that worktree.`,
     `  2. Run \`paseo-ed verify ${slugPlaceholder}\` to check typecheck and lint.`,
-    `  3. Run \`paseo-ed stage ${slugPlaceholder} --summary "${summaryHint}" --upload\` to commit on the WIP branch, build the signed UI and/or Daemon release(s), and publish to Cloud Shelf so the user can hot-swap them live in Paseo Dev.app. Do NOT merge to main or run \`paseo-ed ship\` — the user will click Ship when ready.`,
+    `  3. Run \`paseo-ed stage ${slugPlaceholder} --summary "<short 1-sentence feature summary>" --upload\` to commit on the WIP branch, build the signed UI and/or Daemon release(s), and publish to Cloud Shelf so the user can hot-swap them live in Paseo Dev.app. Write --summary as a clear 1-sentence description of what this feature/change does as a whole (not a verbatim copy of the user's raw prompt, and distinct from your turn-by-turn <paseo-meta message="..." /> update). Do NOT merge to main or run \`paseo-ed ship\` — the user will click Ship when ready.`,
     "- To live-inspect the running Paseo Dev.app (screenshots, DOM, React props/hooks, matched CSS, console logs, network, perf/APM, or stores), run `paseo-ed app --help`.",
   ];
 }
@@ -119,34 +119,33 @@ function buildIntentGuidelines(slugPlaceholder: string, summaryHint: string): st
 function buildPromptInstructions(
   slug: string | undefined,
   isFollowUp: boolean | undefined,
-  summaryHint: string,
   worktreePath: string | undefined,
 ): string[] {
   if (slug && worktreePath) {
     return [
       `You are the Editable Paseo Workshop assistant, working inside isolated WIP worktree \`${slug}\` (\`${worktreePath}\`, branch \`ed/wip/${slug}\`).`,
       "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH) if and when you stage code changes.",
-      ...buildIntentGuidelines(slug, summaryHint),
+      ...buildIntentGuidelines(slug),
     ];
   }
   if (!slug) {
     return [
       "You are the Editable Paseo Workshop assistant in the dedicated Editable Paseo repository.",
       "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH). If you need to make code changes, first run `paseo-ed wip create <slug>` and edit inside that worktree.",
-      ...buildIntentGuidelines("<slug>", "<short summary>"),
+      ...buildIntentGuidelines("<slug>"),
     ];
   }
   if (isFollowUp) {
     return [
       `You are the Editable Paseo Workshop assistant, continuing in WIP worktree \`~/.editable-paseo/worktrees/${slug}\` (branch \`ed/wip/${slug}\`).`,
       "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH).",
-      ...buildIntentGuidelines(slug, summaryHint),
+      ...buildIntentGuidelines(slug),
     ];
   }
   return [
     `You are the Editable Paseo Workshop assistant for isolated WIP branch \`${slug}\` (\`~/.editable-paseo/worktrees/${slug}\`, branch \`ed/wip/${slug}\`).`,
-    `Use the \`paseo-ed\` CLI (\`~/.local/bin/paseo-ed\` if not on PATH). If \`~/.editable-paseo/worktrees/${slug}\` does not exist yet, first run \`paseo-ed wip create ${slug} --summary "${summaryHint}"\`.`,
-    ...buildIntentGuidelines(slug, summaryHint),
+    `Use the \`paseo-ed\` CLI (\`~/.local/bin/paseo-ed\` if not on PATH). If \`~/.editable-paseo/worktrees/${slug}\` does not exist yet, first run \`paseo-ed wip create ${slug}\`.`,
+    ...buildIntentGuidelines(slug),
   ];
 }
 
@@ -205,11 +204,9 @@ export function buildWorkshopPrompt(
     extraReferences?: ReadonlyArray<Pick<EditableReferencedElement, "locator" | "snapshot">>;
   } = {},
 ): string {
-  const summaryHint = request.trim().replace(/"/g, "'").slice(0, 72);
   const instructions = buildPromptInstructions(
     options.slug,
     options.isFollowUp,
-    summaryHint,
     options.worktreePath,
   );
 
@@ -227,7 +224,6 @@ async function ensureWorkshopAgent(input: {
   client: WorkshopClient;
   target: WorkshopTarget;
   slug: string;
-  hasExplicitSlug: boolean;
   isFollowUp?: boolean;
   worktreePath?: string;
   rememberAgent: (agentId: string, slug: string) => Promise<void>;
@@ -251,8 +247,9 @@ async function ensureWorkshopAgent(input: {
     input.worktreePath ??
     (await resolveWorkshopCwd(input.client, input.target.workshopCwd ?? DEFAULT_WORKSHOP_CWD));
   const modeId = await resolveWorkshopModeId(input.client, provider.provider, cwd);
+  // Leave title unset so Paseo starts the chat in automatic naming mode and populates
+  // a short topic title + icon from <paseo-meta>, while still respecting manual renames.
   const agent = await input.client.createAgent({
-    title: input.hasExplicitSlug ? `Editable: ${input.slug}` : "Editable Paseo Workshop",
     provider: provider.provider,
     cwd,
     ...(modeId ? { modeId } : {}),
@@ -285,7 +282,6 @@ export async function sendWorkshopEdit(input: {
     client,
     target: input.target,
     slug,
-    hasExplicitSlug: Boolean(input.slug),
     isFollowUp: input.isFollowUp,
     worktreePath,
     rememberAgent: input.rememberAgent,

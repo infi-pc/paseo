@@ -296,6 +296,27 @@ export class EditableDesktopRuntime {
         return this.branchManager.attachBranchAgent(slug, agentId);
       },
     );
+    ipcMain.handle(
+      "paseo:editable:updateBranchMeta",
+      async (event, slug: unknown, patch: unknown) => {
+        this.requireWindow(event);
+        if (
+          !this.branchManager ||
+          typeof slug !== "string" ||
+          !patch ||
+          typeof patch !== "object"
+        ) {
+          return { ok: false, error: "Invalid branch metadata update" };
+        }
+        const record = patch as { title?: unknown; icon?: unknown };
+        return this.branchManager.updateBranchMeta(slug, {
+          ...(record.title === null || typeof record.title === "string"
+            ? { title: record.title }
+            : {}),
+          ...(record.icon === null || typeof record.icon === "string" ? { icon: record.icon } : {}),
+        });
+      },
+    );
     ipcMain.handle("paseo:editable:captureScreenshot", async (event, input: unknown) => {
       const win = this.requireWindow(event);
       try {
