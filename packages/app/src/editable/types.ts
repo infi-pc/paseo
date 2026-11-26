@@ -1,3 +1,5 @@
+import type { DiffStat } from "@getpaseo/protocol/diff-stat";
+
 export interface EditableHealthDigest {
   recentErrors: number;
   latestError: string | null;
@@ -54,6 +56,14 @@ export interface EditableScreenshotAttachment {
   mimeType: "image/png";
 }
 
+export interface EditableReferencedElement {
+  id: string;
+  label: string;
+  locator: EditableLocatorContext;
+  snapshot: EditableElementSnapshot | null;
+  screenshot: EditableScreenshotAttachment | null;
+}
+
 export interface EditableScreenshotResult {
   ok: boolean;
   dataBase64?: string;
@@ -84,14 +94,21 @@ export interface EditableWorkshopDaemonStatus {
   error: string | null;
 }
 
+export type EditableService = "ui" | "daemon" | "desktop" | "ios";
+
 export interface EditableBranchEntry {
   slug: string;
   channel: string;
   branch: string;
   isMain: boolean;
+  title?: string | null;
+  icon?: string | null;
   status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
+  diffStat?: DiffStat | null;
   releaseDigest: string | null;
+  daemonReleaseDigest?: string | null;
+  services?: EditableService[];
   generation: number | null;
   sourceSha: string | null;
   hasChanges?: boolean;
@@ -99,6 +116,9 @@ export interface EditableBranchEntry {
   canFastForward: boolean;
   requiresDaemon: boolean;
   hasUpdate: boolean;
+  hasUiUpdate?: boolean;
+  hasDaemonUpdate?: boolean;
+  requiresDaemonRestartOnLoad?: boolean;
   loaded: boolean;
   remoteOnly: boolean;
   agentId: string | null;
@@ -109,6 +129,10 @@ export interface EditableBranchEntry {
 export interface EditableBranchesSnapshot {
   loadedChannel: string;
   loadedDigest: string | null;
+  loadedDaemonDigest?: string | null;
+  daemonRunning?: boolean;
+  daemonListen?: string | null;
+  mainDaemonGeneration?: number | null;
   safeRenderer: boolean;
   main: EditableBranchEntry;
   branches: EditableBranchEntry[];
@@ -127,15 +151,19 @@ export interface EditableShipBranchResult {
   fastForwarded?: boolean;
   autoLoaded?: boolean;
   releaseDigest?: string | null;
+  daemonReleaseDigest?: string | null;
   generation?: number;
   error?: string;
 }
 
 export interface EditableDesktopStatus {
   runtimeVersion: string;
+  daemonRuntimeVersion?: string;
   activeDigest: string | null;
+  activeDaemonDigest?: string | null;
   releaseDigest: string | null;
   availableDigest: string | null;
+  availableDaemonDigest?: string | null;
   lastKnownGoodDigest: string | null;
   quarantinedDigests: string[];
   previewUrl: string | null;
@@ -156,7 +184,9 @@ export interface EditableDesktopBridge {
   syncFromCloudShelf?: () => Promise<{ ok: boolean; updated?: boolean; error?: string }>;
   syncNow?: () => Promise<{ ok: boolean; updated?: boolean; error?: string }>;
   getBranches?: () => Promise<EditableBranchesSnapshot | null>;
-  loadBranch?: (channel: string) => Promise<{ ok: boolean; error?: string }>;
+  loadBranch?: (
+    channel: string,
+  ) => Promise<{ ok: boolean; uiChanged?: boolean; daemonSwapped?: boolean; error?: string }>;
   shipBranch?: (slug: string) => Promise<EditableShipBranchResult>;
   createBranch?: (input: {
     slug: string;
@@ -164,6 +194,10 @@ export interface EditableDesktopBridge {
     agentId?: string;
   }) => Promise<EditableCreateBranchResult>;
   attachBranchAgent?: (slug: string, agentId: string) => Promise<{ ok: boolean; error?: string }>;
+  updateBranchMeta?: (
+    slug: string,
+    patch: { title?: string | null; icon?: string | null },
+  ) => Promise<{ ok: boolean; error?: string }>;
   captureScreenshot?: (input?: {
     rect?: { x: number; y: number; width: number; height: number } | null;
     full?: boolean;

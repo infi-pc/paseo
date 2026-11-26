@@ -2,9 +2,16 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CloudChannelCandidate } from "./cloud-sync.js";
-import { DESKTOP_RUNTIME_VERSION, isSafeRenderer, resolveEditableHome } from "./constants.js";
+import {
+  DAEMON_ENTRYPOINT_REL_PATH,
+  DAEMON_RUNTIME_VERSION,
+  DESKTOP_RUNTIME_VERSION,
+  isSafeRenderer,
+  resolveEditableHome,
+} from "./constants.js";
 import { resolveRegularFile, verifyReleaseDirectory, verifySignedEnvelope } from "./crypto.js";
 import { validatePreviewUrl } from "./preview.js";
+import type { EditableReleaseSurface } from "./release-manifest.js";
 import {
   channelManifestSchema,
   deviceStateSchema,
@@ -24,11 +31,21 @@ export interface RendererRelease {
   summary?: string | null;
 }
 
+export interface DaemonRelease {
+  releaseDigest: string | null;
+  releaseDir: string | null;
+  entryPath: string | null;
+  summary?: string | null;
+}
+
 export interface EditableDesktopStatus {
   runtimeVersion: string;
+  daemonRuntimeVersion?: string;
   activeDigest: string | null;
+  activeDaemonDigest?: string | null;
   releaseDigest: string | null;
   availableDigest: string | null;
+  availableDaemonDigest?: string | null;
   lastKnownGoodDigest: string | null;
   quarantinedDigests: string[];
   previewUrl: string | null;
@@ -78,8 +95,10 @@ export class EditableReleaseStore {
   private readonly warn: (error: unknown) => void;
   private state = initialState();
   private active: RendererRelease;
+  private activeDaemon: DaemonRelease = { releaseDigest: null, releaseDir: null, entryPath: null };
   private stateReadable = true;
   private readonly healthyDigests = new Set<string>();
+  private readonly healthyDaemonDigests = new Set<string>();
 
   constructor(input: {
     builtInDistDir: string;
@@ -110,10 +129,16 @@ export class EditableReleaseStore {
     }
 
     if (this.state.lastKnownGoodDigest) this.healthyDigests.add(this.state.lastKnownGoodDigest);
+    if (this.state.lastKnownGoodDaemonDigest) {
+      this.healthyDaemonDigests.add(this.state.lastKnownGoodDaemonDigest);
+    }
     this.active =
       this.state.activeDigest === null
         ? this.builtIn
         : (this.tryRelease(this.state.activeDigest) ?? this.recoveryRelease());
+    this.activeDaemon = !this.state.activeDaemonDigest
+      ? { releaseDigest: null, releaseDir: null, entryPath: null }
+      : (this.tryDaemonRelease(this.state.activeDaemonDigest) ?? this.recoveryDaemonRelease());
     if (!existsSync(path.join(this.home, "releases/electron-web/channel.json"))) return;
     try {
       this.reloadChannel();
@@ -139,21 +164,44 @@ export class EditableReleaseStore {
     return readFileSync(path.join(this.publicKeyHome, "keys", "signing.public.pem"), "utf8");
   }
 
-  private manifestPath(digest: string): string | null {
+  private manifestPathForSurface(surface: EditableReleaseSurface, digest: string): string | null {
+    const rel = `releases/${surface}/${digest}/manifest.json`;
     return (
-      resolveRegularFile(this.home, `releases/electron-web/${digest}/manifest.json`) ??
-      (this.publicKeyHome !== this.home
-        ? resolveRegularFile(this.publicKeyHome, `releases/electron-web/${digest}/manifest.json`)
-        : null)
+      resolveRegularFile(this.home, rel) ??
+      (this.publicKeyHome !== this.home ? resolveRegularFile(this.publicKeyHome, rel) : null)
     );
+  }
+
+  private manifestPath(digest: string): string | null {
+    return this.manifestPathForSurface("electron-web", digest);
   }
 
   hasInstalledRelease(digest: string): boolean {
     return this.manifestPath(digest) !== null;
   }
 
+  hasInstalledDaemonRelease(digest: string): boolean {
+    return this.manifestPathForSurface("daemon", digest) !== null;
+  }
+
   isQuarantined(digest: string): boolean {
     return this.state.quarantinedDigests.includes(digest);
+  }
+
+  isDaemonQuarantined(digest: string): boolean {
+    return (this.state.quarantinedDaemonDigests ?? []).includes(digest);
+  }
+
+  get activeDaemonRelease(): DaemonRelease {
+    return this.activeDaemon;
+  }
+
+  get activeDaemonDigest(): string | null {
+    return this.activeDaemon.releaseDigest;
+  }
+
+  get activeDaemonGeneration(): number {
+    return this.state.activeDaemonGeneration ?? 0;
   }
 
   get activeChannel(): string {
@@ -168,20 +216,25 @@ export class EditableReleaseStore {
     return this.windowReleaseRegistry.get(windowId);
   }
 
-  private readChannelPointerFromHome(home: string, channel: string): ChannelReleasePointer | null {
+  private readSurfacePointerFromHome(
+    home: string,
+    channel: string,
+    surface: EditableReleaseSurface,
+  ): ChannelReleasePointer | null {
     const rel =
       channel === "prod"
         ? "releases/electron-web/channel.json"
         : `releases/electron-web/channels/${channel}.json`;
     const filename = resolveRegularFile(home, rel);
     if (!filename) return null;
+    const expectedRuntime = surface === "daemon" ? DAEMON_RUNTIME_VERSION : DESKTOP_RUNTIME_VERSION;
     try {
       const envelope = readJson(filename);
       if (!verifySignedEnvelope(envelope, this.publicKey())) return null;
       const parsed = channelManifestSchema.parse(envelope.payload);
       if (parsed.channel !== channel) return null;
-      const target = parsed.surfaces["electron-web"];
-      if (!target || target.runtimeVersion !== DESKTOP_RUNTIME_VERSION) return null;
+      const target = parsed.surfaces[surface];
+      if (!target || target.runtimeVersion !== expectedRuntime) return null;
       return {
         channel: parsed.channel,
         digest: target.releaseDigest,
@@ -195,20 +248,146 @@ export class EditableReleaseStore {
     }
   }
 
-  getChannelPointer(channel: string): ChannelReleasePointer | null {
+  private getSurfaceChannelPointer(
+    channel: string,
+    surface: EditableReleaseSurface,
+  ): ChannelReleasePointer | null {
     if (this.safe || !this.stateReadable) return null;
-    const local = this.readChannelPointerFromHome(this.home, channel);
+    const local = this.readSurfacePointerFromHome(this.home, channel, surface);
     const shared =
       this.publicKeyHome !== this.home
-        ? this.readChannelPointerFromHome(this.publicKeyHome, channel)
+        ? this.readSurfacePointerFromHome(this.publicKeyHome, channel, surface)
         : null;
     let best: ChannelReleasePointer | null = local;
     if (shared && (!best || shared.generation > best.generation)) {
       best = shared;
     }
     if (!best) return null;
-    if (channel === "prod" && best.generation < this.state.activeGeneration) return null;
+    const minGen =
+      surface === "daemon" ? (this.state.activeDaemonGeneration ?? 0) : this.state.activeGeneration;
+    if (channel === "prod" && best.generation < minGen) return null;
     return best;
+  }
+
+  getChannelPointer(channel: string): ChannelReleasePointer | null {
+    return this.getSurfaceChannelPointer(channel, "electron-web");
+  }
+
+  getDaemonChannelPointer(channel: string): ChannelReleasePointer | null {
+    return this.getSurfaceChannelPointer(channel, "daemon");
+  }
+
+  loadDaemonRelease(digest: unknown): DaemonRelease {
+    const releaseDigest = digestSchema.parse(digest);
+    if (this.isDaemonQuarantined(releaseDigest)) {
+      throw new Error("Daemon release is quarantined");
+    }
+    const manifestPath = this.manifestPathForSurface("daemon", releaseDigest);
+    if (!manifestPath) throw new Error("Daemon release is missing its signed manifest");
+    const releaseDir = path.dirname(manifestPath);
+    const manifest = verifyReleaseDirectory(
+      releaseDir,
+      readJson(manifestPath),
+      this.publicKey(),
+      DAEMON_RUNTIME_VERSION,
+      "daemon",
+    );
+    if (manifest.releaseDigest !== releaseDigest) throw new Error("Daemon release digest mismatch");
+    const entryPath = resolveRegularFile(releaseDir, DAEMON_ENTRYPOINT_REL_PATH);
+    if (!entryPath) throw new Error("Daemon release entrypoint is missing");
+    return {
+      releaseDigest,
+      releaseDir,
+      entryPath,
+      summary: manifest.summary,
+    };
+  }
+
+  private tryDaemonRelease(digest: string | null): DaemonRelease | null {
+    if (digest === null) return null;
+    try {
+      return this.loadDaemonRelease(digest);
+    } catch (error) {
+      this.warn(error);
+      return null;
+    }
+  }
+
+  private recoveryDaemonRelease(): DaemonRelease {
+    return (
+      this.tryDaemonRelease(this.state.lastKnownGoodDaemonDigest ?? null) ?? {
+        releaseDigest: null,
+        releaseDir: null,
+        entryPath: null,
+      }
+    );
+  }
+
+  switchDaemonRelease(digest: string | null, generation?: number, channel?: string): DaemonRelease {
+    this.requireEditable();
+    const release =
+      digest === null
+        ? { releaseDigest: null, releaseDir: null, entryPath: null }
+        : this.loadDaemonRelease(digest);
+    const activeDaemonGeneration =
+      channel === "prod" && typeof generation === "number"
+        ? Math.max(this.state.activeDaemonGeneration ?? 0, generation)
+        : (this.state.activeDaemonGeneration ?? 0);
+    this.save({
+      ...this.state,
+      activeDaemonDigest: release.releaseDigest,
+      activeDaemonGeneration,
+    });
+    this.activeDaemon = release;
+    return release;
+  }
+
+  reportDaemonHealthy(digest: string): boolean {
+    if (this.activeDaemon.releaseDigest !== digest || this.isDaemonQuarantined(digest)) {
+      return false;
+    }
+    if (digest !== (this.state.lastKnownGoodDaemonDigest ?? null)) {
+      this.save({ ...this.state, lastKnownGoodDaemonDigest: digest });
+    }
+    this.healthyDaemonDigests.add(digest);
+    return true;
+  }
+
+  quarantineDaemon(digest: string): DaemonRelease {
+    const fallback = this.recoveryDaemonRelease();
+    const existing = this.state.quarantinedDaemonDigests ?? [];
+    if (!existing.includes(digest)) {
+      const wasActive = this.activeDaemon.releaseDigest === digest;
+      const nextState: DeviceState = {
+        ...this.state,
+        activeDaemonDigest:
+          this.state.activeDaemonDigest === digest
+            ? fallback.releaseDigest
+            : (this.state.activeDaemonDigest ?? null),
+        quarantinedDaemonDigests: [...existing, digest],
+      };
+      try {
+        this.save(nextState);
+      } catch (error) {
+        this.warn(error);
+        this.state = nextState;
+      }
+      if (wasActive) this.activeDaemon = fallback;
+    }
+    return fallback;
+  }
+
+  useRecoveryDaemon(): DaemonRelease {
+    const builtIn: DaemonRelease = { releaseDigest: null, releaseDir: null, entryPath: null };
+    if (!this.safe && this.stateReadable && this.state.activeDaemonDigest !== null) {
+      try {
+        this.save({ ...this.state, activeDaemonDigest: null });
+      } catch (error) {
+        this.warn(error);
+      }
+    }
+    this.activeDaemon = builtIn;
+    return builtIn;
   }
 
   private loadRelease(digest: unknown): RendererRelease {
@@ -259,11 +438,21 @@ export class EditableReleaseStore {
       activeChannel === "prod"
         ? this.availableChannelRelease()
         : this.availableForChannel(activeChannel);
+    const daemonCandidate = this.getDaemonChannelPointer(activeChannel);
+    const availableDaemonDigest =
+      daemonCandidate &&
+      !this.isDaemonQuarantined(daemonCandidate.digest) &&
+      this.hasInstalledDaemonRelease(daemonCandidate.digest)
+        ? daemonCandidate.digest
+        : null;
     return {
       runtimeVersion: DESKTOP_RUNTIME_VERSION,
+      daemonRuntimeVersion: DAEMON_RUNTIME_VERSION,
       activeDigest: this.active.releaseDigest,
+      activeDaemonDigest: this.activeDaemon.releaseDigest,
       releaseDigest: pinned?.releaseDigest ?? null,
       availableDigest: channelCandidate?.digest ?? null,
+      availableDaemonDigest,
       lastKnownGoodDigest,
       quarantinedDigests: [...quarantinedDigests],
       previewUrl,

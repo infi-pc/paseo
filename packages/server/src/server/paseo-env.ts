@@ -8,7 +8,20 @@ const RUNTIME_CONTROL_ENV_KEYS = [
   ELECTRON_RUN_AS_NODE,
   "ELECTRON_NO_ATTACH_CONSOLE",
   "ESBUILD_BINARY_PATH",
+  // FORK(editable): keep hot-swapped daemon loader env internal to the daemon process tree.
+  "PASEO_EDITABLE_DAEMON_DIR",
+  "PASEO_EDITABLE_FALLBACK_ROOT",
+  "PASEO_EDITABLE_DAEMON_DIGEST",
 ] as const;
+
+function stripEditableDaemonLoaderOption(nodeOptions: string | undefined): string | undefined {
+  if (!nodeOptions || !nodeOptions.includes("daemon-release-loader.mjs")) return nodeOptions;
+  const cleaned = nodeOptions
+    .split(/\s+/)
+    .filter((token) => token.length > 0 && !token.includes("daemon-release-loader.mjs"))
+    .join(" ");
+  return cleaned.length > 0 ? cleaned : undefined;
+}
 
 export type PaseoNodeEnv = "development" | "production" | "test";
 export type ProcessEnvRecord = Record<string, string | undefined>;
@@ -25,6 +38,14 @@ function buildExternalProcessEnv(
   const sanitized = Object.assign({}, baseEnv, ...overlays);
   for (const key of RUNTIME_CONTROL_ENV_KEYS) {
     delete sanitized[key];
+  }
+  if (typeof sanitized.NODE_OPTIONS === "string") {
+    const cleaned = stripEditableDaemonLoaderOption(sanitized.NODE_OPTIONS);
+    if (cleaned === undefined) {
+      delete sanitized.NODE_OPTIONS;
+    } else {
+      sanitized.NODE_OPTIONS = cleaned;
+    }
   }
   for (const [key, value] of Object.entries(sanitized)) {
     if (value === undefined) {

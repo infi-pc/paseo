@@ -20,11 +20,16 @@ function bytes(value: unknown): number {
   return value;
 }
 
-export function parseReleaseManifest(payload: unknown) {
+export type EditableReleaseSurface = "electron-web" | "daemon";
+
+export function parseReleaseManifest(
+  payload: unknown,
+  expectedSurface: EditableReleaseSurface = "electron-web",
+) {
   const manifest = record(payload);
   assert.equal(manifest.schemaVersion, 1, "Unsupported release schema");
   assert.equal(manifest.kind, "release", "Unexpected manifest kind");
-  assert.equal(manifest.surface, "electron-web", "Unexpected release surface");
+  assert.equal(manifest.surface, expectedSurface, "Unexpected release surface");
   const releaseDigest = stringMatching(manifest.releaseDigest, sha256, "release digest");
   const sourceSha = stringMatching(manifest.sourceSha, /^[a-f0-9]{40}$/, "source SHA");
   const archiveSha256 = stringMatching(manifest.archiveSha256, sha256, "archive SHA");

@@ -239,3 +239,67 @@ export async function readComparisonBreakdown(
   breakdown.other.deletions += input.total.deletions - sum.deletions;
   return breakdown;
 }
+
+function parseShortstatTotals(stdout: string): { additions: number; deletions: number } {
+  const insMatch = /(\d+)\s+insertion/.exec(stdout);
+  const delMatch = /(\d+)\s+deletion/.exec(stdout);
+  return {
+    additions: insMatch ? Number(insMatch[1]) : 0,
+    deletions: delMatch ? Number(delMatch[1]) : 0,
+  };
+}
+
+async function countUntrackedLines(cwd: string, git: RunGitCommand): Promise<number> {
+  const untracked = await git(["ls-files", "--others", "--exclude-standard", "-z"], {
+    cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+  });
+  if (untracked.exitCode !== 0 || !untracked.stdout) return 0;
+  let additions = 0;
+  for (const relPath of untracked.stdout.split("\0").filter(Boolean).slice(0, MAX_ANALYZED_FILES)) {
+    const content = await readContent({ cwd, baseRef: "" }, relPath);
+    if (!content || content.includes("\0")) continue;
+    const lines = content.replace(/\r\n/g, "\n").split("\n");
+    if (lines.at(-1) === "") lines.pop();
+    additions += lines.length;
+  }
+  return additions;
+}
+
+/**
+ * Computes a Paseo DiffStat (totals + AST-aware category breakdown) for a branch worktree
+ * compared against `merge-base(HEAD, baseRef)`, including both committed and working-tree edits.
+ */
+export async function readBranchDiffStat(input: {
+  cwd: string;
+  baseRef: string;
+  runGit?: RunGitCommand;
+}): Promise<DiffStat | null> {
+  const git = input.runGit ?? runGitCommand;
+  const mb = await git(["merge-base", "HEAD", input.baseRef], {
+    cwd: input.cwd,
+    envOverlay: READ_ONLY_GIT_ENV,
+    acceptExitCodes: [0, 1, 128],
+  });
+  const mergeBase = mb.exitCode === 0 ? mb.stdout.trim() : "";
+  if (!mergeBase) return null;
+
+  const [shortstatRes, untrackedAdditions] = await Promise.all([
+    git(["diff", "--no-ext-diff", "--no-textconv", "--shortstat", mergeBase], {
+      cwd: input.cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+    }),
+    countUntrackedLines(input.cwd, git),
+  ]);
+  const total = parseShortstatTotals(shortstatRes.stdout);
+  total.additions += untrackedAdditions;
+  if (total.additions === 0 && total.deletions === 0) return null;
+
+  const breakdown = await readComparisonBreakdown({
+    cwd: input.cwd,
+    baseRef: mergeBase,
+    total,
+    runGit: git,
+  });
+  return { ...total, breakdown };
+}

@@ -19,6 +19,7 @@ import { locateEditableTarget } from "./locator";
 import type { EditableTarget } from "./locator.ts";
 import type {
   EditableElementSnapshot,
+  EditableReferencedElement,
   EditableRouteContext,
   EditableScreenshotAttachment,
 } from "./types";
@@ -152,6 +153,8 @@ function buildDraftControls(
   prompt: ReturnType<typeof useEditablePrompt>,
   t: (key: string) => string,
   onSubmitDraft: () => void,
+  availableTargets: ReadonlyArray<string>,
+  lastActiveChatSlug: string | null,
 ): EditableChatDraftControls {
   return {
     draft: prompt.draft,
@@ -160,6 +163,10 @@ function buildDraftControls(
     sending: prompt.sending,
     error: prompt.error,
     loadedWipSlug: prompt.loadedWipSlug,
+    selectedTargetSlug: prompt.selectedTargetSlug,
+    setSelectedTargetSlug: prompt.setSelectedTargetSlug,
+    availableTargets,
+    lastActiveChatSlug,
     targetNewBranch: prompt.targetNewBranch,
     setTargetNewBranch: prompt.setTargetNewBranch,
     managedWorkshop: prompt.managedWorkshop,
@@ -185,6 +192,61 @@ function formatTargetLabel(target: EditableTarget, fallback: string): string {
   return componentName || suffix || fallback;
 }
 
+function referenceKey(locator: EditableTarget["context"]): string {
+  return `${locator.file}:${locator.line ?? ""}:${locator.column ?? ""}:${locator.componentName ?? ""}`;
+}
+
+function appendReferencedElement(
+  prev: EditableReferencedElement[],
+  nextRef: EditableReferencedElement,
+): EditableReferencedElement[] {
+  const nextKey = referenceKey(nextRef.locator);
+  const filtered = prev.filter((item) => referenceKey(item.locator) !== nextKey);
+  return [...filtered, nextRef].slice(-5);
+}
+
+interface SendReferencedInput {
+  targetSlug: string | null;
+  text: string;
+  references: ReadonlyArray<EditableReferencedElement>;
+}
+
+function buildInlineLiveProps(
+  isLive: boolean,
+  input: {
+    referencedElements: ReadonlyArray<EditableReferencedElement>;
+    pickingReference: boolean;
+    onRemoveReference: (id: string) => void;
+    onClearReferences: () => void;
+    onStartPickReference: () => void;
+    onSendReferencedToTarget: (payload: SendReferencedInput) => Promise<boolean>;
+  },
+) {
+  if (!isLive) return {};
+  return {
+    referencedElements: input.referencedElements,
+    onRemoveReference: input.onRemoveReference,
+    onClearReferences: input.onClearReferences,
+    onStartPickReference: input.onStartPickReference,
+    pickingReference: input.pickingReference,
+    onSendReferencedToTarget: input.onSendReferencedToTarget,
+  };
+}
+
+function resolveInlineHeaderMeta(
+  inlineChat: { slug: string; agentId: string } | null,
+  inlineBranch: { title?: string | null; icon?: string | null } | null,
+  prompt: ReturnType<typeof useEditablePrompt>,
+  selectedLabel: string,
+): { title: string; icon: string | null } {
+  if (!inlineChat) return { title: selectedLabel, icon: null };
+  const slug = inlineChat.slug;
+  return {
+    title: prompt.agentTitles?.[slug] ?? inlineBranch?.title ?? slug,
+    icon: prompt.agentIcons?.[slug] ?? inlineBranch?.icon ?? null,
+  };
+}
+
 function SelectedElementChat({
   selected,
   inlineChat,
@@ -194,10 +256,19 @@ function SelectedElementChat({
   prompt,
   bridge,
   branches,
+  availableTargets,
+  lastActiveChatSlug,
+  referencedElements,
+  pickingReference,
+  suppressDismiss,
   refresh,
   onClose,
   onSubmitDraft,
   onPopOutChat,
+  onRemoveReference,
+  onClearReferences,
+  onStartPickReference,
+  onSendReferencedToTarget,
 }: {
   selected: EditableTarget;
   inlineChat: { slug: string; agentId: string } | null;
@@ -207,10 +278,19 @@ function SelectedElementChat({
   prompt: ReturnType<typeof useEditablePrompt>;
   bridge: ReturnType<typeof useEditableDesktop>["bridge"];
   branches: ReturnType<typeof useEditableDesktop>["branches"];
+  availableTargets: ReadonlyArray<string>;
+  lastActiveChatSlug: string | null;
+  referencedElements: ReadonlyArray<EditableReferencedElement>;
+  pickingReference: boolean;
+  suppressDismiss: boolean;
   refresh: () => Promise<void>;
   onClose: () => void;
   onSubmitDraft: () => void;
   onPopOutChat: (agentId: string) => void;
+  onRemoveReference: (id: string) => void;
+  onClearReferences: () => void;
+  onStartPickReference: () => void;
+  onSendReferencedToTarget: (input: SendReferencedInput) => Promise<boolean>;
 }) {
   const { t } = useTranslation();
   const onLoadInlineBranch = useStableEvent((channel: string) => {
@@ -235,8 +315,29 @@ function SelectedElementChat({
   const inlineBranch = inlineChat
     ? (branches?.branches.find((b) => b.slug === inlineChat.slug) ?? null)
     : null;
-  const draftControls = buildDraftControls(prompt, t, onSubmitDraft);
+  const draftControls = buildDraftControls(
+    prompt,
+    t,
+    onSubmitDraft,
+    availableTargets,
+    lastActiveChatSlug,
+  );
   const selectedLabel = formatTargetLabel(selected, t("editable.component"));
+  const liveProps = buildInlineLiveProps(Boolean(inlineChat), {
+    referencedElements,
+    pickingReference,
+    onRemoveReference,
+    onClearReferences,
+    onStartPickReference,
+    onSendReferencedToTarget,
+  });
+
+  const { title: inlineTitle, icon: inlineIcon } = resolveInlineHeaderMeta(
+    inlineChat,
+    inlineBranch,
+    prompt,
+    selectedLabel,
+  );
 
   return (
     <InlinePopover
@@ -245,16 +346,21 @@ function SelectedElementChat({
       width={inlineChat ? CHAT_POPOVER_WIDTH : DRAFT_POPOVER_WIDTH}
       setScope={setScope}
       onDismiss={onClose}
-      label={inlineChat ? inlineChat.slug : t("editable.placeholder")}
+      suppressDismiss={suppressDismiss}
+      keepOpenOnAltClick={Boolean(inlineChat)}
+      label={inlineChat ? inlineTitle : t("editable.placeholder")}
     >
       <EditableChatView
         serverId={prompt.hostId}
         agentId={inlineChat?.agentId ?? null}
         slug={inlineChat?.slug ?? null}
-        title={inlineChat ? inlineChat.slug : selectedLabel}
+        title={inlineTitle}
+        icon={inlineIcon}
         locatorChip={inlineChat ? selectedLabel : null}
         branch={inlineBranch}
         draftControls={draftControls}
+        loadedWipSlug={prompt.loadedWipSlug}
+        {...liveProps}
         compact
         onClose={onClose}
         onPopOut={prompt.hostId ? onPopOutChat : undefined}
@@ -314,20 +420,32 @@ function useEditablePickState({
   bridge,
   prompt,
   route,
+  hasOpenStatusChat,
+  componentFallback,
+  onChatActivated,
+  onAttachReference,
 }: {
   canPick: boolean;
   bridge: ReturnType<typeof useEditableDesktop>["bridge"];
   prompt: ReturnType<typeof useEditablePrompt>;
   route: string;
+  hasOpenStatusChat: boolean;
+  componentFallback: string;
+  onChatActivated: (slug: string) => void;
+  onAttachReference: (reference: EditableReferencedElement) => void;
 }) {
   const [picking, setPicking] = useState(false);
   const [selected, setSelected] = useState<EditableTarget | null>(null);
   const [inlineChat, setInlineChat] = useState<{ slug: string; agentId: string } | null>(null);
   const selectedSnapshotRef = useRef<EditableElementSnapshot | null>(null);
   const selectedScreenshotRef = useRef<EditableScreenshotAttachment | null>(null);
-  const [altPicking, clearAltPicking] = useOptionHoldPicking(canPick && !selected);
+  const [altPicking, clearAltPicking] = useOptionHoldPicking(
+    canPick && (!selected || Boolean(inlineChat)),
+  );
   const currentRoute = useRef(route);
   currentRoute.current = route;
+  const hasOpenLiveChatRef = useRef(false);
+  hasOpenLiveChatRef.current = Boolean(inlineChat) || hasOpenStatusChat;
 
   const clearSelection = useCallback(() => {
     setSelected(null);
@@ -336,12 +454,24 @@ function useEditablePickState({
     selectedScreenshotRef.current = null;
   }, []);
 
-  const close = useCallback(() => {
-    clearSelection();
+  const cancelPicking = useCallback(() => {
     setPicking(false);
     clearAltPicking();
-  }, [clearAltPicking, clearSelection]);
+  }, [clearAltPicking]);
+
+  const close = useCallback(() => {
+    clearSelection();
+    cancelPicking();
+  }, [cancelPicking, clearSelection]);
   useEffect(close, [route, close]);
+
+  const handleEscape = useCallback(() => {
+    if (picking && hasOpenLiveChatRef.current) {
+      cancelPicking();
+      return;
+    }
+    close();
+  }, [cancelPicking, close, picking]);
 
   const startPick = useCallback(() => {
     if (!canPick) return;
@@ -351,18 +481,36 @@ function useEditablePickState({
     setPicking(true);
   }, [canPick, clearAltPicking, clearSelection, prompt]);
 
+  const startPickReference = useCallback(() => {
+    if (!canPick) return;
+    clearAltPicking();
+    setPicking((prev) => !prev);
+  }, [canPick, clearAltPicking]);
+
   const onPick = useCallback(
     (target: EditableTarget) => {
-      setInlineChat(null);
       setPicking(false);
       clearAltPicking();
+      if (hasOpenLiveChatRef.current) {
+        captureElementClickContext(target, bridge, (snapshot, screenshot) => {
+          onAttachReference({
+            id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+            label: formatTargetLabel(target, componentFallback),
+            locator: target.context,
+            snapshot,
+            screenshot,
+          });
+        });
+        return;
+      }
+      setInlineChat(null);
       captureElementClickContext(target, bridge, (snapshot, screenshot) => {
         selectedSnapshotRef.current = snapshot;
         selectedScreenshotRef.current = screenshot;
         setSelected(target);
       });
     },
-    [bridge, clearAltPicking],
+    [bridge, clearAltPicking, componentFallback, onAttachReference],
   );
 
   const onSubmitDraft = useStableEvent(() => {
@@ -374,17 +522,24 @@ function useEditablePickState({
         snapshot,
         images: screenshot ? [screenshot] : undefined,
       });
-      if (sent && currentRoute.current === route) setInlineChat(sent);
+      if (sent && currentRoute.current === route) {
+        setInlineChat(sent);
+        onChatActivated(sent.slug);
+      }
     })();
   });
 
   const isPickingMode = picking || altPicking;
   const active = isPickingMode || !!selected;
   const togglePick = useCallback(() => {
+    if (hasOpenLiveChatRef.current) {
+      startPickReference();
+      return true;
+    }
     if (active) close();
     else startPick();
     return true;
-  }, [active, close, startPick]);
+  }, [active, close, startPick, startPickReference]);
 
   return {
     picking,
@@ -393,15 +548,138 @@ function useEditablePickState({
     active,
     selected,
     inlineChat,
+    setInlineChat,
     close,
+    handleEscape,
     startPick,
+    startPickReference,
     togglePick,
     onPick,
     onSubmitDraft,
   };
 }
 
+function collectAvailableTargets(
+  branches: ReturnType<typeof useEditableDesktop>["branches"],
+  prompt: ReturnType<typeof useEditablePrompt>,
+): string[] {
+  const slugs: string[] = [];
+  const push = (slug: string | null | undefined) => {
+    if (slug && !slugs.includes(slug)) slugs.push(slug);
+  };
+  for (const b of branches?.branches ?? []) push(b.slug);
+  for (const rec of Object.values(prompt.branchAgents ?? {})) {
+    const st = prompt.agentStatuses?.[rec.slug];
+    if (st !== "closed" && st !== "archived") push(rec.slug);
+  }
+  for (const pending of Object.values(prompt.pendingBranches ?? {})) push(pending.slug);
+  return slugs;
+}
+
+function useChatReferencesState() {
+  const [statusPopoverOpen, setStatusPopoverOpen] = useState(false);
+  const [statusActiveChatSlug, setStatusActiveChatSlug] = useState<string | null>(null);
+  const [lastActiveChatSlug, setLastActiveChatSlug] = useState<string | null>(null);
+  const [chatReferences, setChatReferences] = useState<EditableReferencedElement[]>([]);
+
+  const attachReference = useCallback((reference: EditableReferencedElement) => {
+    setChatReferences((prev) => appendReferencedElement(prev, reference));
+  }, []);
+  const removeReference = useCallback((id: string) => {
+    setChatReferences((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+  const clearReferences = useCallback(() => setChatReferences([]), []);
+
+  const handleStatusPopoverOpenChange = useStableEvent((nextOpen: boolean) => {
+    setStatusPopoverOpen(nextOpen);
+    if (!nextOpen) clearReferences();
+  });
+  const handleStatusActiveChatChange = useStableEvent((nextSlug: string | null) => {
+    setStatusActiveChatSlug(nextSlug);
+    if (nextSlug) setLastActiveChatSlug(nextSlug);
+    clearReferences();
+  });
+
+  return {
+    statusPopoverOpen,
+    statusActiveChatSlug,
+    setStatusActiveChatSlug,
+    lastActiveChatSlug,
+    setLastActiveChatSlug,
+    hasOpenStatusChat: statusPopoverOpen && Boolean(statusActiveChatSlug),
+    chatReferences,
+    attachReference,
+    removeReference,
+    clearReferences,
+    handleStatusPopoverOpenChange,
+    handleStatusActiveChatChange,
+  };
+}
+
+async function submitReferencedToTarget(
+  prompt: ReturnType<typeof useEditablePrompt>,
+  input: SendReferencedInput,
+): Promise<{ agentId: string; slug: string } | null> {
+  const [primary, ...rest] = input.references;
+  if (!primary) return null;
+  const images = input.references
+    .map((ref) => ref.screenshot)
+    .filter((img): img is NonNullable<typeof img> => Boolean(img));
+  return prompt.submitInPlace(primary.locator, {
+    targetSlug: input.targetSlug,
+    overrideText: input.text,
+    snapshot: primary.snapshot,
+    extraReferences: rest,
+    images: images.length > 0 ? images : undefined,
+  });
+}
+
+function useOverlayReferenceRouting(
+  prompt: ReturnType<typeof useEditablePrompt>,
+  chatState: ReturnType<typeof useChatReferencesState>,
+  setInlineChat: (chat: { slug: string; agentId: string } | null) => void,
+) {
+  const sendInline = useStableEvent(async (input: SendReferencedInput) => {
+    const sent = await submitReferencedToTarget(prompt, input);
+    if (!sent) return false;
+    chatState.setLastActiveChatSlug(sent.slug);
+    setInlineChat(sent);
+    return true;
+  });
+  const sendStatus = useStableEvent(async (input: SendReferencedInput) => {
+    const sent = await submitReferencedToTarget(prompt, input);
+    if (!sent) return false;
+    chatState.setLastActiveChatSlug(sent.slug);
+    chatState.setStatusActiveChatSlug(sent.slug);
+    return true;
+  });
+  return { sendInline, sendStatus };
+}
+
+function resolveStatusChatRefProps(
+  chatState: ReturnType<typeof useChatReferencesState>,
+  pick: ReturnType<typeof useEditablePickState>,
+  loadedWipSlug: string | null,
+  onSendReferencedToTarget: (input: SendReferencedInput) => Promise<boolean>,
+) {
+  return {
+    popoverOpen: chatState.statusPopoverOpen,
+    onPopoverOpenChange: chatState.handleStatusPopoverOpenChange,
+    activeChatSlug: chatState.statusActiveChatSlug,
+    onActiveChatSlugChange: chatState.handleStatusActiveChatChange,
+    suppressDismiss: pick.isPickingMode && chatState.hasOpenStatusChat,
+    referencedElements: chatState.hasOpenStatusChat ? chatState.chatReferences : undefined,
+    onRemoveReference: chatState.removeReference,
+    onClearReferences: chatState.clearReferences,
+    onStartPickReference: pick.startPickReference,
+    pickingReference: Boolean(chatState.hasOpenStatusChat && pick.picking),
+    loadedWipSlug,
+    onSendReferencedToTarget,
+  };
+}
+
 export function EditableOverlay() {
+  const { t } = useTranslation();
   const route = usePathname();
   const router = useRouter();
   const { bridge, status, workshopDaemon, branches, refresh } = useEditableDesktop();
@@ -413,12 +691,29 @@ export function EditableOverlay() {
     loadedChannel,
     refreshDesktop: refresh,
   });
+  const chatState = useChatReferencesState();
   const pointerPos = usePointerPositionRef();
   const enabled = prompt.config?.enabled === true;
   useEditableInspectorLifecycle(enabled || Boolean(bridge), route);
   const canPick = isWeb && enabled && !prompt.sending;
-  const pick = useEditablePickState({ canPick, bridge, prompt, route });
+
+  const pick = useEditablePickState({
+    canPick,
+    bridge,
+    prompt,
+    route,
+    hasOpenStatusChat: chatState.hasOpenStatusChat,
+    componentFallback: t("editable.component"),
+    onChatActivated: chatState.setLastActiveChatSlug,
+    onAttachReference: chatState.attachReference,
+  });
   const layer = useGlobalOverlayLayer("floating", pick.active);
+  const routing = useOverlayReferenceRouting(prompt, chatState, pick.setInlineChat);
+
+  const availableTargets = useMemo(
+    () => collectAvailableTargets(branches, prompt),
+    [branches, prompt],
+  );
 
   useKeyboardActionHandler({
     handlerId: "editable.pick",
@@ -428,7 +723,7 @@ export function EditableOverlay() {
     handle: pick.togglePick,
   });
 
-  const setScope = useEditableEscape(pick.active, layer, Boolean(pick.selected), pick.close);
+  const setScope = useEditableEscape(pick.active, layer, Boolean(pick.selected), pick.handleEscape);
   const hover = useHoveredTarget({
     picking: pick.picking,
     altPicking: pick.altPicking,
@@ -437,11 +732,17 @@ export function EditableOverlay() {
     releaseDigest: status?.releaseDigest ?? null,
     onPick: pick.onPick,
   });
-  const target = pick.selected ?? hover;
-  const rect = useTargetRect(target?.element);
+  const selectedRect = useTargetRect(pick.selected?.element);
+  const highlightTarget = pick.isPickingMode ? hover : pick.selected;
+  const highlightRect = useTargetRect(highlightTarget?.element);
 
+  const onCloseSelected = useStableEvent(() => {
+    chatState.clearReferences();
+    pick.close();
+  });
   const onPopOutChat = useStableEvent((agentId: string) => {
     if (!prompt.hostId) return;
+    chatState.clearReferences();
     pick.close();
     router.push(buildHostAgentDetailRoute(prompt.hostId, agentId) as never);
   });
@@ -457,24 +758,42 @@ export function EditableOverlay() {
     return null;
   }
 
+  const statusChatProps = resolveStatusChatRefProps(
+    chatState,
+    pick,
+    prompt.loadedWipSlug,
+    routing.sendStatus,
+  );
+
   return createPortal(
     <>
       <PickingHint visible={pick.isPickingMode} layer={layer} />
-      {target && rect ? <PickerHighlight rect={rect} target={target} layer={layer} /> : null}
+      {highlightTarget && highlightRect ? (
+        <PickerHighlight rect={highlightRect} target={highlightTarget} layer={layer} />
+      ) : null}
       {pick.selected ? (
         <SelectedElementChat
           selected={pick.selected}
           inlineChat={pick.inlineChat}
-          rect={rect}
+          rect={selectedRect}
           layer={layer}
           setScope={setScope}
           prompt={prompt}
           bridge={bridge}
           branches={branches}
+          availableTargets={availableTargets}
+          lastActiveChatSlug={chatState.lastActiveChatSlug}
+          referencedElements={chatState.chatReferences}
+          pickingReference={pick.picking}
+          suppressDismiss={pick.isPickingMode}
           refresh={refresh}
-          onClose={pick.close}
+          onClose={onCloseSelected}
           onSubmitDraft={pick.onSubmitDraft}
           onPopOutChat={onPopOutChat}
+          onRemoveReference={chatState.removeReference}
+          onClearReferences={chatState.clearReferences}
+          onStartPickReference={pick.startPickReference}
+          onSendReferencedToTarget={routing.sendInline}
         />
       ) : null}
       <EditableStatusPill
@@ -486,6 +805,7 @@ export function EditableOverlay() {
         onPick={pick.startPick}
         onRefresh={refresh}
         layer={layer}
+        {...statusChatProps}
       />
     </>,
     getOverlayRoot(),
@@ -618,6 +938,8 @@ function InlinePopover({
   width: preferredWidth,
   setScope,
   onDismiss,
+  suppressDismiss = false,
+  keepOpenOnAltClick = false,
   label,
   children,
 }: {
@@ -626,6 +948,8 @@ function InlinePopover({
   width: number;
   setScope: (node: unknown) => void;
   onDismiss: () => void;
+  suppressDismiss?: boolean;
+  keepOpenOnAltClick?: boolean;
   label: string;
   children: React.ReactNode;
 }) {
@@ -644,6 +968,7 @@ function InlinePopover({
   useEffect(() => {
     if (!isWeb) return;
     const onPointerDown = (event: PointerEvent) => {
+      if (suppressDismiss || (keepOpenOnAltClick && event.altKey)) return;
       if (
         containerRef.current &&
         event.target instanceof Node &&
@@ -656,7 +981,7 @@ function InlinePopover({
     return () => {
       window.removeEventListener("pointerdown", onPointerDown, true);
     };
-  }, [onDismiss]);
+  }, [onDismiss, suppressDismiss, keepOpenOnAltClick]);
 
   useLayoutEffect(() => {
     if (!isWeb || !frame) return;

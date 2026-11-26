@@ -3,6 +3,7 @@ import {
   routeLocatorContext,
   type EditableElementSnapshot,
   type EditableLocatorContext,
+  type EditableReferencedElement,
   type EditableScreenshotAttachment,
   type EditableWorkshopConfig,
 } from "./types";
@@ -103,14 +104,14 @@ async function resolveWorkshopCwd(client: WorkshopClient, rawCwd: string): Promi
   return match;
 }
 
-function buildIntentGuidelines(slugPlaceholder: string, summaryHint: string): string[] {
+function buildIntentGuidelines(slugPlaceholder: string): string[] {
   return [
     "Respond based on what the user is actually asking:",
     '- If the user is asking a question, brainstorming, seeking your opinion, or exploring (for example "what do you think?", "why does…?", "how does…?", "could we…?"): ONLY inspect the code and answer concisely. Do NOT modify files, commit, or run `paseo-ed stage` until the user explicitly asks to implement a change.',
     "- Only when the user asks you to make or change something (now or in a later turn of this chat):",
     `  1. Make the edit inside that worktree.`,
     `  2. Run \`paseo-ed verify ${slugPlaceholder}\` to check typecheck and lint.`,
-    `  3. Run \`paseo-ed stage ${slugPlaceholder} --summary "${summaryHint}" --upload\` to commit on the WIP branch, build the signed Electron preview, and publish to Cloud Shelf. Do NOT merge to main or run \`paseo-ed ship\` — the user will click Ship when ready.`,
+    `  3. Run \`paseo-ed stage ${slugPlaceholder} --summary "<short 1-sentence feature summary>" --upload\` to commit on the WIP branch, build the signed UI and/or Daemon release(s), and publish to Cloud Shelf so the user can hot-swap them live in Paseo Dev.app. Write --summary as a clear 1-sentence description of what this feature/change does as a whole (not a verbatim copy of the user's raw prompt, and distinct from your turn-by-turn <paseo-meta message="..." /> update). Do NOT merge to main or run \`paseo-ed ship\` — the user will click Ship when ready.`,
     "- To live-inspect the running Paseo Dev.app (screenshots, DOM, React props/hooks, matched CSS, console logs, network, perf/APM, or stores), run `paseo-ed app --help`.",
   ];
 }
@@ -118,35 +119,78 @@ function buildIntentGuidelines(slugPlaceholder: string, summaryHint: string): st
 function buildPromptInstructions(
   slug: string | undefined,
   isFollowUp: boolean | undefined,
-  summaryHint: string,
   worktreePath: string | undefined,
 ): string[] {
   if (slug && worktreePath) {
     return [
       `You are the Editable Paseo Workshop assistant, working inside isolated WIP worktree \`${slug}\` (\`${worktreePath}\`, branch \`ed/wip/${slug}\`).`,
       "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH) if and when you stage code changes.",
-      ...buildIntentGuidelines(slug, summaryHint),
+      ...buildIntentGuidelines(slug),
     ];
   }
   if (!slug) {
     return [
       "You are the Editable Paseo Workshop assistant in the dedicated Editable Paseo repository.",
       "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH). If you need to make code changes, first run `paseo-ed wip create <slug>` and edit inside that worktree.",
-      ...buildIntentGuidelines("<slug>", "<short summary>"),
+      ...buildIntentGuidelines("<slug>"),
     ];
   }
   if (isFollowUp) {
     return [
       `You are the Editable Paseo Workshop assistant, continuing in WIP worktree \`~/.editable-paseo/worktrees/${slug}\` (branch \`ed/wip/${slug}\`).`,
       "Use the `paseo-ed` CLI (`~/.local/bin/paseo-ed` if not on PATH).",
-      ...buildIntentGuidelines(slug, summaryHint),
+      ...buildIntentGuidelines(slug),
     ];
   }
   return [
     `You are the Editable Paseo Workshop assistant for isolated WIP branch \`${slug}\` (\`~/.editable-paseo/worktrees/${slug}\`, branch \`ed/wip/${slug}\`).`,
-    `Use the \`paseo-ed\` CLI (\`~/.local/bin/paseo-ed\` if not on PATH). If \`~/.editable-paseo/worktrees/${slug}\` does not exist yet, first run \`paseo-ed wip create ${slug} --summary "${summaryHint}"\`.`,
-    ...buildIntentGuidelines(slug, summaryHint),
+    `Use the \`paseo-ed\` CLI (\`~/.local/bin/paseo-ed\` if not on PATH). If \`~/.editable-paseo/worktrees/${slug}\` does not exist yet, first run \`paseo-ed wip create ${slug}\`.`,
+    ...buildIntentGuidelines(slug),
   ];
+}
+
+function serializeLocatorContext(locator: EditableLocatorContext): string {
+  const { file, line, column, componentName } = locator;
+  const { route, releaseDigest, platform } = routeLocatorContext(locator);
+  return JSON.stringify(
+    { file, line, column, componentName, route, releaseDigest, platform },
+    null,
+    2,
+  );
+}
+
+function appendReferenceSections(
+  sections: string[],
+  references: ReadonlyArray<{
+    locator: EditableLocatorContext;
+    snapshot?: EditableElementSnapshot | null;
+  }>,
+) {
+  for (const ref of references) {
+    sections.push("", "Locator context:", serializeLocatorContext(ref.locator));
+    if (ref.snapshot) {
+      sections.push("", "Element snapshot:", JSON.stringify(ref.snapshot));
+    }
+  }
+}
+
+export function buildWorkshopFollowUpPrompt(
+  request: string,
+  references: ReadonlyArray<{
+    locator: EditableLocatorContext;
+    snapshot?: EditableElementSnapshot | null;
+  }>,
+): string {
+  const trimmed = request.trim();
+  if (references.length === 0) return trimmed;
+  const sections: string[] = [
+    references.length === 1
+      ? "Follow-up referencing a new UI element in the running app:"
+      : `Follow-up referencing ${references.length} UI elements in the running app:`,
+  ];
+  appendReferenceSections(sections, references);
+  sections.push("", "User message:", trimmed);
+  return sections.join("\n");
 }
 
 export function buildWorkshopPrompt(
@@ -157,23 +201,21 @@ export function buildWorkshopPrompt(
     isFollowUp?: boolean;
     worktreePath?: string;
     snapshot?: EditableElementSnapshot | null;
+    extraReferences?: ReadonlyArray<Pick<EditableReferencedElement, "locator" | "snapshot">>;
   } = {},
 ): string {
-  const { file, line, column, componentName } = locator;
-  const { route, releaseDigest, platform } = routeLocatorContext(locator);
-  const context = { file, line, column, componentName, route, releaseDigest, platform };
-  const summaryHint = request.trim().replace(/"/g, "'").slice(0, 72);
   const instructions = buildPromptInstructions(
     options.slug,
     options.isFollowUp,
-    summaryHint,
     options.worktreePath,
   );
 
-  const sections = [...instructions, "", "Locator context:", JSON.stringify(context, null, 2)];
-  if (options.snapshot) {
-    sections.push("", "Element snapshot:", JSON.stringify(options.snapshot));
-  }
+  const sections = [...instructions];
+  const allRefs: Array<{
+    locator: EditableLocatorContext;
+    snapshot?: EditableElementSnapshot | null;
+  }> = [{ locator, snapshot: options.snapshot }, ...(options.extraReferences ?? [])];
+  appendReferenceSections(sections, allRefs);
   sections.push("", "User message:", request.trim());
   return sections.join("\n");
 }
@@ -182,11 +224,10 @@ async function ensureWorkshopAgent(input: {
   client: WorkshopClient;
   target: WorkshopTarget;
   slug: string;
-  hasExplicitSlug: boolean;
   isFollowUp?: boolean;
   worktreePath?: string;
   rememberAgent: (agentId: string, slug: string) => Promise<void>;
-}): Promise<{ kind: "ready"; agentId: string } | { kind: "no-provider" }> {
+}): Promise<{ kind: "ready"; agentId: string; reused: boolean } | { kind: "no-provider" }> {
   let agentId = input.isFollowUp !== false ? input.target.workshopAgentId : null;
   if (agentId) {
     const existing = await input.client.fetchAgent(agentId);
@@ -194,7 +235,7 @@ async function ensureWorkshopAgent(input: {
       agentId = null;
     }
   }
-  if (agentId) return { kind: "ready", agentId };
+  if (agentId) return { kind: "ready", agentId, reused: true };
 
   const { providers, error } = await input.client.listAvailableProviders();
   if (error) throw new Error(error);
@@ -206,14 +247,15 @@ async function ensureWorkshopAgent(input: {
     input.worktreePath ??
     (await resolveWorkshopCwd(input.client, input.target.workshopCwd ?? DEFAULT_WORKSHOP_CWD));
   const modeId = await resolveWorkshopModeId(input.client, provider.provider, cwd);
+  // Leave title unset so Paseo starts the chat in automatic naming mode and populates
+  // a short topic title + icon from <paseo-meta>, while still respecting manual renames.
   const agent = await input.client.createAgent({
-    title: input.hasExplicitSlug ? `Editable: ${input.slug}` : "Editable Paseo Workshop",
     provider: provider.provider,
     cwd,
     ...(modeId ? { modeId } : {}),
   });
   await input.rememberAgent(agent.id, input.slug);
-  return { kind: "ready", agentId: agent.id };
+  return { kind: "ready", agentId: agent.id, reused: false };
 }
 
 export async function sendWorkshopEdit(input: {
@@ -224,6 +266,7 @@ export async function sendWorkshopEdit(input: {
   isFollowUp?: boolean;
   worktreePath?: string | null;
   snapshot?: EditableElementSnapshot | null;
+  extraReferences?: ReadonlyArray<Pick<EditableReferencedElement, "locator" | "snapshot">>;
   images?: EditableScreenshotAttachment[];
   getClient: (serverId: string) => WorkshopClient | null;
   rememberAgent: (agentId: string, slug: string) => Promise<void>;
@@ -239,19 +282,25 @@ export async function sendWorkshopEdit(input: {
     client,
     target: input.target,
     slug,
-    hasExplicitSlug: Boolean(input.slug),
     isFollowUp: input.isFollowUp,
     worktreePath,
     rememberAgent: input.rememberAgent,
   });
   if (resolved.kind !== "ready") return resolved;
 
-  const promptText = buildWorkshopPrompt(input.locator, input.request, {
-    slug: input.slug,
-    isFollowUp: input.isFollowUp,
-    worktreePath,
-    snapshot: input.snapshot,
-  });
+  const useCompactFollowUp = Boolean(input.isFollowUp && resolved.reused);
+  const promptText = useCompactFollowUp
+    ? buildWorkshopFollowUpPrompt(input.request, [
+        { locator: input.locator, snapshot: input.snapshot },
+        ...(input.extraReferences ?? []),
+      ])
+    : buildWorkshopPrompt(input.locator, input.request, {
+        slug: input.slug,
+        isFollowUp: input.isFollowUp,
+        worktreePath,
+        snapshot: input.snapshot,
+        extraReferences: input.extraReferences,
+      });
   if (input.images && input.images.length > 0) {
     await client.sendAgentMessage(resolved.agentId, promptText, { images: input.images });
   } else {

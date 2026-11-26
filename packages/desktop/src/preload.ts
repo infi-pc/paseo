@@ -76,7 +76,9 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:editable:syncNow"),
     getBranches: (): Promise<EditableBranchesSnapshot | null> =>
       ipcRenderer.invoke("paseo:editable:getBranches"),
-    loadBranch: (channel: string): Promise<{ ok: boolean; error?: string }> =>
+    loadBranch: (
+      channel: string,
+    ): Promise<{ ok: boolean; uiChanged?: boolean; daemonSwapped?: boolean; error?: string }> =>
       ipcRenderer.invoke("paseo:editable:loadBranch", channel),
     shipBranch: (slug: string): Promise<ShipBranchResult & { autoLoaded?: boolean }> =>
       ipcRenderer.invoke("paseo:editable:shipBranch", slug),
@@ -87,6 +89,11 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     }): Promise<CreateBranchResult> => ipcRenderer.invoke("paseo:editable:createBranch", input),
     attachBranchAgent: (slug: string, agentId: string): Promise<{ ok: boolean; error?: string }> =>
       ipcRenderer.invoke("paseo:editable:attachBranchAgent", slug, agentId),
+    updateBranchMeta: (
+      slug: string,
+      patch: { title?: string | null; icon?: string | null },
+    ): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("paseo:editable:updateBranchMeta", slug, patch),
     captureScreenshot: (input?: {
       rect?: ScreenshotRectInput | null;
       full?: boolean;

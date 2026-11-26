@@ -1,3 +1,4 @@
+import type { DiffStat } from "@getpaseo/protocol/diff-stat";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
@@ -5,12 +6,20 @@ import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { EditableChatView } from "./EditableChatView.web";
+import { EditableDiffStat } from "./EditableDiffStat.web";
+import {
+  EditableHoverTooltip,
+  EditableLoadButton,
+  EditableShipButton,
+} from "./EditableTooltip.web";
 import type {
   EditableBranchAgentRecord,
   EditableBranchEntry,
   EditableBranchesSnapshot,
   EditableDesktopBridge,
   EditableDesktopStatus,
+  EditableReferencedElement,
+  EditableService,
   EditableWorkshopDaemonStatus,
 } from "./types";
 
@@ -38,6 +47,8 @@ export interface EditableStatusWorkshopInfo {
   pendingBranches?: Record<string, { slug: string; request: string; createdAt: string }>;
   agentStatuses?: Record<string, string>;
   agentReplies?: Record<string, string>;
+  agentTitles?: Record<string, string>;
+  agentIcons?: Record<string, string>;
   unreadReplySlugs?: string[];
   runningSlugs?: string[];
   lastRequest?: string | null;
@@ -90,10 +101,13 @@ function useDismissPopover(
   open: boolean,
   rootRef: React.RefObject<HTMLDivElement | null>,
   onClose: () => void,
+  options: { suppressDismiss?: boolean; keepOpenOnAltClick?: boolean } = {},
 ) {
+  const { suppressDismiss = false, keepOpenOnAltClick = false } = options;
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
+      if (suppressDismiss || (keepOpenOnAltClick && event.altKey)) return;
       if (
         rootRef.current &&
         event.target instanceof Node &&
@@ -103,6 +117,7 @@ function useDismissPopover(
       }
     };
     const onKeyDown = (event: KeyboardEvent) => {
+      if (suppressDismiss) return;
       if (event.key === "Escape") {
         event.preventDefault();
         onClose();
@@ -114,27 +129,72 @@ function useDismissPopover(
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
     };
-  }, [open, rootRef, onClose]);
+  }, [open, rootRef, onClose, suppressDismiss, keepOpenOnAltClick]);
 }
 
 interface MergedBranchRow {
   slug: string;
   channel: string;
+  branch: string;
   isMain: boolean;
+  title: string | null;
+  icon: string | null;
   status: "ready" | "working" | "draft" | "idle" | "shipping" | "failed";
   summary: string | null;
+  initialRequest: string | null;
   replyPreview: string | null;
+  diffStat: DiffStat | null;
   hasUnreadReply: boolean;
   generation: number | null;
   releaseDigest: string | null;
+  daemonReleaseDigest: string | null;
+  services: EditableService[];
   hasChanges: boolean;
   behindMain: boolean;
   canFastForward: boolean;
   requiresDaemon: boolean;
   hasUpdate: boolean;
+  hasUiUpdate: boolean;
+  hasDaemonUpdate: boolean;
+  requiresDaemonRestartOnLoad: boolean;
   loaded: boolean;
   agentId: string | null;
   error: string | null;
+}
+
+function inferRowServices(input: {
+  explicit?: EditableService[];
+  releaseDigest: string | null;
+  daemonReleaseDigest: string | null;
+  requiresDaemon: boolean;
+}): EditableService[] {
+  if (input.explicit && input.explicit.length > 0) return input.explicit;
+  const services: EditableService[] = [];
+  if (input.releaseDigest) services.push("ui");
+  if (input.daemonReleaseDigest || input.requiresDaemon) services.push("daemon");
+  return services;
+}
+
+function pickFirst<T>(...values: Array<T | null | undefined>): T | null {
+  for (const v of values) {
+    if (v !== null && v !== undefined) return v;
+  }
+  return null;
+}
+
+function resolveMainRowUpdates(
+  b: EditableBranchEntry | undefined,
+  loadedChannel: string,
+  statusUpdate: string | null,
+) {
+  const hasUiUpdate =
+    Boolean(b?.hasUiUpdate) || (loadedChannel === "prod" && Boolean(statusUpdate));
+  const hasDaemonUpdate = Boolean(b?.hasDaemonUpdate);
+  return {
+    hasUpdate: Boolean(b?.hasUpdate) || hasUiUpdate || hasDaemonUpdate,
+    hasUiUpdate,
+    hasDaemonUpdate,
+  };
 }
 
 function buildMainRow(
@@ -145,22 +205,33 @@ function buildMainRow(
   statusUpdate: string | null,
 ): MergedBranchRow {
   const b = branches?.main;
+  const updates = resolveMainRowUpdates(b, loadedChannel, statusUpdate);
+  const loaded = b ? b.loaded : !safe && loadedChannel === "prod";
+  const statusGen = status && status.activeGeneration > 0 ? status.activeGeneration : null;
   return {
     slug: "main",
     channel: "prod",
+    branch: b?.branch ?? "main",
     isMain: true,
+    title: null,
+    icon: null,
     status: "ready",
-    summary: b?.summary ?? status?.releaseSummary ?? null,
+    summary: pickFirst(b?.summary, status?.releaseSummary),
+    initialRequest: null,
     replyPreview: null,
+    diffStat: null,
     hasUnreadReply: false,
-    generation: b?.generation ?? (status?.activeGeneration || null),
-    releaseDigest: b?.releaseDigest ?? status?.releaseDigest ?? null,
+    generation: pickFirst(b?.generation, statusGen),
+    releaseDigest: pickFirst(b?.releaseDigest, status?.releaseDigest),
+    daemonReleaseDigest: pickFirst(b?.daemonReleaseDigest, status?.activeDaemonDigest),
+    services: b?.services ?? [],
     hasChanges: false,
     behindMain: false,
     canFastForward: false,
     requiresDaemon: false,
-    hasUpdate: Boolean(b?.hasUpdate) || (loadedChannel === "prod" && !!statusUpdate),
-    loaded: b ? b.loaded : !safe && loadedChannel === "prod",
+    ...updates,
+    requiresDaemonRestartOnLoad: Boolean(b?.requiresDaemonRestartOnLoad),
+    loaded,
     agentId: null,
     error: null,
   };
@@ -168,27 +239,41 @@ function buildMainRow(
 
 function buildPendingWipRow(
   rec: { slug: string; request: string; agentId: string | null },
-  liveStatus: string | undefined,
-  replyPreview: string | null,
-  hasUnreadReply: boolean,
+  live: {
+    status: string | undefined;
+    replyPreview: string | null;
+    title: string | null;
+    icon: string | null;
+    hasUnreadReply: boolean;
+  },
 ): MergedBranchRow {
   const running =
-    liveStatus === "running" || liveStatus === "initializing" || liveStatus === undefined;
+    live.status === "running" || live.status === "initializing" || live.status === undefined;
   return {
     slug: rec.slug,
     channel: `wip-${rec.slug}`,
+    branch: `ed/wip/${rec.slug}`,
     isMain: false,
+    title: live.title,
+    icon: live.icon,
     status: running ? "working" : "idle",
-    summary: rec.request,
-    replyPreview,
-    hasUnreadReply,
+    summary: null,
+    initialRequest: rec.request,
+    replyPreview: live.replyPreview,
+    diffStat: null,
+    hasUnreadReply: live.hasUnreadReply,
     generation: null,
     releaseDigest: null,
+    daemonReleaseDigest: null,
+    services: [],
     hasChanges: false,
     behindMain: false,
     canFastForward: false,
     requiresDaemon: false,
     hasUpdate: false,
+    hasUiUpdate: false,
+    hasDaemonUpdate: false,
+    requiresDaemonRestartOnLoad: false,
     loaded: false,
     agentId: rec.agentId,
     error: null,
@@ -205,12 +290,31 @@ function resolveMergedWipStatus(
   return entry.status;
 }
 
+function resolveWipUpdateFlags(
+  b: EditableBranchEntry,
+  hasChanges: boolean,
+  statusUpdate: string | null,
+) {
+  if (!hasChanges) {
+    return { hasUpdate: false, hasUiUpdate: false, hasDaemonUpdate: false };
+  }
+  const hasUiUpdate = Boolean(b.hasUiUpdate) || (b.loaded && Boolean(statusUpdate));
+  const hasDaemonUpdate = Boolean(b.hasDaemonUpdate);
+  return {
+    hasUpdate: b.hasUpdate || hasUiUpdate || hasDaemonUpdate,
+    hasUiUpdate,
+    hasDaemonUpdate,
+  };
+}
+
 function mergeWipEntryRow(
   b: EditableBranchEntry,
   ctx: {
     clientAgent: EditableBranchAgentRecord | undefined;
     pending: { slug: string; request: string } | undefined;
     liveStatus: string | undefined;
+    liveTitle: string | null;
+    liveIcon: string | null;
     replyPreview: string | null;
     hasUnreadReply: boolean;
     shippingSlugs: Set<string>;
@@ -219,28 +323,46 @@ function mergeWipEntryRow(
 ): MergedBranchRow {
   const isAgentRunning =
     Boolean(ctx.pending) || ctx.liveStatus === "running" || ctx.liveStatus === "initializing";
-  const hasChanges = b.hasChanges ?? Boolean(b.releaseDigest);
+  const hasChanges = b.hasChanges ?? Boolean(b.releaseDigest || b.daemonReleaseDigest);
   const mergedStatus = resolveMergedWipStatus(b, {
     isShipping: ctx.shippingSlugs.has(b.slug),
     isAgentRunning,
     hasChanges,
   });
+  const releaseDigest = hasChanges ? b.releaseDigest : null;
+  const daemonReleaseDigest = hasChanges ? (b.daemonReleaseDigest ?? null) : null;
+  const updates = resolveWipUpdateFlags(b, hasChanges, ctx.statusUpdate);
 
   return {
     slug: b.slug,
     channel: b.channel,
+    branch: b.branch,
     isMain: false,
+    title: pickFirst(ctx.liveTitle, b.title),
+    icon: pickFirst(ctx.liveIcon, b.icon),
     status: mergedStatus,
-    summary: b.summary ?? ctx.pending?.request ?? ctx.clientAgent?.request ?? null,
+    summary: b.summary || null,
+    initialRequest: pickFirst(ctx.pending?.request, ctx.clientAgent?.request),
     replyPreview: ctx.replyPreview,
+    diffStat: hasChanges ? (b.diffStat ?? null) : null,
     hasUnreadReply: ctx.hasUnreadReply,
     generation: b.generation,
-    releaseDigest: hasChanges ? b.releaseDigest : null,
+    releaseDigest,
+    daemonReleaseDigest,
+    services: hasChanges
+      ? inferRowServices({
+          explicit: b.services,
+          releaseDigest,
+          daemonReleaseDigest,
+          requiresDaemon: b.requiresDaemon,
+        })
+      : [],
     hasChanges,
     behindMain: b.behindMain,
     canFastForward: hasChanges && b.canFastForward,
-    requiresDaemon: b.requiresDaemon,
-    hasUpdate: hasChanges && (b.hasUpdate || (b.loaded && Boolean(ctx.statusUpdate))),
+    requiresDaemon: b.requiresDaemon || Boolean(daemonReleaseDigest),
+    ...updates,
+    requiresDaemonRestartOnLoad: Boolean(b.requiresDaemonRestartOnLoad),
     loaded: b.loaded,
     agentId: ctx.clientAgent?.agentId ?? b.agentId,
     error: b.error,
@@ -258,6 +380,21 @@ function resolveLoadedContext(
   return { loadedChannel, safe, statusUpdate };
 }
 
+function readWorkshopSlugLive(
+  slug: string,
+  workshop: EditableStatusWorkshopInfo,
+  unreadSet: Set<string>,
+  fallbackStatus?: string,
+) {
+  return {
+    status: workshop.agentStatuses?.[slug] ?? fallbackStatus,
+    replyPreview: workshop.agentReplies?.[slug] ?? null,
+    title: workshop.agentTitles?.[slug] ?? null,
+    icon: workshop.agentIcons?.[slug] ?? null,
+    hasUnreadReply: unreadSet.has(slug),
+  };
+}
+
 function buildBranchRows(
   status: EditableDesktopStatus | null,
   branches: EditableBranchesSnapshot | null,
@@ -266,8 +403,6 @@ function buildBranchRows(
 ): { main: MergedBranchRow; wips: MergedBranchRow[] } {
   const { loadedChannel, safe, statusUpdate } = resolveLoadedContext(status, branches);
   const main = buildMainRow(status, branches, loadedChannel, safe, statusUpdate);
-  const agentStatuses = workshop.agentStatuses ?? {};
-  const agentReplies = workshop.agentReplies ?? {};
   const unreadSet = new Set(workshop.unreadReplySlugs ?? []);
   const clientAgents = workshop.branchAgents ?? {};
   const pendingBranches = workshop.pendingBranches ?? {};
@@ -279,22 +414,23 @@ function buildBranchRows(
       pending.slug,
       buildPendingWipRow(
         { slug: pending.slug, request: pending.request, agentId: rec?.agentId ?? null },
-        agentStatuses[pending.slug] ?? "initializing",
-        agentReplies[pending.slug] ?? null,
-        unreadSet.has(pending.slug),
+        readWorkshopSlugLive(pending.slug, workshop, unreadSet, "initializing"),
       ),
     );
   }
 
   for (const b of branches?.branches ?? []) {
+    const live = readWorkshopSlugLive(b.slug, workshop, unreadSet);
     bySlug.set(
       b.slug,
       mergeWipEntryRow(b, {
         clientAgent: clientAgents[b.slug],
         pending: pendingBranches[b.slug],
-        liveStatus: agentStatuses[b.slug],
-        replyPreview: agentReplies[b.slug] ?? null,
-        hasUnreadReply: unreadSet.has(b.slug),
+        liveStatus: live.status,
+        liveTitle: live.title,
+        liveIcon: live.icon,
+        replyPreview: live.replyPreview,
+        hasUnreadReply: live.hasUnreadReply,
         shippingSlugs,
         statusUpdate,
       }),
@@ -303,12 +439,9 @@ function buildBranchRows(
 
   for (const rec of Object.values(clientAgents)) {
     if (bySlug.has(rec.slug)) continue;
-    const st = agentStatuses[rec.slug];
-    if (st !== "closed" && st !== "archived") {
-      bySlug.set(
-        rec.slug,
-        buildPendingWipRow(rec, st, agentReplies[rec.slug] ?? null, unreadSet.has(rec.slug)),
-      );
+    const live = readWorkshopSlugLive(rec.slug, workshop, unreadSet);
+    if (live.status !== "closed" && live.status !== "archived") {
+      bySlug.set(rec.slug, buildPendingWipRow(rec, live));
     }
   }
 
@@ -325,14 +458,43 @@ function rowTone(row: MergedBranchRow): { tone: StatusTone; pulse: "update" | "w
   return { tone: "gray", pulse: null };
 }
 
+function describeUiCompositionPart(row: MergedBranchRow): string {
+  if (!row.releaseDigest) return "built-in";
+  if (row.isMain && row.generation) return `v${row.generation}`;
+  return row.slug;
+}
+
+function describeDaemonCompositionPart(
+  row: MergedBranchRow,
+  branches: EditableBranchesSnapshot,
+): string {
+  if (!branches.loadedDaemonDigest) return "built-in";
+  if (row.daemonReleaseDigest !== branches.loadedDaemonDigest) return "main";
+  if (row.isMain) return `v${branches.mainDaemonGeneration ?? row.generation ?? 1}`;
+  return row.slug;
+}
+
+function formatLoadedCompositionTooltip(
+  row: MergedBranchRow,
+  branches: EditableBranchesSnapshot | null,
+  t: (key: string) => string,
+): string {
+  if (!branches) return t("editable.tooltipLoaded");
+  const uiPart = describeUiCompositionPart(row);
+  const daemonPart = describeDaemonCompositionPart(row, branches);
+  return `${t("editable.tooltipLoaded")} (UI: ${uiPart} · Daemon: ${daemonPart})`;
+}
+
 function MainBranchRow({
   row,
+  branches,
   busy,
   hasLoadBranch,
   onLoad,
   onReload,
 }: {
   row: MergedBranchRow;
+  branches: EditableBranchesSnapshot | null;
   busy: boolean;
   hasLoadBranch: boolean;
   onLoad: (channel: string) => void;
@@ -341,6 +503,7 @@ function MainBranchRow({
   const { t } = useTranslation();
   const { tone, pulse } = rowTone(row);
   const handleLoad = useStableEvent(() => onLoad("prod"));
+  const daemonListen = branches?.daemonListen ?? null;
 
   return (
     <div style={row.loaded ? branchRowActiveStyle : branchRowStyle}>
@@ -352,17 +515,31 @@ function MainBranchRow({
         </div>
         <div style={inlineActionsStyle}>
           {row.loaded && row.hasUpdate ? (
-            <Button size="sm" disabled={busy} onPress={onReload}>
-              {hasLoadBranch ? t("editable.reloadRelease") : t("editable.applyRelease")}
-            </Button>
+            <EditableLoadButton
+              label={hasLoadBranch ? t("editable.reloadRelease") : t("editable.applyRelease")}
+              variant="default"
+              disabled={busy}
+              restartsRunningDaemon={row.requiresDaemonRestartOnLoad}
+              daemonListen={daemonListen}
+              onPress={onReload}
+            />
           ) : null}
           {row.loaded && !row.hasUpdate ? (
-            <span style={loadedBadgeStyle}>{t("editable.loadedBadge")}</span>
+            <InfoBadge
+              label={t("editable.loadedBadge")}
+              tooltip={formatLoadedCompositionTooltip(row, branches, t)}
+              style={loadedBadgeStyle}
+            />
           ) : null}
           {!row.loaded && hasLoadBranch ? (
-            <Button size="sm" variant="ghost" disabled={busy} onPress={handleLoad}>
-              {t("editable.loadBranch")}
-            </Button>
+            <EditableLoadButton
+              label={t("editable.loadBranch")}
+              variant="ghost"
+              disabled={busy}
+              restartsRunningDaemon={row.requiresDaemonRestartOnLoad}
+              daemonListen={daemonListen}
+              onPress={handleLoad}
+            />
           ) : null}
         </div>
       </div>
@@ -371,36 +548,161 @@ function MainBranchRow({
   );
 }
 
-function WipBranchStatusBadge({ row }: { row: MergedBranchRow }) {
+function InfoBadge({
+  label,
+  tooltip,
+  style,
+}: {
+  label: string;
+  tooltip: string;
+  style: React.CSSProperties;
+}) {
+  return (
+    <EditableHoverTooltip tooltip={tooltip} style={style} focusable>
+      {label}
+    </EditableHoverTooltip>
+  );
+}
+
+function resolveServiceBadge(
+  service: EditableService,
+  row: MergedBranchRow,
+  t: (key: string) => string,
+): { label: string; tooltip: string; style: React.CSSProperties } {
+  if (service === "ui") {
+    return {
+      label: t("editable.serviceUi"),
+      tooltip: t("editable.tooltipServiceUi"),
+      style: uiServiceBadgeStyle,
+    };
+  }
+  if (service === "daemon") {
+    return {
+      label: t("editable.serviceDaemon"),
+      tooltip: row.daemonReleaseDigest
+        ? t("editable.tooltipServiceDaemonReady")
+        : t("editable.tooltipServiceDaemonUnstaged"),
+      style: warnTagStyle,
+    };
+  }
+  if (service === "desktop") {
+    return {
+      label: t("editable.serviceDesktop"),
+      tooltip: t("editable.tooltipServiceDesktop"),
+      style: failedBadgeStyle,
+    };
+  }
+  return {
+    label: t("editable.serviceIos"),
+    tooltip: t("editable.tooltipServiceIos"),
+    style: mutedBadgeStyle,
+  };
+}
+
+function ServiceBadges({ row }: { row: MergedBranchRow }) {
   const { t } = useTranslation();
-  if (row.loaded) return <span style={loadedBadgeStyle}>{t("editable.loadedBadge")}</span>;
+  if (!row.hasChanges || row.services.length === 0) return null;
+  return (
+    <>
+      {row.services.map((service) => {
+        const badge = resolveServiceBadge(service, row, t);
+        return (
+          <InfoBadge
+            key={service}
+            label={badge.label}
+            tooltip={badge.tooltip}
+            style={badge.style}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+function resolveStatusBadgeProps(
+  row: MergedBranchRow,
+  branches: EditableBranchesSnapshot | null,
+  t: (key: string) => string,
+): { label: string; tooltip: string; style: React.CSSProperties } {
+  if (row.loaded) {
+    return {
+      label: t("editable.loadedBadge"),
+      tooltip: formatLoadedCompositionTooltip(row, branches, t),
+      style: loadedBadgeStyle,
+    };
+  }
   if (row.status === "shipping") {
-    return (
-      <span style={workingBadgeStyle}>
-        {row.behindMain ? t("editable.updatingBranch") : t("editable.shippingBranch")}
-      </span>
-    );
+    return {
+      label: row.behindMain ? t("editable.updatingBranch") : t("editable.shippingBranch"),
+      tooltip: row.behindMain ? t("editable.tooltipUpdating") : t("editable.tooltipShipping"),
+      style: workingBadgeStyle,
+    };
   }
   if (row.status === "working") {
-    return <span style={workingBadgeStyle}>{t("editable.workingBadge")}</span>;
+    return {
+      label: t("editable.workingBadge"),
+      tooltip: t("editable.tooltipWorking"),
+      style: workingBadgeStyle,
+    };
   }
   if (row.status === "failed") {
-    return <span style={failedBadgeStyle}>{t("editable.failedBadge")}</span>;
+    return {
+      label: t("editable.failedBadge"),
+      tooltip: row.error || t("editable.tooltipFailed"),
+      style: failedBadgeStyle,
+    };
   }
   if (row.status === "ready") {
-    return <span style={readyBadgeStyle}>{t("editable.readyBadge")}</span>;
+    let tooltip = t("editable.tooltipReadyDaemonOnly");
+    if (row.releaseDigest && row.daemonReleaseDigest) {
+      tooltip = t("editable.tooltipReadyUiAndDaemon");
+    } else if (row.releaseDigest) {
+      tooltip = t("editable.tooltipReadyUi");
+    } else if (row.daemonReleaseDigest) {
+      tooltip = t("editable.tooltipReadyDaemonHotSwap");
+    }
+    return {
+      label: t("editable.readyBadge"),
+      tooltip,
+      style: readyBadgeStyle,
+    };
   }
   if (row.status === "draft") {
-    return <span style={warnTagStyle}>{t("editable.draftBadge")}</span>;
+    return {
+      label: t("editable.draftBadge"),
+      tooltip: t("editable.tooltipDraft"),
+      style: warnTagStyle,
+    };
   }
   if (row.hasUnreadReply) {
-    return <span style={workingBadgeStyle}>{t("editable.repliedBadge")}</span>;
+    return {
+      label: t("editable.repliedBadge"),
+      tooltip: t("editable.tooltipReplied"),
+      style: workingBadgeStyle,
+    };
   }
-  return <span style={mutedBadgeStyle}>{t("editable.noChangesBadge")}</span>;
+  return {
+    label: t("editable.noChangesBadge"),
+    tooltip: t("editable.tooltipNoChanges"),
+    style: mutedBadgeStyle,
+  };
+}
+
+function WipBranchStatusBadge({
+  row,
+  branches,
+}: {
+  row: MergedBranchRow;
+  branches: EditableBranchesSnapshot | null;
+}) {
+  const { t } = useTranslation();
+  const badge = resolveStatusBadgeProps(row, branches, t);
+  return <InfoBadge label={badge.label} tooltip={badge.tooltip} style={badge.style} />;
 }
 
 function WipBranchActions({
   row,
+  daemonListen,
   isBusyRow,
   canOpenChat,
   canManage,
@@ -410,6 +712,7 @@ function WipBranchActions({
   onChat,
 }: {
   row: MergedBranchRow;
+  daemonListen: string | null;
   isBusyRow: boolean;
   canOpenChat: boolean;
   canManage: boolean;
@@ -419,27 +722,30 @@ function WipBranchActions({
   onChat: () => void;
 }) {
   const { t } = useTranslation();
-  const canLoad =
-    canManage && row.hasChanges && Boolean(row.releaseDigest) && (!row.loaded || row.hasUpdate);
+  const hasLoadableBuild = Boolean(row.releaseDigest || row.daemonReleaseDigest);
+  const canLoad = canManage && row.hasChanges && hasLoadableBuild && (!row.loaded || row.hasUpdate);
   const canShip = canManage && row.hasChanges && row.status === "ready";
-  const shipLabel = row.canFastForward ? t("editable.shipBranch") : t("editable.updateToMain");
 
   return (
     <div style={actionsRowStyle}>
       {canLoad ? (
-        <Button
-          size="sm"
+        <EditableLoadButton
+          label={row.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
           variant={row.hasUpdate ? "default" : "ghost"}
           disabled={isBusyRow}
+          restartsRunningDaemon={row.requiresDaemonRestartOnLoad}
+          daemonListen={daemonListen}
           onPress={onLoad}
-        >
-          {row.hasUpdate ? t("editable.reloadRelease") : t("editable.loadBranch")}
-        </Button>
+        />
       ) : null}
       {canShip ? (
-        <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={onShip}>
-          {shipLabel}
-        </Button>
+        <EditableShipButton
+          canFastForward={row.canFastForward}
+          hasUiBuild={Boolean(row.releaseDigest)}
+          hasDaemonBuild={Boolean(row.daemonReleaseDigest || row.requiresDaemon)}
+          disabled={isBusyRow}
+          onPress={onShip}
+        />
       ) : null}
       {canOpenChat && row.agentId ? (
         <Button size="sm" variant={row.hasUnreadReply ? "default" : "ghost"} onPress={onChat}>
@@ -455,8 +761,20 @@ function WipBranchActions({
   );
 }
 
+function resolveWipCardTexts(row: MergedBranchRow): {
+  featureSummary: string | null;
+  turnSummary: string | null;
+} {
+  const rawSummary = row.summary?.trim() || null;
+  const rawReply = row.replyPreview?.trim() || null;
+  const featureSummary = rawSummary ?? (!rawReply ? row.initialRequest?.trim() || null : null);
+  const turnSummary = rawReply && rawReply !== featureSummary ? rawReply : null;
+  return { featureSummary, turnSummary };
+}
+
 function WipBranchRow({
   row,
+  branches,
   busy,
   canOpenChat,
   canManage,
@@ -466,6 +784,7 @@ function WipBranchRow({
   onOpenChat,
 }: {
   row: MergedBranchRow;
+  branches: EditableBranchesSnapshot | null;
   busy: boolean;
   canOpenChat: boolean;
   canManage: boolean;
@@ -484,48 +803,61 @@ function WipBranchRow({
   });
 
   const isBusyRow = busy || row.status === "shipping";
-  const showReplyPreview = Boolean(row.replyPreview && (!row.hasChanges || row.hasUnreadReply));
-  const subtitle = showReplyPreview ? row.replyPreview : row.summary;
+  const displayName = row.title || row.slug;
+  const { featureSummary, turnSummary } = resolveWipCardTexts(row);
 
   return (
     <div style={row.loaded ? branchRowActiveStyle : branchRowStyle}>
       <div style={rowBetweenStyle}>
         <div style={titleRowStyle}>
           <StatusDot tone={tone} pulse={pulse} />
-          <span style={branchNameStyle}>{row.slug}</span>
+          <span style={branchNameStyle} title={row.title ? row.branch : undefined}>
+            {row.icon ? `${row.icon} ` : ""}
+            {displayName}
+          </span>
         </div>
         <div style={inlineActionsStyle}>
-          {row.requiresDaemon ? <span style={warnTagStyle}>{t("editable.daemonTag")}</span> : null}
+          <ServiceBadges row={row} />
           {row.hasChanges && row.behindMain ? (
-            <span style={mutedBadgeStyle}>{t("editable.behindMain")}</span>
+            <InfoBadge
+              label={t("editable.behindMain")}
+              tooltip={t("editable.tooltipBehindMain")}
+              style={mutedBadgeStyle}
+            />
           ) : null}
-          <WipBranchStatusBadge row={row} />
+          <WipBranchStatusBadge row={row} branches={branches} />
         </div>
       </div>
 
-      {subtitle ? (
-        <div style={showReplyPreview ? replyPreviewStyle : summaryStyle}>
-          {truncate(subtitle, 96)}
+      {featureSummary ? <div style={summaryStyle}>{truncate(featureSummary, 96)}</div> : null}
+      {turnSummary ? (
+        <div style={row.hasUnreadReply ? replyPreviewStyle : replyPreviewReadStyle}>
+          {truncate(turnSummary, 96)}
         </div>
       ) : null}
       {row.error ? <div style={errorTextStyle}>{truncate(row.error, 100)}</div> : null}
 
-      <WipBranchActions
-        row={row}
-        isBusyRow={isBusyRow}
-        canOpenChat={canOpenChat}
-        canManage={canManage}
-        onLoad={handleLoad}
-        onShip={handleShip}
-        onDiscard={handleDiscard}
-        onChat={handleChat}
-      />
+      <div style={actionsFooterStyle}>
+        <WipBranchActions
+          row={row}
+          daemonListen={branches?.daemonListen ?? null}
+          isBusyRow={isBusyRow}
+          canOpenChat={canOpenChat}
+          canManage={canManage}
+          onLoad={handleLoad}
+          onShip={handleShip}
+          onDiscard={handleDiscard}
+          onChat={handleChat}
+        />
+        <EditableDiffStat diffStat={row.hasChanges ? row.diffStat : null} />
+      </div>
     </div>
   );
 }
 
 function WorkshopFooter({
   bridge,
+  branches,
   workshop,
   workshopDaemon,
   workshopState,
@@ -536,6 +868,7 @@ function WorkshopFooter({
   onRecover,
 }: {
   bridge: EditableDesktopBridge | undefined;
+  branches: EditableBranchesSnapshot | null;
   workshop: EditableStatusWorkshopInfo;
   workshopDaemon: EditableWorkshopDaemonStatus | null;
   workshopState: { label: string; tone: StatusTone; ready: boolean };
@@ -547,6 +880,7 @@ function WorkshopFooter({
 }) {
   const { t } = useTranslation();
   const showStart = workshop.managedWorkshop && workshopDaemon?.status !== "running";
+  const fallbackRestartsDaemon = Boolean(branches?.daemonRunning && branches?.loadedDaemonDigest);
   return (
     <div style={footerStyle}>
       <div style={rowBetweenStyle}>
@@ -571,9 +905,14 @@ function WorkshopFooter({
             </Button>
           ) : null}
           {bridge && !recovery ? (
-            <Button size="sm" variant="ghost" disabled={busy} onPress={onRecover}>
-              {t("editable.fallbackUi")}
-            </Button>
+            <EditableLoadButton
+              label={t("editable.fallbackUi")}
+              variant="ghost"
+              disabled={busy}
+              restartsRunningDaemon={fallbackRestartsDaemon}
+              daemonListen={branches?.daemonListen ?? null}
+              onPress={onRecover}
+            />
           ) : null}
         </div>
       </div>
@@ -583,6 +922,7 @@ function WorkshopFooter({
 
 function StatusPopover({
   bridge,
+  branches,
   main,
   wips,
   workshop,
@@ -607,6 +947,7 @@ function StatusPopover({
   onRecover,
 }: {
   bridge: EditableDesktopBridge | undefined;
+  branches: EditableBranchesSnapshot | null;
   main: MergedBranchRow;
   wips: MergedBranchRow[];
   workshop: EditableStatusWorkshopInfo;
@@ -660,6 +1001,7 @@ function StatusPopover({
         <div style={branchListStyle}>
           <MainBranchRow
             row={main}
+            branches={branches}
             busy={busy}
             hasLoadBranch={canManage}
             onLoad={onLoadBranch}
@@ -669,6 +1011,7 @@ function StatusPopover({
             <WipBranchRow
               key={row.slug}
               row={row}
+              branches={branches}
               busy={busy}
               canOpenChat={canOpenChat}
               canManage={canManage}
@@ -684,6 +1027,7 @@ function StatusPopover({
 
       <WorkshopFooter
         bridge={bridge}
+        branches={branches}
         workshop={workshop}
         workshopDaemon={workshopDaemon}
         workshopState={workshopState}
@@ -712,6 +1056,8 @@ function StatusTriggerBar({
   showExitPreview,
   showReload,
   reloadLabel,
+  reloadRestartsDaemon,
+  daemonListen,
   busy,
   onToggle,
   onExitPreview,
@@ -725,6 +1071,8 @@ function StatusTriggerBar({
   showExitPreview: boolean;
   showReload: boolean;
   reloadLabel: string;
+  reloadRestartsDaemon: boolean;
+  daemonListen: string | null;
   busy: boolean;
   onToggle: () => void;
   onExitPreview: () => void;
@@ -764,9 +1112,14 @@ function StatusTriggerBar({
         </Button>
       ) : null}
       {showReload ? (
-        <Button size="sm" disabled={busy} onPress={onReload}>
-          {reloadLabel}
-        </Button>
+        <EditableLoadButton
+          label={reloadLabel}
+          variant="default"
+          disabled={busy}
+          restartsRunningDaemon={reloadRestartsDaemon}
+          daemonListen={daemonListen}
+          onPress={onReload}
+        />
       ) : null}
     </div>
   );
@@ -946,7 +1299,7 @@ function resolvePillLabel(input: {
   if (input.failed) return input.t("editable.desktopFailed");
   if (input.preview) return input.t("editable.preview");
   if (input.recovery) return input.t("editable.fallbackUi");
-  if (input.loadedWip) return truncate(input.loadedWip.slug, 22);
+  if (input.loadedWip) return truncate(input.loadedWip.title || input.loadedWip.slug, 22);
   return formatMainPill(input.status, input.main, input.t);
 }
 
@@ -987,7 +1340,9 @@ function deriveSummaryState({
   t: (key: string) => string;
 }) {
   const loadedWip = wips.find((w) => w.loaded) ?? null;
+  const loadedRow = loadedWip ?? main;
   const loadedHasUpdate = main.hasUpdate || wips.some((w) => w.loaded && w.hasUpdate);
+  const reloadRestartsDaemon = loadedRow.requiresDaemonRestartOnLoad;
   const workingCount = wips.filter((w) => w.status === "working" || w.status === "shipping").length;
   const unreadReplyCount = wips.filter((w) => w.hasUnreadReply).length;
   const readyBackgroundCount = wips.filter((w) => !w.loaded && w.status === "ready").length;
@@ -1015,6 +1370,7 @@ function deriveSummaryState({
 
   return {
     loadedHasUpdate,
+    reloadRestartsDaemon,
     preview,
     recovery,
     workshopState,
@@ -1023,6 +1379,20 @@ function deriveSummaryState({
     pillLabel,
     badgeText,
   };
+}
+
+interface StatusChatReferenceProps {
+  referencedElements?: ReadonlyArray<EditableReferencedElement>;
+  onRemoveReference?: (id: string) => void;
+  onClearReferences?: () => void;
+  onStartPickReference?: () => void;
+  pickingReference?: boolean;
+  loadedWipSlug?: string | null;
+  onSendReferencedToTarget?: (input: {
+    targetSlug: string | null;
+    text: string;
+    references: ReadonlyArray<EditableReferencedElement>;
+  }) => Promise<boolean>;
 }
 
 function StatusPopoverPanel({
@@ -1036,6 +1406,7 @@ function StatusPopoverPanel({
   workshopDaemon,
   summary,
   actions,
+  chatReferences,
   onOpenInlineChat,
   onBackToBranches,
   onClosePopover,
@@ -1051,6 +1422,7 @@ function StatusPopoverPanel({
   workshopDaemon: EditableWorkshopDaemonStatus | null;
   summary: ReturnType<typeof deriveSummaryState>;
   actions: ReturnType<typeof useBranchActions>;
+  chatReferences: StatusChatReferenceProps;
   onOpenInlineChat: (slug: string) => void;
   onBackToBranches: () => void;
   onClosePopover: () => void;
@@ -1068,8 +1440,16 @@ function StatusPopoverPanel({
           serverId={workshop.hostId}
           agentId={activeChatRow.agentId}
           slug={activeChatRow.slug}
-          title={activeChatRow.slug}
+          title={activeChatRow.title || activeChatRow.slug}
+          icon={activeChatRow.icon}
           branch={activeChatBranch}
+          referencedElements={chatReferences.referencedElements}
+          onRemoveReference={chatReferences.onRemoveReference}
+          onClearReferences={chatReferences.onClearReferences}
+          onStartPickReference={chatReferences.onStartPickReference}
+          pickingReference={chatReferences.pickingReference}
+          loadedWipSlug={chatReferences.loadedWipSlug}
+          onSendReferencedToTarget={chatReferences.onSendReferencedToTarget}
           busy={actions.busy}
           onBack={onBackToBranches}
           onClose={onClosePopover}
@@ -1084,6 +1464,7 @@ function StatusPopoverPanel({
   return (
     <StatusPopover
       bridge={bridge}
+      branches={branches}
       main={main}
       wips={wips}
       workshop={workshop}
@@ -1119,6 +1500,18 @@ export function EditableStatusPill({
   onPick,
   onRefresh,
   layer,
+  popoverOpen: controlledOpen,
+  onPopoverOpenChange,
+  activeChatSlug: controlledActiveChatSlug,
+  onActiveChatSlugChange,
+  suppressDismiss = false,
+  referencedElements,
+  onRemoveReference,
+  onClearReferences,
+  onStartPickReference,
+  pickingReference = false,
+  loadedWipSlug = null,
+  onSendReferencedToTarget,
 }: {
   bridge: EditableDesktopBridge | undefined;
   status: EditableDesktopStatus | null;
@@ -1128,13 +1521,33 @@ export function EditableStatusPill({
   onPick: () => void;
   onRefresh?: () => Promise<void>;
   layer: number;
-}) {
+  popoverOpen?: boolean;
+  onPopoverOpenChange?: (open: boolean) => void;
+  activeChatSlug?: string | null;
+  onActiveChatSlugChange?: (slug: string | null) => void;
+  suppressDismiss?: boolean;
+} & StatusChatReferenceProps) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [activeChatSlug, setActiveChatSlug] = useState<string | null>(null);
+  const [localOpen, setLocalOpen] = useState(false);
+  const [localActiveChatSlug, setLocalActiveChatSlug] = useState<string | null>(null);
+  const open = controlledOpen ?? localOpen;
+  const activeChatSlug =
+    controlledActiveChatSlug !== undefined ? controlledActiveChatSlug : localActiveChatSlug;
+  const setOpen = useStableEvent((next: boolean) => {
+    if (controlledOpen === undefined) setLocalOpen(next);
+    onPopoverOpenChange?.(next);
+  });
+  const setActiveChatSlug = useStableEvent((next: string | null) => {
+    if (controlledActiveChatSlug === undefined) setLocalActiveChatSlug(next);
+    onActiveChatSlugChange?.(next);
+  });
+
   const rootRef = useRef<HTMLDivElement | null>(null);
   const closePopover = useStableEvent(() => setOpen(false));
-  useDismissPopover(open, rootRef, closePopover);
+  useDismissPopover(open, rootRef, closePopover, {
+    suppressDismiss,
+    keepOpenOnAltClick: Boolean(activeChatSlug),
+  });
 
   const loadedChannel = branches?.loadedChannel ?? status?.activeChannel ?? "prod";
   const actions = useBranchActions({
@@ -1162,10 +1575,9 @@ export function EditableStatusPill({
     t,
   });
   const toggleOpen = useStableEvent(() => {
-    setOpen((wasOpen) => {
-      if (!wasOpen) void onRefresh?.();
-      return !wasOpen;
-    });
+    const next = !open;
+    if (next) void onRefresh?.();
+    setOpen(next);
   });
   const openInlineChat = useStableEvent((slug: string) => {
     workshop.markReplyRead?.(slug);
@@ -1192,6 +1604,27 @@ export function EditableStatusPill({
   );
   const reloadLabel = bridge?.loadBranch ? t("editable.reloadRelease") : t("editable.applyRelease");
 
+  const chatReferences = useMemo(
+    () => ({
+      referencedElements,
+      onRemoveReference,
+      onClearReferences,
+      onStartPickReference,
+      pickingReference,
+      loadedWipSlug,
+      onSendReferencedToTarget,
+    }),
+    [
+      referencedElements,
+      onRemoveReference,
+      onClearReferences,
+      onStartPickReference,
+      pickingReference,
+      loadedWipSlug,
+      onSendReferencedToTarget,
+    ],
+  );
+
   return (
     <div ref={rootRef} data-ed-overlay="true" style={containerStyle}>
       <style>{PULSE_CSS}</style>
@@ -1206,6 +1639,7 @@ export function EditableStatusPill({
         workshopDaemon={workshopDaemon}
         summary={summary}
         actions={actions}
+        chatReferences={chatReferences}
         onOpenInlineChat={openInlineChat}
         onBackToBranches={backToBranches}
         onClosePopover={closePopover}
@@ -1220,6 +1654,8 @@ export function EditableStatusPill({
         showExitPreview={!!bridge && summary.preview}
         showReload={!!bridge && summary.loadedHasUpdate && !summary.preview}
         reloadLabel={reloadLabel}
+        reloadRestartsDaemon={summary.reloadRestartsDaemon}
+        daemonListen={branches?.daemonListen ?? null}
         busy={actions.busy}
         onToggle={toggleOpen}
         onExitPreview={actions.exitPreview}
@@ -1329,7 +1765,13 @@ const pillBadgeStyle = {
 } as const;
 
 const titleTextStyle = { fontSize: 13, fontWeight: 600 } as const;
-const branchNameStyle = { fontWeight: 600, fontSize: 12 } as const;
+const branchNameStyle = {
+  fontWeight: 600,
+  fontSize: 12,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+} as const;
 const errorTextStyle = { color: "#f87171", fontSize: 11 } as const;
 
 const rowBetweenStyle = {
@@ -1408,7 +1850,15 @@ const replyPreviewStyle = {
   color: "#e2e8f0",
   fontSize: 11,
   lineHeight: "15px",
-  borderLeft: "2px solid rgba(65, 145, 251, 0.55)",
+  borderLeft: "2px solid rgba(65, 145, 251, 0.7)",
+  paddingLeft: 6,
+} as const;
+
+const replyPreviewReadStyle = {
+  color: "#94a3b8",
+  fontSize: 11,
+  lineHeight: "15px",
+  borderLeft: "2px solid rgba(148, 163, 184, 0.3)",
   paddingLeft: 6,
 } as const;
 
@@ -1423,6 +1873,7 @@ const mutedBadgeStyle = {
   borderRadius: 4,
   background: "rgba(148, 163, 184, 0.14)",
   color: "#94a3b8",
+  cursor: "help",
 } as const;
 
 const loadedBadgeStyle = {
@@ -1432,6 +1883,7 @@ const loadedBadgeStyle = {
   borderRadius: 4,
   background: "rgba(34, 197, 94, 0.18)",
   color: "#4ade80",
+  cursor: "help",
 } as const;
 
 const readyBadgeStyle = {
@@ -1441,6 +1893,7 @@ const readyBadgeStyle = {
   borderRadius: 4,
   background: "rgba(34, 197, 94, 0.12)",
   color: "#86efac",
+  cursor: "help",
 } as const;
 
 const workingBadgeStyle = {
@@ -1450,6 +1903,7 @@ const workingBadgeStyle = {
   borderRadius: 4,
   background: "rgba(65, 145, 251, 0.18)",
   color: "#93c5fd",
+  cursor: "help",
 } as const;
 
 const failedBadgeStyle = {
@@ -1459,6 +1913,7 @@ const failedBadgeStyle = {
   borderRadius: 4,
   background: "rgba(239, 68, 68, 0.18)",
   color: "#fca5a5",
+  cursor: "help",
 } as const;
 
 const warnTagStyle = {
@@ -1467,6 +1922,16 @@ const warnTagStyle = {
   borderRadius: 4,
   background: "rgba(245, 158, 11, 0.18)",
   color: "#fcd34d",
+  cursor: "help",
+} as const;
+
+const uiServiceBadgeStyle = {
+  fontSize: 10,
+  padding: "1px 5px",
+  borderRadius: 4,
+  background: "rgba(56, 189, 248, 0.16)",
+  color: "#7dd3fc",
+  cursor: "help",
 } as const;
 
 const previewBannerStyle = {
@@ -1481,11 +1946,18 @@ const previewBannerStyle = {
   fontSize: 11,
 } as const;
 
+const actionsFooterStyle = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  marginTop: 2,
+} as const;
+
 const actionsRowStyle = {
   display: "flex",
   flexWrap: "wrap",
   gap: 4,
-  marginTop: 2,
 } as const;
 
 const chatPopoverWrapStyle = {

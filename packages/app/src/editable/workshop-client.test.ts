@@ -1,5 +1,10 @@
 import { expect, it, vi } from "vitest";
-import { buildWorkshopPrompt, DEFAULT_WORKSHOP_CWD, sendWorkshopEdit } from "./workshop-client";
+import {
+  buildWorkshopFollowUpPrompt,
+  buildWorkshopPrompt,
+  DEFAULT_WORKSHOP_CWD,
+  sendWorkshopEdit,
+} from "./workshop-client";
 import type { EditableLocatorContext } from "./types";
 
 const locator: EditableLocatorContext = {
@@ -54,7 +59,7 @@ it("builds the Workshop prompt with intent-first instructions and no query or ex
       "- Only when the user asks you to make or change something (now or in a later turn of this chat):",
       "  1. Make the edit inside that worktree.",
       "  2. Run `paseo-ed verify <slug>` to check typecheck and lint.",
-      '  3. Run `paseo-ed stage <slug> --summary "<short summary>" --upload` to commit on the WIP branch, build the signed Electron preview, and publish to Cloud Shelf. Do NOT merge to main or run `paseo-ed ship` — the user will click Ship when ready.',
+      '  3. Run `paseo-ed stage <slug> --summary "<short 1-sentence feature summary>" --upload` to commit on the WIP branch, build the signed UI and/or Daemon release(s), and publish to Cloud Shelf so the user can hot-swap them live in Paseo Dev.app. Write --summary as a clear 1-sentence description of what this feature/change does as a whole (not a verbatim copy of the user\'s raw prompt, and distinct from your turn-by-turn <paseo-meta message="..." /> update). Do NOT merge to main or run `paseo-ed ship` — the user will click Ship when ready.',
       "- To live-inspect the running Paseo Dev.app (screenshots, DOM, React props/hooks, matched CSS, console logs, network, perf/APM, or stores), run `paseo-ed app --help`.",
       "",
       "Locator context:",
@@ -92,7 +97,6 @@ it("expands the default tilde repo path on the configured host before creating t
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto-review",
     provider: "codex",
-    title: "Editable Paseo Workshop",
   });
   expect(input.rememberAgent).toHaveBeenCalledExactlyOnceWith(
     "workshop-agent",
@@ -117,7 +121,6 @@ it("passes absolute Workshop paths directly without directory lookup", async () 
     cwd: "/srv/paseo-editable/repo",
     modeId: "auto-review",
     provider: "codex",
-    title: "Editable Paseo Workshop",
   });
 });
 
@@ -167,7 +170,6 @@ it("spawns a parallel agent when isFollowUp is false even if an earlier agent ex
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto-review",
     provider: "codex",
-    title: "Editable: compact-sidebar",
   });
 });
 
@@ -192,7 +194,6 @@ it("falls back to auto mode from provider snapshot when auto-review is unavailab
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto",
     provider: "codex",
-    title: "Editable Paseo Workshop",
   });
 });
 
@@ -216,7 +217,6 @@ it("spawns the Workshop agent directly inside a pre-created worktree path when p
     cwd: worktreePath,
     modeId: "auto-review",
     provider: "codex",
-    title: "Editable: inbox-headers",
   });
   expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain(
     "working inside isolated WIP worktree `inbox-headers`",
@@ -269,6 +269,54 @@ it("uses auto mode when falling back to Claude", async () => {
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto",
     provider: "claude",
-    title: "Editable Paseo Workshop",
+  });
+});
+
+it("formats compact follow-up prompts with one or more referenced elements", () => {
+  const secondLocator: EditableLocatorContext = {
+    file: "packages/app/src/agent-stream/recommended-prompts.tsx",
+    line: 95,
+    column: 7,
+    componentName: "PressHighlight",
+    route: "/h/local/agent/123?secret=1",
+    releaseDigest: null,
+    platform: "electron",
+  };
+  const prompt = buildWorkshopFollowUpPrompt("Look at both of these.", [
+    { locator },
+    { locator: secondLocator },
+  ]);
+  expect(prompt).toContain("Follow-up referencing 2 UI elements in the running app:");
+  expect(prompt).toContain('"componentName": "WorkspaceHeader"');
+  expect(prompt).toContain('"componentName": "PressHighlight"');
+  expect(prompt).not.toContain("secret=1");
+  expect(prompt).not.toContain("You are the Editable Paseo Workshop assistant");
+  expect(prompt.endsWith("User message:\nLook at both of these.")).toBe(true);
+});
+
+it("sends a compact follow-up prompt when continuing an existing branch discussion", async () => {
+  const { client, input } = fixture();
+  client.fetchAgent.mockResolvedValue({ agent: { id: "saved-agent", status: "idle" } });
+  const target = { ...input.target, workshopAgentId: "saved-agent" };
+  const images = [{ data: "iVBORw0KGgo=", mimeType: "image/png" as const }];
+  expect(
+    await sendWorkshopEdit({
+      ...input,
+      target,
+      slug: "existing-discussion",
+      isFollowUp: true,
+      images,
+    }),
+  ).toEqual({
+    kind: "sent",
+    agentId: "saved-agent",
+    slug: "existing-discussion",
+  });
+  expect(client.createAgent).not.toHaveBeenCalled();
+  const sentPrompt = client.sendAgentMessage.mock.calls[0]?.[1] as string;
+  expect(sentPrompt).toContain("Follow-up referencing a new UI element in the running app:");
+  expect(sentPrompt).not.toContain("You are the Editable Paseo Workshop assistant");
+  expect(client.sendAgentMessage).toHaveBeenCalledExactlyOnceWith("saved-agent", sentPrompt, {
+    images,
   });
 });

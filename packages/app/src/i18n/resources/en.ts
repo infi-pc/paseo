@@ -39,10 +39,59 @@ export const en = {
     failedBadge: "Failed",
     behindMain: "behind main",
     daemonTag: "+ daemon",
+    serviceUi: "UI",
+    serviceDaemon: "Daemon",
+    serviceDesktop: "Desktop",
+    serviceIos: "iOS",
+    tooltipServiceUi: "UI renderer change — hot-reloads this window in under a second.",
+    tooltipServiceDaemonReady:
+      "Daemon/server change staged — loading hot-swaps the local dev daemon (:6770) while keeping terminals alive.",
+    tooltipServiceDaemonUnstaged:
+      "Changes Paseo server/daemon code — re-stage to build a hot-swappable daemon release, or Ship to merge to main.",
+    tooltipServiceDesktop:
+      "Electron shell or dependency change — requires rebuilding and reopening Paseo Dev.app (cannot hot-swap).",
+    tooltipServiceIos: "Native iOS change — requires a native/TestFlight rebuild.",
+    tooltipDaemonRestartWarn:
+      "Will restart the running dev daemon (:{{port}}) (~1–2s). Open terminals stay alive.",
+    tooltipLoaded: "Currently running in this window.",
+    tooltipReadyUi: "Verified UI build — ready to Load in this window or Ship to main.",
+    tooltipReadyDaemonHotSwap:
+      "Verified Daemon build — ready to Load onto the local dev daemon (:6770) or Ship to main.",
+    tooltipReadyUiAndDaemon:
+      "Verified UI and Daemon builds — Load applies both together, or Ship to main.",
+    tooltipReadyDaemonOnly:
+      "Verified server/daemon change — re-stage for a hot-swappable daemon build, or Ship to main.",
+    tooltipDraft:
+      "Has uncommitted or unstaged edits — ask the agent in Chat to verify and stage before loading or merging.",
+    tooltipNoChanges: "Discussion only — no code edits in this worktree yet.",
+    tooltipWorking: "Workshop agent is currently working on this branch.",
+    tooltipReplied: "The Workshop agent replied — open Chat to read it.",
+    tooltipFailed: "Verification or shipping failed — open Chat for details.",
+    tooltipShipping: "Fast-forwarding this branch onto main…",
+    tooltipUpdating: "Merging with main and rebuilding in the background…",
+    tooltipBehindMain:
+      "Main has newer commits since this branch started. Merging will combine with main first.",
+    tooltipDaemonOnly:
+      "Changes Paseo server/daemon code — load hot-swaps the dev daemon (:6770) once staged, or Ship to main.",
+    tooltipDaemonWithUi:
+      "Changes both UI and daemon code — Load applies both together and restarts the dev daemon (:6770).",
+    tooltipShipFast: "Fast-forward directly to main using the staged build(s).",
+    tooltipShipFastDaemon:
+      "Fast-forward this verified daemon change directly into main without rebuilding.",
+    tooltipShipUpdate:
+      "Updates with latest main, rebuilds impacted services in the background, and notifies you to Reload main when ready.",
+    tooltipShipUpdateDaemon:
+      "Updates with latest main, rebuilds the daemon in the background, and notifies you to Reload main when ready.",
     branchesLabel: "Branches",
-    fallbackUi: "Fallback UI",
+    fallbackUi: "Fallback",
     targetOn: "On:",
     newBranch: "New branch",
+    sendToLabel: "Send to:",
+    otherThreads: "Other threads…",
+    pickElementShort: "Element",
+    pickingElement: "Click element…",
+    referenceElementHint: "Reference an element on screen (⌥+Click)",
+    removeReference: "Remove referenced element",
     openChatShort: "Chat",
     backToBranches: "Back to branches",
     openFullChat: "Open in full tab",
