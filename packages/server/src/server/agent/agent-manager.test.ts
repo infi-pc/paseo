@@ -2862,7 +2862,9 @@ test("createAgent injects daemon append system prompt at runtime only", async ()
   const record = await storage.get(snapshot.id);
 
   expect(client.createdConfigs[0]?.systemPrompt).toBe("Agent instructions.");
-  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toBe("Daemon instructions.");
+  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toMatch(
+    /^Daemon instructions\.\n\nUse Markdown links/,
+  );
   expect(snapshot.config).not.toHaveProperty("daemonAppendSystemPrompt");
   expect(record?.config?.systemPrompt).toBe("Agent instructions.");
   expect(record?.config).not.toHaveProperty("daemonAppendSystemPrompt");
@@ -2897,7 +2899,9 @@ test("daemon append system prompt is injected into Pi configs", async () => {
     { workspaceId: undefined },
   );
 
-  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toBe("Daemon instructions.");
+  expect(client.createdConfigs[0]?.daemonAppendSystemPrompt).toMatch(
+    /^Daemon instructions\.\n\nUse Markdown links/,
+  );
 });
 
 test("setAgentMode persists the selected mode across session reload", async () => {
@@ -3677,7 +3681,7 @@ test("createAgent passes daemon launch env through the provider launch context",
   );
 
   expect(client.lastConfig).toEqual({
-    daemonAppendSystemPrompt: RESPONSE_CONTROL_INSTRUCTIONS,
+    daemonAppendSystemPrompt: expect.stringContaining(RESPONSE_CONTROL_INSTRUCTIONS),
     provider: "codex",
     cwd: workdir,
     model: "gpt-5.4",
@@ -16081,7 +16085,7 @@ test("plugin instructions are recomputed for each launch without changing saved 
   );
   expect(client.createdConfigs[0]).toMatchObject({
     systemPrompt: "Saved",
-    daemonAppendSystemPrompt: "Daemon",
+    daemonAppendSystemPrompt: expect.stringMatching(/^Daemon\n\nUse Markdown links/),
     pluginAppendSystemPrompt: ["Plugin one", "Plugin two"],
   });
   expect(snapshot.config.systemPrompt).toBe("Saved");
@@ -16120,7 +16124,9 @@ test("plugin instructions are recomputed for each launch without changing saved 
     snapshot.id,
   );
   expect(client.resumeOverrides.at(-1)?.systemPrompt).toBe("Saved");
-  expect(client.resumeOverrides.at(-1)?.daemonAppendSystemPrompt).toBe("Daemon");
+  expect(client.resumeOverrides.at(-1)?.daemonAppendSystemPrompt).toMatch(
+    /^Daemon\n\nUse Markdown links/,
+  );
   expect((await storage.get(snapshot.id))?.config?.systemPrompt).toBe("Saved");
 });
 

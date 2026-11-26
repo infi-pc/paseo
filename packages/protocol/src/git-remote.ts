@@ -137,3 +137,13 @@ function normalizeRemotePath(path: string): string | null {
 function isValidRemoteHost(host: string): boolean {
   return /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/u.test(host);
 }
+
+/** Canonical public GitHub PR identity, independent of the workspace remote. */
+export function canonicalGitHubPullRequestUrl(href: string): string | null {
+  const match =
+    /^https:\/\/github\.com\/([a-z\d-]+)\/([a-z\d_.-]+)\/pull\/([1-9]\d*)(?:\/(?:files|checks|commits)?)?(?:[?#][^\s]*)?$/i.exec(
+      href,
+    );
+  if (!match || match[2] === "." || match[2] === "..") return null;
+  return `https://github.com/${match[1].toLowerCase()}/${match[2].toLowerCase()}/pull/${match[3]}`;
+}

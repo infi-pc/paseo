@@ -5347,6 +5347,37 @@ describe("ForgeService", () => {
     ]);
   });
 
+  it("looks up an explicit PR in the linked repository even from an enterprise checkout", async () => {
+    const url = "https://github.com/another/repo/pull/793";
+    const runner = createRunner([
+      JSON.stringify({
+        number: 793,
+        title: "Cross-repo PR",
+        url,
+        state: "MERGED",
+        isDraft: false,
+        reviewDecision: "APPROVED",
+        statusCheckRollup: [],
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => "github.example.com",
+    });
+    const result = await service.searchIssuesAndPrs({
+      cwd: "/repo",
+      query: `${url}/files#diff-123`,
+      kinds: ["change_request"],
+    });
+    expect(runner.calls).toHaveLength(1);
+    expect(runner.calls[0]?.args.slice(0, 3)).toEqual(["pr", "view", url]);
+    expect(runner.calls[0]?.envOverlay?.GH_HOST).toBe("github.com");
+    expect(result.items).toMatchObject([
+      { kind: "change_request", url, state: "MERGED", isDraft: false, reviewDecision: "APPROVED" },
+    ]);
+  });
+
   it("does not treat an unrelated tracker URL as a GitHub issue/PR number", async () => {
     const runner = createRunner([issueJson("Issue title"), searchPullRequestJson("PR title")]);
     const service = createGitHubService({

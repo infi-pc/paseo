@@ -2955,6 +2955,8 @@ export const GitHubSearchItemSchema = z.object({
 
 export const ForgeSearchItemSchema = GitHubSearchItemSchema.extend({
   kind: z.enum(["issue", "change_request"]),
+  isDraft: z.boolean().optional(),
+  reviewDecision: z.string().optional(),
 });
 
 // COMPAT(githubSearchKind): legacy GitHub kind aliases retained when neutral
@@ -4303,6 +4305,7 @@ export const ServerInfoStatusPayloadSchema = z
         forgeSearch: z.boolean().optional(),
         linearIssues: z.boolean().optional(),
         forgeSearchChecks: z.boolean().optional(),
+        githubPullRequestLinkPreview: z.boolean().optional(),
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.
         daemonStatusRpc: z.boolean().optional(),
         // COMPAT(daemonConfigReload): added in v0.4.0, remove gate after 2027-02-14.

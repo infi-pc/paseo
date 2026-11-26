@@ -231,6 +231,14 @@ export const en = {
     bottomSheetBackdrop: "Bottom sheet backdrop",
     back: "Back",
     loading: "Loading...",
+    linkPreview: {
+      unsupportedHost: "Update the host to see pull request status",
+      unavailable: "Pull request status unavailable",
+      approved: "Approved",
+      changesRequested: "Changes requested",
+      reviewRequired: "Review required",
+      check: "{{name}}: {{status}}",
+    },
     actions: {
       save: "Save",
       back: "Back",

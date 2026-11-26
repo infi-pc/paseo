@@ -14,6 +14,7 @@ import type { InlinePathTarget } from "./parse";
 import type { AssistantFileLinkContext, GetDirectorySuggestions } from "./resolver";
 
 export interface AssistantFileLinkDaemonClient {
+  searchForge?: import("@getpaseo/client/internal/daemon-client").DaemonClient["searchForge"];
   readFile?: import("@getpaseo/client/internal/daemon-client").DaemonClient["readFile"];
   getDirectorySuggestions: GetDirectorySuggestions;
 }
@@ -21,6 +22,7 @@ export interface AssistantFileLinkDaemonClient {
 export interface AssistantFileLinkResolverConfig {
   client?: AssistantFileLinkDaemonClient | null;
   serverId?: string;
+  enablePullRequestLinkPreviews?: boolean;
   workspaceRoot?: string;
   relativePathBase?: string;
   onOpenWorkspaceFile?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
@@ -54,6 +56,7 @@ export function useAssistantFileLinkEnvironmentBridge() {
 export function AssistantFileLinkResolverProvider({
   client,
   serverId,
+  enablePullRequestLinkPreviews,
   workspaceRoot,
   relativePathBase,
   onOpenWorkspaceFile,
@@ -63,6 +66,7 @@ export function AssistantFileLinkResolverProvider({
   const configRef = useRef<AssistantFileLinkResolverConfig>({
     client,
     serverId,
+    enablePullRequestLinkPreviews,
     workspaceRoot,
     relativePathBase,
     onOpenWorkspaceFile,
@@ -71,6 +75,7 @@ export function AssistantFileLinkResolverProvider({
   configRef.current = {
     client,
     serverId,
+    enablePullRequestLinkPreviews,
     workspaceRoot,
     relativePathBase,
     onOpenWorkspaceFile,
