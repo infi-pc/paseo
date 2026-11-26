@@ -35,6 +35,7 @@ function fixture() {
       ],
     }),
     sendAgentMessage: vi.fn(),
+    updateAgent: vi.fn().mockResolvedValue(undefined),
   };
   return {
     client,
@@ -97,6 +98,10 @@ it("expands the default tilde repo path on the configured host before creating t
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto-review",
     provider: "codex",
+    title: "Use a smaller label.",
+  });
+  expect(client.updateAgent).toHaveBeenCalledExactlyOnceWith("workshop-agent", {
+    namingMode: "automatic",
   });
   expect(input.rememberAgent).toHaveBeenCalledExactlyOnceWith(
     "workshop-agent",
@@ -121,6 +126,7 @@ it("passes absolute Workshop paths directly without directory lookup", async () 
     cwd: "/srv/paseo-editable/repo",
     modeId: "auto-review",
     provider: "codex",
+    title: "Use a smaller label.",
   });
 });
 
@@ -170,6 +176,10 @@ it("spawns a parallel agent when isFollowUp is false even if an earlier agent ex
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto-review",
     provider: "codex",
+    title: "Use a smaller label.",
+  });
+  expect(client.updateAgent).toHaveBeenCalledExactlyOnceWith("workshop-agent", {
+    namingMode: "automatic",
   });
 });
 
@@ -194,6 +204,7 @@ it("falls back to auto mode from provider snapshot when auto-review is unavailab
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto",
     provider: "codex",
+    title: "Use a smaller label.",
   });
 });
 
@@ -217,6 +228,7 @@ it("spawns the Workshop agent directly inside a pre-created worktree path when p
     cwd: worktreePath,
     modeId: "auto-review",
     provider: "codex",
+    title: "Use a smaller label.",
   });
   expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain(
     "working inside isolated WIP worktree `inbox-headers`",
@@ -269,6 +281,7 @@ it("uses auto mode when falling back to Claude", async () => {
     cwd: "/Users/tester/.editable-paseo/repo",
     modeId: "auto",
     provider: "claude",
+    title: "Use a smaller label.",
   });
 });
 
