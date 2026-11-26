@@ -57,6 +57,12 @@ export const en = {
       "Changes Paseo server/daemon code only — no UI bundle to Load. Merge to main and restart/update the daemon to apply.",
     tooltipDaemonWithUi:
       "Also changes Paseo server/daemon code. Load previews UI changes only; daemon changes apply after merging and restarting the daemon.",
+    tooltipShipFast: "Fast-forward directly to main using the staged build and load automatically.",
+    tooltipShipFastDaemon: "Fast-forward this verified server/daemon change directly into main.",
+    tooltipShipUpdate:
+      "Updates with latest main, rebuilds, and ships in the background — then notifies you to Reload main when ready.",
+    tooltipShipUpdateDaemon:
+      "Updates with latest main and merges this server/daemon change into main.",
     branchesLabel: "Branches",
     fallbackUi: "Fallback UI",
     targetOn: "On:",

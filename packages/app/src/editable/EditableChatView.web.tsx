@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { StreamItem, ToolCallItem } from "@/types/stream";
 import type { EditableBranchEntry, EditableReferencedElement } from "./types";
+import { EditableShipButton } from "./EditableTooltip.web";
 import {
   getAssistantDisplayText,
   getLatestRecommendedPrompts,
@@ -744,9 +745,12 @@ function ChatHeaderActions({
         </Button>
       ) : null}
       {flags.canShip ? (
-        <Button size="sm" variant="ghost" disabled={busy} onPress={handleShip}>
-          {flags.canFastForward ? t("editable.shipBranch") : t("editable.updateToMain")}
-        </Button>
+        <EditableShipButton
+          canFastForward={flags.canFastForward}
+          hasUiBuild={Boolean(branch?.releaseDigest)}
+          disabled={busy}
+          onPress={handleShip}
+        />
       ) : null}
       {agentId && onPopOut ? (
         <button

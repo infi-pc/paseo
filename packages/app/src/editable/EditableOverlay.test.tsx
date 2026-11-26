@@ -486,10 +486,17 @@ describe("Editable overlay", () => {
     expect(screen.getAllByRole("button", { name: "Load" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Chat" })).toHaveLength(3);
 
-    // Fast-forward branch has "Ship"; behind-main branch has "Update to main"
-    fireEvent.click(screen.getByRole("button", { name: "Ship" }));
+    // Both ready branches say "Ship"; the behind-main one adds the update icon + explanatory tooltip
+    const shipButtons = screen.getAllByRole("button", { name: "Ship" });
+    expect(shipButtons).toHaveLength(2);
+    expect(document.querySelectorAll('[data-ed-ship-update="true"]')).toHaveLength(1);
+    fireEvent.mouseEnter(shipButtons[1]!.parentElement!);
+    expect(screen.getByRole("tooltip").textContent).toContain("Updates with latest main");
+    fireEvent.mouseLeave(shipButtons[1]!.parentElement!);
+
+    fireEvent.click(shipButtons[0]!);
     await waitFor(() => expect(shipBranch).toHaveBeenCalledWith("fast-branch"));
-    fireEvent.click(screen.getByRole("button", { name: "Update to main" }));
+    fireEvent.click(shipButtons[1]!);
     await waitFor(() => expect(shipBranch).toHaveBeenCalledWith("behind-branch"));
 
     fireEvent.click(screen.getAllByRole("button", { name: "Load" })[0]!);
@@ -911,9 +918,16 @@ describe("Editable overlay", () => {
     fireEvent.click(screen.getByRole("button", { name: "Editable Paseo status" }));
     expect(await screen.findByText("daemon-only-ready")).toBeTruthy();
 
-    // Daemon-only ready branch shows Update to main, not Load
+    // Daemon-only ready branch shows Ship (with update icon), not Load
     expect(screen.queryByRole("button", { name: "Load" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Update to main" }));
+    expect(document.querySelectorAll('[data-ed-ship-update="true"]')).toHaveLength(1);
+    const daemonShipBtn = screen.getByRole("button", { name: "Ship" });
+    fireEvent.mouseEnter(daemonShipBtn.parentElement!);
+    expect(screen.getByRole("tooltip").textContent).toContain(
+      "Updates with latest main and merges this server/daemon change",
+    );
+    fireEvent.mouseLeave(daemonShipBtn.parentElement!);
+    fireEvent.click(daemonShipBtn);
     await waitFor(() => expect(shipBranch).toHaveBeenCalledWith("daemon-only-ready"));
 
     // Hovering + daemon and Draft shows explanatory tooltips

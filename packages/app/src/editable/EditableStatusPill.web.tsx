@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { getOverlayRoot } from "@/lib/overlay-root";
 import { buildHostAgentDetailRoute } from "@/utils/host-routes";
 import { EditableChatView } from "./EditableChatView.web";
+import { EditableHoverTooltip, EditableShipButton } from "./EditableTooltip.web";
 import type {
   EditableBranchAgentRecord,
   EditableBranchEntry,
@@ -391,53 +390,10 @@ function InfoBadge({
   tooltip: string;
   style: React.CSSProperties;
 }) {
-  const badgeRef = useRef<HTMLSpanElement | null>(null);
-  const [pos, setPos] = useState<{ right: number; bottom: number } | null>(null);
-
-  const show = useStableEvent(() => {
-    const el = badgeRef.current;
-    if (!el || typeof window === "undefined") return;
-    const rect = el.getBoundingClientRect();
-    setPos({
-      right: Math.max(12, window.innerWidth - rect.right),
-      bottom: Math.max(12, window.innerHeight - rect.top + 6),
-    });
-  });
-  const hide = useStableEvent(() => setPos(null));
-
-  const floatingStyle = useMemo(
-    () =>
-      pos
-        ? ({
-            ...badgeTooltipStyle,
-            right: pos.right,
-            bottom: pos.bottom,
-          } as const)
-        : null,
-    [pos],
-  );
-
   return (
-    <span
-      ref={badgeRef}
-      title={tooltip}
-      tabIndex={0}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocus={show}
-      onBlur={hide}
-      style={style}
-    >
+    <EditableHoverTooltip tooltip={tooltip} style={style} focusable>
       {label}
-      {floatingStyle && typeof document !== "undefined"
-        ? createPortal(
-            <div role="tooltip" data-ed-overlay="true" style={floatingStyle}>
-              {tooltip}
-            </div>,
-            getOverlayRoot(),
-          )
-        : null}
-    </span>
+    </EditableHoverTooltip>
   );
 }
 
@@ -532,7 +488,6 @@ function WipBranchActions({
   const canLoad =
     canManage && row.hasChanges && Boolean(row.releaseDigest) && (!row.loaded || row.hasUpdate);
   const canShip = canManage && row.hasChanges && row.status === "ready";
-  const shipLabel = row.canFastForward ? t("editable.shipBranch") : t("editable.updateToMain");
 
   return (
     <div style={actionsRowStyle}>
@@ -547,9 +502,12 @@ function WipBranchActions({
         </Button>
       ) : null}
       {canShip ? (
-        <Button size="sm" variant="ghost" disabled={isBusyRow} onPress={onShip}>
-          {shipLabel}
-        </Button>
+        <EditableShipButton
+          canFastForward={row.canFastForward}
+          hasUiBuild={Boolean(row.releaseDigest)}
+          disabled={isBusyRow}
+          onPress={onShip}
+        />
       ) : null}
       {canOpenChat && row.agentId ? (
         <Button size="sm" variant={row.hasUnreadReply ? "default" : "ghost"} onPress={onChat}>
@@ -1673,21 +1631,6 @@ const warnTagStyle = {
   background: "rgba(245, 158, 11, 0.18)",
   color: "#fcd34d",
   cursor: "help",
-} as const;
-
-const badgeTooltipStyle = {
-  position: "fixed",
-  zIndex: 999999,
-  maxWidth: 240,
-  padding: "6px 8px",
-  borderRadius: 6,
-  background: "#0b0e14",
-  color: "#e2e8f0",
-  border: "1px solid rgba(255, 255, 255, 0.18)",
-  boxShadow: "0 10px 26px rgba(0, 0, 0, 0.65)",
-  font: "400 11px/15px system-ui, -apple-system, sans-serif",
-  whiteSpace: "normal",
-  pointerEvents: "none",
 } as const;
 
 const previewBannerStyle = {
