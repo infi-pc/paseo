@@ -53,7 +53,7 @@ const INLINE_STATUS_STYLE = {
   width: 13,
   height: 13,
   marginInlineEnd: 4,
-  verticalAlign: "text-bottom",
+  verticalAlign: "middle",
 } as const;
 
 const PR_LINK_STYLE = { whiteSpace: "nowrap", overflowWrap: "normal" } as const;
