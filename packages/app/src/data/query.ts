@@ -27,7 +27,7 @@ type ReplicaQueryInput<TQueryFnData, TError, TData, TQueryKey extends QueryKey> 
 
 type FetchQueryInput<TQueryFnData, TError, TData, TQueryKey extends QueryKey> = Omit<
   UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
-  "initialData" | "placeholderData" | "queryFn" | "staleTime"
+  "placeholderData" | "queryFn" | "staleTime"
 > & {
   dataShape: "list" | "value";
   queryFn: QueryFnOption<TQueryFnData, TError, TData, TQueryKey>;

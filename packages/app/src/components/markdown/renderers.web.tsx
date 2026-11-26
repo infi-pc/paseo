@@ -1,10 +1,10 @@
 import { canonicalGitHubPullRequestUrl } from "@getpaseo/protocol/git-remote";
 import { ForgeSearchItemSchema, type ForgeSearchItem } from "@getpaseo/protocol/messages";
 import { useFetchQuery } from "@/data/query";
-import { GitPullRequestDraft } from "lucide-react-native";
+import { CircleDashed, CircleAlert, GitPullRequestDraft } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
-import { forwardRef, useCallback, useMemo, useState, type ComponentProps } from "react";
+import { forwardRef, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
 import type {
   CodeBlockRendererProps,
   LinkRendererProps,
@@ -19,11 +19,18 @@ import { CheckPresentationIcon } from "@/git/check-presentation.view";
 import { mapCheckStatus } from "@/git/pull-request-panel/check-status";
 import { useHostFeature } from "@/runtime/host-features";
 import { useForgeShorthand } from "@/git/forge-shorthand";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import type { Theme } from "@/styles/theme";
 import { MermaidFence } from "./fence/mermaid";
+import { observePrLink } from "./pr-link-visibility.web";
+import { readCachedPrPreview, writeCachedPrPreview } from "./pr-preview-cache.web";
 import { isRecognizedLink, markdownLinkSource } from "./source";
+
+const ThemedCircleDashed = withUnistyles(CircleDashed);
+const ThemedCircleAlert = withUnistyles(CircleAlert);
+const mutedIcon = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 const ThemedCodeBlock = withUnistyles(HighlightedCodeBlock);
 const codeStyle = (theme: Theme) => ({
@@ -68,7 +75,26 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
   const prUrl = environment.enablePullRequestLinkPreviews
     ? canonicalGitHubPullRequestUrl(destination)
     : null;
-  const preview = usePullRequestPreview(prUrl, previewOpen, environment);
+  const [anchorNode, setAnchorNode] = useState<HTMLAnchorElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const panelActive = useRetainedPanelActive();
+  useEffect(() => {
+    if (prUrl && anchorNode) return observePrLink(anchorNode, setVisible);
+  }, [anchorNode, prUrl]);
+  const preview = usePullRequestPreview(
+    prUrl,
+    panelActive && (visible || previewOpen),
+    environment,
+  );
+  const originalRef = anchorProps.ref;
+  const trackAnchor = useCallback(
+    (node: HTMLAnchorElement | null) => {
+      setAnchorNode(node);
+      if (typeof originalRef === "function") return originalRef(node);
+      if (originalRef) originalRef.current = node;
+    },
+    [originalRef],
+  );
   const [hovered, setHovered] = useState(false);
   const handleMouseEnter = useCallback(() => setHovered(true), []);
   const handleMouseLeave = useCallback(() => setHovered(false), []);
@@ -92,6 +118,7 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
   const anchor = (
     <a
       {...copyAnchorProps}
+      ref={prUrl ? trackAnchor : originalRef}
       href={forgeUrl ?? anchorProps.href}
       style={anchorStyle}
       onMouseEnter={handleMouseEnter}
@@ -124,40 +151,33 @@ function WebLink({ link, anchorProps, children }: LinkRendererProps) {
 }
 function usePullRequestPreview(
   prUrl: string | null,
-  open: boolean,
+  active: boolean,
   { client, serverId, workspaceRoot }: ReturnType<typeof useAssistantFileLinkEnvironment>,
 ) {
   const supported = useHostFeature(prUrl ? serverId : undefined, "githubPullRequestLinkPreview");
+  const cacheKey = serverId && prUrl ? JSON.stringify([serverId, prUrl]) : null;
+  const cached = useMemo(
+    () => (supported && cacheKey ? readCachedPrPreview(cacheKey) : undefined),
+    [supported, cacheKey],
+  );
+  const enabled = Boolean(active && supported && client?.searchForge && workspaceRoot && prUrl);
   const query = useFetchQuery({
     queryKey: ["github-pull-request-link-preview", serverId, prUrl],
-    enabled: Boolean(open && supported && client?.searchForge && workspaceRoot && prUrl),
-    queryFn: async () => {
-      if (!client?.searchForge || !workspaceRoot || !prUrl) return null;
-      const result = await client.searchForge({
-        cwd: workspaceRoot,
-        query: prUrl,
-        kinds: ["change_request"],
-        limit: 1,
-      });
-      for (const item of result.items) {
-        const parsed = ForgeSearchItemSchema.safeParse(item);
-        if (!parsed.success) continue;
-        const pr = parsed.data;
-        if (pr.kind === "change_request" && canonicalGitHubPullRequestUrl(pr.url) === prUrl) {
-          return pr;
-        }
-      }
-      return null;
-    },
+    enabled,
+    initialData: cached?.data,
+    initialDataUpdatedAt: cached?.updatedAt,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
+    refetchOnWindowFocus: true,
+    queryFn: () => fetchPullRequestPreview(client, workspaceRoot, prUrl, cacheKey),
     dataShape: "value",
     staleTimeMs: 30_000,
     retry: false,
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
-  const pr = prUrl && supported ? query.data : null;
-  const state = pr?.state.toLowerCase();
-  const iconState: ComponentProps<typeof PullRequestStateIcon>["state"] | null =
-    state === "open" || state === "closed" || state === "merged" ? state : null;
+  const pr = supported ? (query.data ?? cached?.data) : undefined;
+  const iconState = parsePrState(pr?.state);
   const checkStatus = useMemo(() => summarizeCheckStatus(pr?.checks), [pr?.checks]);
   return {
     pr,
@@ -166,33 +186,82 @@ function usePullRequestPreview(
     isDraft: iconState === "open" && pr?.isDraft,
     query,
     supported,
+    loading: query.isLoading,
   };
+}
+
+function parsePrState(
+  value: string | undefined,
+): ComponentProps<typeof PullRequestStateIcon>["state"] | null {
+  const state = value?.toLowerCase();
+  return state === "open" || state === "closed" || state === "merged" ? state : null;
+}
+
+async function fetchPullRequestPreview(
+  client: ReturnType<typeof useAssistantFileLinkEnvironment>["client"],
+  cwd: string | undefined,
+  prUrl: string | null,
+  cacheKey: string | null,
+) {
+  if (!client?.searchForge || !cwd || !prUrl) throw new Error("PR lookup unavailable");
+  const result = await client.searchForge({
+    cwd,
+    query: prUrl,
+    kinds: ["change_request"],
+    limit: 1,
+  });
+  if (result.error || result.authState !== "authenticated") throw new Error("PR lookup failed");
+  for (const item of result.items) {
+    const parsed = ForgeSearchItemSchema.safeParse(item);
+    if (!parsed.success) continue;
+    const pr = parsed.data;
+    if (pr.kind === "change_request" && canonicalGitHubPullRequestUrl(pr.url) === prUrl) {
+      if (cacheKey) writeCachedPrPreview(cacheKey, pr);
+      return pr;
+    }
+  }
+  throw new Error("PR lookup returned no matching pull request");
 }
 
 type PullRequestPreview = ReturnType<typeof usePullRequestPreview>;
 
-function InlinePullRequestStatus({ iconState, isDraft, checkStatus }: PullRequestPreview) {
+function InlinePullRequestStatus({
+  iconState,
+  isDraft,
+  checkStatus,
+  loading,
+  pr,
+}: PullRequestPreview) {
   const { t } = useTranslation();
-  let icon = null;
+  const placeholder = loading ? (
+    <ThemedCircleDashed size={13} uniProps={mutedIcon} />
+  ) : (
+    <ThemedCircleAlert size={13} uniProps={mutedIcon} />
+  );
+  let icon = placeholder;
   if (isDraft) icon = <GitPullRequestDraft size={13} />;
   else if (iconState) icon = <PullRequestStateIcon state={iconState} size={13} />;
+  const prLabel = loading ? t("common.linkPreview.loadingPr") : t("common.linkPreview.unavailable");
+  let ciLabel = t("common.linkPreview.unknownCi");
+  if (loading) ciLabel = t("common.linkPreview.loadingCi");
+  else if (pr?.checks?.length === 0) ciLabel = t("workspace.git.pr.checksOverview.headline.none");
   return (
     <>
       <span
         aria-label={
-          iconState ? t(`workspace.git.pr.states.${isDraft ? "draft" : iconState}`) : undefined
+          iconState ? t(`workspace.git.pr.states.${isDraft ? "draft" : iconState}`) : prLabel
         }
-        role={iconState ? "img" : undefined}
+        role="img"
         style={INLINE_STATUS_STYLE}
       >
         {icon}
       </span>
       <span
-        aria-label={checkStatus ? t(`common.linkPreview.ci.${checkStatus}`) : undefined}
-        role={checkStatus ? "img" : undefined}
+        aria-label={checkStatus ? t(`common.linkPreview.ci.${checkStatus}`) : ciLabel}
+        role="img"
         style={INLINE_STATUS_STYLE}
       >
-        {checkStatus ? <CheckPresentationIcon presentation={checkStatus} size={13} /> : null}
+        {checkStatus ? <CheckPresentationIcon presentation={checkStatus} size={13} /> : placeholder}
       </span>
     </>
   );

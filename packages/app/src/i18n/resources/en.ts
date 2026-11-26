@@ -234,6 +234,9 @@ export const en = {
     linkPreview: {
       unsupportedHost: "Update the host to see pull request status",
       unavailable: "Pull request status unavailable",
+      loadingPr: "Loading pull request status",
+      loadingCi: "Loading CI status",
+      unknownCi: "CI status unavailable",
       approved: "Approved",
       changesRequested: "Changes requested",
       reviewRequired: "Review required",

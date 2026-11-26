@@ -64,31 +64,38 @@ it("leaves an authored link wrapped", () => {
   expect(anchor.hasAttribute("data-paseo-markdown-recognized-link")).toBe(false);
 });
 
-it("loads exact PR details on keyboard focus and keeps the original link destination", async () => {
+it("loads visible PR links before focus and restores their status with a fresh query cache", async () => {
   if (!Link) throw new Error("Expected a web link renderer");
   await page.viewport(1280, 900);
   const serverId = "pr-link-preview-host";
   const sessionStore = useSessionStore.getState();
   const prUrl = "https://github.com/acme/other-repo/pull/42";
   const href = `${prUrl}/files#diff-1`;
-  const searchForge = vi.fn(async () => ({
-    items: [
-      {
-        kind: "change_request",
-        number: 42,
-        title: "Fix checkout",
-        url: prUrl,
-        state: "MERGED",
-        body: null,
-        labels: [],
-        reviewDecision: "APPROVED",
-        checks: [{ name: "Build", status: "success", url: null }],
-      },
-    ],
-    authState: "authenticated",
-    error: null,
-    requestId: "test",
-  }));
+  let finishLookup: () => void = () => {};
+  const lookup = new Promise<void>((resolve) => {
+    finishLookup = resolve;
+  });
+  const searchForge = vi.fn(async () => {
+    await lookup;
+    return {
+      items: [
+        {
+          kind: "change_request",
+          number: 42,
+          title: "Fix checkout",
+          url: prUrl,
+          state: "MERGED",
+          body: null,
+          labels: [],
+          reviewDecision: "APPROVED",
+          checks: [{ name: "Build", status: "success", url: null }],
+        },
+      ],
+      authState: "authenticated",
+      error: null,
+      requestId: "test",
+    };
+  });
   sessionStore.initializeSession(serverId, null);
   sessionStore.updateSessionServerInfo(serverId, {
     serverId,
@@ -99,10 +106,10 @@ it("loads exact PR details on keyboard focus and keeps the original link destina
   const client = previewClient(searchForge);
   const link = markdownLinkFor(href);
   const anchorProps = anchorPropsFor(href);
-  try {
+  const renderPr = (queryClient: QueryClient, key: string) =>
     act(() =>
       root.render(
-        <QueryClientProvider client={new QueryClient()}>
+        <QueryClientProvider key={key} client={queryClient}>
           <AssistantFileLinkResolverProvider
             client={client}
             serverId={serverId}
@@ -116,7 +123,15 @@ it("loads exact PR details on keyboard focus and keeps the original link destina
         </QueryClientProvider>,
       ),
     );
-    expect(searchForge).not.toHaveBeenCalled();
+  try {
+    renderPr(new QueryClient(), "initial");
+    await expect
+      .element(page.getByRole("img", { name: "Loading pull request status" }))
+      .toBeInTheDocument();
+    await expect.element(page.getByRole("img", { name: "Loading CI status" })).toBeInTheDocument();
+    expect(searchForge).toHaveBeenCalledTimes(1);
+    finishLookup();
+    await expect.element(page.getByRole("img", { name: "Merged" })).toBeInTheDocument();
     act(() => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab" }));
       container.querySelector("a")?.focus();
@@ -133,7 +148,12 @@ it("loads exact PR details on keyboard focus and keeps the original link destina
       kinds: ["change_request"],
       limit: 1,
     });
+    renderPr(new QueryClient(), "reloaded");
+    await expect.element(page.getByRole("img", { name: "Merged" })).toBeInTheDocument();
+    await expect.element(page.getByRole("img", { name: "Checks passed" })).toBeInTheDocument();
+    expect(searchForge).toHaveBeenCalledTimes(1);
   } finally {
+    finishLookup();
     act(() => sessionStore.clearSession(serverId));
   }
 });
