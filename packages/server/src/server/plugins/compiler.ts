@@ -35,9 +35,19 @@ const workerUrl = new URL(
   source ? "./compiler-worker.ts" : "./compiler-worker.js",
   import.meta.url,
 );
-const workerExecArgv = source
-  ? ["--import", pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href]
+// FORK(editable): packaged Electron helpers can ignore NODE_OPTIONS, so pass
+// the daemon's explicit dependency loader to the compiler subprocess.
+const editableLoaderArgs = process.env.PASEO_EDITABLE_DAEMON_DIR
+  ? process.execArgv.filter(
+      (arg) => arg.startsWith("--import=") && arg.endsWith("/daemon-release-loader.mjs"),
+    )
   : [];
+const workerExecArgv = [
+  ...editableLoaderArgs,
+  ...(source
+    ? ["--import", pathToFileURL(createRequire(import.meta.url).resolve("tsx")).href]
+    : []),
+];
 
 interface CompilerProcess {
   child: ChildProcess;
