@@ -13,7 +13,7 @@ import {
   groupMainFolderWorkspaces,
   sortBySessionActivity,
   sessionIsVisible,
-  workspaceSections,
+  workspaceSection,
   retainSessionKeys,
   type SidebarSession,
 } from "./model";
@@ -77,12 +77,10 @@ export function useSidebarNavigation(
   );
   const sections = useMemo(
     () =>
-      (["running", "inbox", "snoozed"] as const).map((id) => ({
+      (["inbox", "snoozed"] as const).map((id) => ({
         id,
         workspaces: sorted
-          .filter((workspace) =>
-            workspaceSections(workspace, sessions.get(workspace.workspaceKey) ?? []).includes(id),
-          )
+          .filter((workspace) => workspaceSection(workspace) === id)
           .sort((a, b) =>
             id === "inbox"
               ? blockedPriority(sessions.get(b.workspaceKey)) -

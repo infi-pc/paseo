@@ -43,16 +43,7 @@ export function useWorkspaceSessionDisclosure(workspaceKey: string, section?: In
     () => togglePreference(preferenceKey),
     [togglePreference, preferenceKey],
   );
-  const rows = useMemo(
-    () =>
-      (sessions.get(workspaceKey) ?? []).filter(
-        (session) =>
-          !section ||
-          section === "snoozed" ||
-          (section === "running" ? session.running : !session.running),
-      ),
-    [sessions, workspaceKey, section],
-  );
+  const rows = sessions.get(workspaceKey) ?? [];
   return { rows, hasSessions: rows.length > 0, expanded, toggle };
 }
 
@@ -142,10 +133,7 @@ export function WorkspaceSessionRows({
   const { t } = useTranslation();
   const { rows, expanded } = useWorkspaceSessionDisclosure(workspace.workspaceKey, section);
   const snooze = workspace.snooze;
-  const deadline =
-    section !== "running" && snooze && snooze.config.mode !== "time"
-      ? snooze.config.deadlineAt
-      : undefined;
+  const deadline = snooze && snooze.config.mode !== "time" ? snooze.config.deadlineAt : undefined;
   const showSessions = expanded && rows.length > 0;
   if (!deadline && !showSessions) return null;
   return (

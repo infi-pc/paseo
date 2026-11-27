@@ -3,7 +3,7 @@ import {
   buildSessionActivity,
   groupMainFolderWorkspaces,
   buildWorkspaceSessions,
-  workspaceSections,
+  workspaceSection,
   sessionIsVisible,
   type NavigationAgent,
   retainSessionKeys,
@@ -169,8 +169,7 @@ describe("Inbox navigation", () => {
       unread: false,
       lastActivityAt: old,
     };
-    expect(workspaceSections(workspace, [session])).toEqual(["inbox"]);
-    expect(workspaceSections(workspace, [])).toEqual(["inbox"]);
+    expect(workspaceSection(workspace)).toBe("inbox");
     expect(sessionIsVisible(session, now)).toBe(false);
     expect(
       sessionIsVisible({ ...session, lastActivityAt: now - INBOX_ACTIVITY_WINDOW_MS }, now),
@@ -179,20 +178,10 @@ describe("Inbox navigation", () => {
     expect(sessionIsVisible(session, now, session.id)).toBe(true);
   });
 
-  it("splits mixed work without duplicating workspace keyboard targets", () => {
-    const workspace = makeWorkspace("mixed", "running").entry;
-    const roots = [navigationAgent("working", "mixed", true), navigationAgent("idle", "mixed")];
-    const sessions = buildWorkspaceSessions([
-      { serverId: "srv", agents: new Map(roots.map((agent) => [agent.id, agent])) },
-    ]).get("srv:mixed")!;
-    expect(workspaceSections(workspace, sessions)).toEqual(["running", "inbox"]);
-    const projection = buildSidebarProjection({
-      ...projectionInput(),
-      flatWorkspaces: [workspace, workspace],
-    });
-    expect(projection.shortcutModel.shortcutTargets).toEqual([
-      { serverId: "srv", workspaceId: "mixed" },
-    ]);
+  it("keeps a workspace in Inbox through running and idle states", () => {
+    const workspace = makeWorkspace("one", "running").entry;
+    expect(workspaceSection(workspace)).toBe("inbox");
+    expect(workspaceSection({ ...workspace, statusBucket: "done" })).toBe("inbox");
     workspace.snooze = {
       id: "s",
       createdAt: new Date(now).toISOString(),
@@ -200,7 +189,8 @@ describe("Inbox navigation", () => {
       lastCheck: null,
       config: { mode: "time", wakeAt: new Date(now).toISOString(), timezone: "UTC" },
     };
-    expect(workspaceSections(workspace, sessions)).toEqual(["running", "snoozed"]);
+    expect(workspaceSection(workspace)).toBe("snoozed");
+    expect(workspaceSection({ ...workspace, statusBucket: "done" })).toBe("snoozed");
   });
 
   it("keeps same-workspace descendants in their parent track and exposes cross-workspace roots", () => {
@@ -222,7 +212,7 @@ describe("Inbox navigation", () => {
     ]);
   });
 
-  it("a root permission stays in Inbox even when its descendant is working", () => {
+  it("keeps a root permission visible when its descendant is working", () => {
     const parent = navigationAgent("parent", "one", true);
     parent.pendingPermissions = [
       { id: "permission", provider: "codex", name: "shell", kind: "tool", input: {} },
@@ -233,14 +223,6 @@ describe("Inbox navigation", () => {
     expect(rows.map((row) => [row.id, row.running, row.blocked])).toEqual([
       ["parent", false, true],
     ]);
-    expect(workspaceSections(makeWorkspace("one", "needs_input").entry, rows)).toEqual(["inbox"]);
-    agents.set("other", navigationAgent("other", "one", true));
-    expect(
-      workspaceSections(
-        makeWorkspace("one", "needs_input").entry,
-        buildWorkspaceSessions([{ serverId: "srv", agents }]).get("srv:one")!,
-      ),
-    ).toEqual(["running", "inbox"]);
   });
 
   it("does not move running rows for streaming activity", () => {
