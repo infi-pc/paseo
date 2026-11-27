@@ -401,9 +401,15 @@ export class EditableBranchManager {
     return daemonState.runningDigest !== targetDaemonDigest;
   }
 
+  private usableProdDaemonPointer() {
+    const ptr = this.deps.store.getDaemonChannelPointer("prod");
+    if (!ptr || this.deps.store.isDaemonQuarantined(ptr.digest)) return null;
+    return ptr;
+  }
+
   private buildMainEntry(baseBranch: string, ctx: SnapshotContext): EditableBranchEntry {
     const prodPtr = this.deps.store.getChannelPointer("prod");
-    const prodDaemonPtr = this.deps.store.getDaemonChannelPointer("prod");
+    const prodDaemonPtr = this.usableProdDaemonPointer();
     const primary = pickPrimaryPointer(prodPtr, prodDaemonPtr);
     const uiDigest = prodPtr?.digest ?? null;
     const daemonDigest = prodDaemonPtr?.digest ?? null;
@@ -686,7 +692,7 @@ export class EditableBranchManager {
           runningDigest: this.deps.store.activeDaemonDigest,
           runningChannel: null,
         };
-    const prodDaemonPtr = this.deps.store.getDaemonChannelPointer("prod");
+    const prodDaemonPtr = this.usableProdDaemonPointer();
     const ctx: SnapshotContext = {
       ...input,
       prodDaemonDigest: prodDaemonPtr?.digest ?? null,
@@ -882,7 +888,7 @@ export class EditableBranchManager {
     }
 
     const prodUiPtr = this.deps.store.getChannelPointer("prod");
-    const prodDaemonPtr = this.deps.store.getDaemonChannelPointer("prod");
+    const prodDaemonPtr = this.usableProdDaemonPointer();
     const targetUiPtr = channelUiPtr ?? prodUiPtr;
     const targetDaemonDigest = (channelDaemonPtr ?? prodDaemonPtr)?.digest ?? null;
     const daemonSwapped = await this.applyTargetDaemon(

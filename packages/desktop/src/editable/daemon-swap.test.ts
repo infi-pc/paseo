@@ -466,4 +466,198 @@ describe("EditableDaemonController & daemon hot-swap", () => {
     expect(loaded.uiChanged).toBe(false);
     expect((await controller.getRunningState()).runningDigest).toBe(daemonRel.releaseDigest);
   });
+
+  it("ignores a quarantined prod daemon when loading a UI-only WIP branch", async () => {
+    const root = makeTempDir();
+    const userHome = path.join(root, "user");
+    const devHome = path.join(userHome, ".paseo-dev");
+    const editableHome = path.join(devHome, "editable");
+    const configHome = path.join(root, "shared-editable");
+    const builtIn = path.join(root, "builtin");
+    mkdirSync(devHome, { recursive: true });
+    mkdirSync(builtIn, { recursive: true });
+    writeFileSync(path.join(builtIn, "index.html"), "<html>builtin</html>");
+
+    const { privateKey, publicKey } = generateKeyPairSync("ed25519");
+    const privateKeyPem = privateKey.export({ type: "pkcs8", format: "pem" }).toString();
+    const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
+    mkdirSync(path.join(configHome, "keys"), { recursive: true });
+    writeFileSync(path.join(configHome, "keys", "signing.public.pem"), publicKeyPem);
+
+    const badProdDaemon = writeSignedDaemonRelease(editableHome, privateKeyPem, publicKeyPem, {
+      sourceSha: "b".repeat(40),
+      summary: "Broken prod daemon",
+      scriptBody: "process.exit(1);\n",
+    });
+
+    // Write a valid signed UI-only WIP release
+    const htmlBytes = Buffer.from("<html>wip ui</html>", "utf8");
+    const htmlSha = createHash("sha256").update(htmlBytes).digest("hex");
+    const uiFiles = [{ path: "index.html", sha256: htmlSha, bytes: htmlBytes.length }];
+    const uiDigest = createHash("sha256")
+      .update(
+        canonicalJson({ surface: "electron-web", runtimeVersion: "desktop-1", files: uiFiles }),
+      )
+      .digest("hex");
+    const uiDir = path.join(editableHome, "releases", "electron-web", uiDigest);
+    mkdirSync(uiDir, { recursive: true });
+    writeFileSync(path.join(uiDir, "index.html"), htmlBytes);
+    writeFileSync(
+      path.join(uiDir, "manifest.json"),
+      JSON.stringify(
+        signEnvelope(
+          {
+            schemaVersion: 1,
+            kind: "release",
+            surface: "electron-web",
+            releaseDigest: uiDigest,
+            sourceSha: "c".repeat(40),
+            runtimeVersion: "desktop-1",
+            archiveSha256: "0".repeat(64),
+            archiveBytes: 50,
+            files: uiFiles,
+            summary: "UI-only WIP",
+            createdAt: "2026-11-27T10:00:00.000Z",
+          },
+          privateKeyPem,
+          publicKeyPem,
+        ),
+      ),
+    );
+
+    const channelsDir = path.join(editableHome, "releases", "electron-web", "channels");
+    mkdirSync(channelsDir, { recursive: true });
+    // prod channel points at the quarantined daemon
+    writeFileSync(
+      path.join(editableHome, "releases", "electron-web", "channel.json"),
+      JSON.stringify(
+        signEnvelope(
+          {
+            schemaVersion: 1,
+            kind: "channel",
+            channel: "prod",
+            generation: 24,
+            updatedAt: "2026-11-27T10:00:00.000Z",
+            surfaces: {
+              daemon: {
+                releaseDigest: badProdDaemon.releaseDigest,
+                sourceSha: "b".repeat(40),
+                runtimeVersion: DAEMON_RUNTIME_VERSION,
+                archiveUrl: "https://example.invalid/daemon.tar.gz",
+                manifestUrl: "https://example.invalid/daemon.json",
+                summary: "Broken prod daemon",
+                updatedAt: "2026-11-27T10:00:00.000Z",
+              },
+            },
+          },
+          privateKeyPem,
+          publicKeyPem,
+        ),
+      ),
+    );
+    writeFileSync(
+      path.join(channelsDir, "wip-ui-only.json"),
+      JSON.stringify(
+        signEnvelope(
+          {
+            schemaVersion: 1,
+            kind: "channel",
+            channel: "wip-ui-only",
+            generation: 1,
+            updatedAt: "2026-11-27T10:01:00.000Z",
+            surfaces: {
+              "electron-web": {
+                releaseDigest: uiDigest,
+                sourceSha: "c".repeat(40),
+                runtimeVersion: "desktop-1",
+                archiveUrl: "https://example.invalid/ui.tar.gz",
+                manifestUrl: "https://example.invalid/ui.json",
+                summary: "UI-only WIP",
+                updatedAt: "2026-11-27T10:01:00.000Z",
+              },
+            },
+          },
+          privateKeyPem,
+          publicKeyPem,
+        ),
+      ),
+    );
+    writeFileSync(
+      path.join(channelsDir, "wip-index.json"),
+      JSON.stringify(
+        signEnvelope(
+          {
+            schemaVersion: 1,
+            kind: "wip-index",
+            generation: 1,
+            updatedAt: "2026-11-27T10:01:00.000Z",
+            branches: [
+              {
+                slug: "ui-only",
+                branch: "ed/wip/ui-only",
+                channel: "wip-ui-only",
+                releaseDigest: uiDigest,
+                services: ["ui"],
+                sourceSha: "c".repeat(40),
+                summary: "UI-only WIP",
+                requiresDaemon: false,
+                requiresNative: false,
+                updatedAt: "2026-11-27T10:01:00.000Z",
+              },
+            ],
+          },
+          privateKeyPem,
+          publicKeyPem,
+        ),
+      ),
+    );
+
+    const store = new EditableReleaseStore({
+      builtInDistDir: builtIn,
+      home: editableHome,
+      publicKeyHome: configHome,
+    });
+    store.quarantineDaemon(badProdDaemon.releaseDigest);
+
+    const liveInstance: DaemonInstance = {
+      pid: 3001,
+      startedAt: "2026-11-27T10:00:00.000Z",
+      listen: "127.0.0.1:6770",
+      serverId: "srv-dev",
+      desktopManaged: true,
+    };
+    const stopDaemon = vi.fn();
+    const controller = new EditableDaemonController({
+      store,
+      paseoHome: () => devHome,
+      paseoListen: () => "127.0.0.1:6770",
+      userHome,
+      isDevProfile: () => true,
+      readInstance: async () => liveInstance,
+      isProcessAlive: () => true,
+      stopDaemon,
+      startDaemon: vi.fn(),
+    });
+    const manager = new EditableBranchManager({
+      home: editableHome,
+      configHome,
+      store,
+      daemonController: controller,
+    });
+
+    const snap = await manager.getSnapshot({
+      loadedChannel: "prod",
+      loadedDigest: null,
+      safeRenderer: false,
+    });
+    expect(snap.branches.find((b) => b.slug === "ui-only")?.requiresDaemonRestartOnLoad).toBe(
+      false,
+    );
+
+    const loaded = await manager.loadBranch("wip-ui-only", { currentLoadedDigest: null });
+    expect(loaded.uiChanged).toBe(true);
+    expect(loaded.daemonSwapped).toBe(false);
+    expect(loaded.release.releaseDigest).toBe(uiDigest);
+    expect(stopDaemon).not.toHaveBeenCalled();
+  });
 });
