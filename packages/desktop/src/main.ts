@@ -983,10 +983,14 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
 
   // FORK(editable): serve the verified or built-in renderer on the shared app origin.
+  const editableEnabled = Boolean(
+    devProfile || existsSync(path.join(cloudShelfHome, "config.json")),
+  );
   const workshopDaemon = new EditableWorkshopDaemonManager({ configHome: cloudShelfHome });
   editableRuntime = new EditableDesktopRuntime({
     builtInDistDir: getAppDistDir(),
-    cloudShelfHome: devProfile ? cloudShelfHome : undefined,
+    cloudShelfHome: editableEnabled ? cloudShelfHome : undefined,
+    allowProductionDaemonSwap: !devProfile && editableEnabled,
     workshopDaemon,
     isPackaged: app.isPackaged,
     devServerUrl: DEV_SERVER_URL,
@@ -1001,7 +1005,7 @@ async function bootstrap(): Promise<void> {
     editable: {
       useRecoveryRenderer: () => editableRuntime.useRecoveryRenderer(),
       reloadLatestRenderer: () => editableRuntime.reloadLatestRenderer(),
-      syncFromCloudShelf: devProfile
+      syncFromCloudShelf: editableEnabled
         ? async () => {
             await editableRuntime.syncFromCloudShelf();
           }

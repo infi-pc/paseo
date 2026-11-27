@@ -52,6 +52,7 @@ export interface EditableDaemonSwapResult {
 
 export interface EditableDaemonControllerDeps {
   store: EditableReleaseStore;
+  allowProductionSwap?: boolean;
   paseoHome?: () => string;
   paseoListen?: () => string | undefined;
   userHome?: string;
@@ -82,20 +83,25 @@ function canonicalPath(candidate: string): string {
 
 export function assertIsolatedDevDaemonHome(input: {
   isDev: boolean;
+  allowProductionSwap?: boolean;
   paseoHome: string;
   paseoListen?: string;
   userHome?: string;
 }): void {
-  if (!input.isDev) {
+  const productionOptIn = !input.isDev && input.allowProductionSwap === true;
+  if (!input.isDev && !productionOptIn) {
     throw new Error("Daemon hot-swap is only allowed inside the isolated Paseo Dev sandbox");
   }
   const userHome = input.userHome ?? os.homedir();
   const normalizedHome = canonicalPath(input.paseoHome).toLowerCase();
-  const forbiddenDirs = [
-    path.join(userHome, ".paseo"),
+  const forbiddenBase = [
     path.join(userHome, ".paseo-workshop"),
     path.join(userHome, ".editable-paseo"),
-  ].map((dir) => canonicalPath(dir).toLowerCase());
+  ];
+  if (!productionOptIn) {
+    forbiddenBase.unshift(path.join(userHome, ".paseo"));
+  }
+  const forbiddenDirs = forbiddenBase.map((dir) => canonicalPath(dir).toLowerCase());
   for (const forbidden of forbiddenDirs) {
     if (normalizedHome === forbidden || normalizedHome.startsWith(`${forbidden}${path.sep}`)) {
       throw new Error(
@@ -104,7 +110,7 @@ export function assertIsolatedDevDaemonHome(input: {
     }
   }
   const listen = input.paseoListen?.trim() ?? "";
-  if (listen.endsWith(":6767") || listen.endsWith(":6769")) {
+  if (listen.endsWith(":6769") || (!productionOptIn && listen.endsWith(":6767"))) {
     throw new Error(`Refusing daemon hot-swap on protected port (${listen})`);
   }
 }
@@ -161,6 +167,7 @@ export class EditableDaemonController {
     const home = this.getHome();
     assertIsolatedDevDaemonHome({
       isDev: this.deps.isDevProfile ? this.deps.isDevProfile() : isDevInstance(),
+      allowProductionSwap: this.deps.allowProductionSwap,
       paseoHome: home,
       paseoListen: this.deps.paseoListen ? this.deps.paseoListen() : process.env.PASEO_LISTEN,
       userHome: this.deps.userHome,
