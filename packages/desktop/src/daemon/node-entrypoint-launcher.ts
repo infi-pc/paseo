@@ -17,6 +17,7 @@ interface CreateNodeEntrypointInvocationInput {
   execPath: string;
   isPackaged: boolean;
   packagedRunnerPath: string | null;
+  nodeArgs?: string[];
   entrypoint: NodeEntrypointSpec;
   argvMode: NodeEntrypointArgvMode;
   args: string[];
@@ -48,6 +49,7 @@ export function createNodeEntrypointInvocation(
       command: input.execPath,
       args: [
         "--disable-warning=DEP0040",
+        ...(input.nodeArgs ?? []),
         input.packagedRunnerPath,
         input.argvMode,
         input.entrypoint.entryPath,
@@ -59,7 +61,12 @@ export function createNodeEntrypointInvocation(
 
   return {
     command: input.execPath,
-    args: [...input.entrypoint.execArgv, input.entrypoint.entryPath, ...input.args],
+    args: [
+      ...(input.nodeArgs ?? []),
+      ...input.entrypoint.execArgv,
+      input.entrypoint.entryPath,
+      ...input.args,
+    ],
     env,
   };
 }

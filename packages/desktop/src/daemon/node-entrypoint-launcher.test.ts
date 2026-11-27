@@ -18,6 +18,7 @@ describe("node-entrypoint-launcher", () => {
           isPackaged: true,
           packagedRunnerPath:
             "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
+          nodeArgs: ["--import=file:///tmp/daemon-release-loader.mjs"],
           entrypoint: CLI_ENTRYPOINT,
           argvMode: "node-script",
           args: ["ls", "--json"],
@@ -27,6 +28,7 @@ describe("node-entrypoint-launcher", () => {
         command: "/Applications/Paseo.app/Contents/MacOS/Paseo",
         args: [
           "--disable-warning=DEP0040",
+          "--import=file:///tmp/daemon-release-loader.mjs",
           "/Applications/Paseo.app/Contents/Resources/app.asar/dist/daemon/node-entrypoint-runner.js",
           "node-script",
           "/tmp/paseo-cli.js",

@@ -346,6 +346,7 @@ export async function startDesktopDaemon(options?: {
     argvMode: "node-script",
     args: [],
     baseEnv,
+    editableDaemon: Boolean(launchOverride),
   });
   try {
     await startDaemonInstance({

@@ -75,16 +75,14 @@ export interface EditableDaemonLaunchOverride {
 export function buildEditableDaemonEnv(
   baseEnv: NodeJS.ProcessEnv,
   override: EditableDaemonLaunchOverride,
-  loaderPath = resolveDaemonReleaseLoaderPath(),
   fallbackRoot = resolveDaemonReleaseFallbackRoot(),
 ): NodeJS.ProcessEnv {
-  const loaderFlag = `--import=${pathToFileURL(loaderPath).href}`;
   const existingOptions = (baseEnv.NODE_OPTIONS ?? "")
     .split(/\s+/)
     .filter((token) => token.length > 0 && !token.includes("daemon-release-loader.mjs"));
   return {
     ...baseEnv,
-    NODE_OPTIONS: [...existingOptions, loaderFlag].join(" "),
+    NODE_OPTIONS: existingOptions.join(" "),
     PASEO_EDITABLE_DAEMON_DIR: override.releaseDir,
     PASEO_EDITABLE_FALLBACK_ROOT: fallbackRoot,
     PASEO_EDITABLE_DAEMON_DIGEST: override.digest,
@@ -157,6 +155,7 @@ export function createNodeEntrypointInvocation(input: {
   argvMode: NodeEntrypointArgvMode;
   args: string[];
   baseEnv: NodeJS.ProcessEnv;
+  editableDaemon?: boolean;
 }): NodeEntrypointInvocation {
   return createSharedNodeEntrypointInvocation({
     execPath: resolveNodeExecPath(),
@@ -167,6 +166,9 @@ export function createNodeEntrypointInvocation(input: {
           filePath: resolvePackagedNodeEntrypointRunnerPath(),
         })
       : null,
+    nodeArgs: input.editableDaemon
+      ? [`--import=${pathToFileURL(resolveDaemonReleaseLoaderPath()).href}`]
+      : undefined,
     entrypoint: input.entrypoint,
     argvMode: input.argvMode,
     args: input.args,

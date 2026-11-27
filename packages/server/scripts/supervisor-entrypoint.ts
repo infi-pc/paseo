@@ -101,7 +101,17 @@ function resolvePackagedNodeEntrypointRunnerPath(currentScriptPath: string): str
 async function main(): Promise<void> {
   const config = parseConfig(process.argv.slice(2));
   const workerEntry = config.devMode ? resolveDevWorkerEntry() : resolveWorkerEntry();
-  const workerExecArgv = resolveWorkerExecArgv(workerEntry, config.devMode);
+  // FORK(editable): the Electron helper can ignore NODE_OPTIONS. Forward the
+  // desktop launcher’s explicit preload to every worker, including restarts.
+  const editableLoaderArgs = process.env.PASEO_EDITABLE_DAEMON_DIR
+    ? process.execArgv.filter(
+        (arg) => arg.startsWith("--import=") && arg.endsWith("/daemon-release-loader.mjs"),
+      )
+    : [];
+  const workerExecArgv = [
+    ...editableLoaderArgs,
+    ...resolveWorkerExecArgv(workerEntry, config.devMode),
+  ];
   const workerEnv: NodeJS.ProcessEnv = { ...process.env };
   const packagedNodeEntrypointRunner =
     process.env.ELECTRON_RUN_AS_NODE === "1"
@@ -157,6 +167,7 @@ async function main(): Promise<void> {
       ? (resolvedWorkerEntry) => ({
           command: process.execPath,
           args: [
+            ...editableLoaderArgs,
             packagedNodeEntrypointRunner,
             "node-script",
             resolvedWorkerEntry,
