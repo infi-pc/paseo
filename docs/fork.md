@@ -128,10 +128,12 @@ Commits are the fork commits that built the feature (`git show --stat <sha>` for
 
 ### Editable Paseo
 
-- Commits: `df9f8a96d` and `ee8067326`.
-- Owns: `packages/desktop/src/editable/`, `packages/app/src/editable/`, and `packages/app/babel-editable-source.cjs`.
-- Wires into: Electron main, preload, native menu, renderer recovery, and desktop updater; the Expo app shell, sidebar, keyboard actions, English resources, Babel, PWA manifest, and personal TestFlight configuration.
-- Desktop loads signed renderer releases and keeps a recovery renderer. Build the side-by-side macOS bundle with `npm run build:dev-app --workspace=@getpaseo/desktop`. Paseo Dev uses `~/.paseo-dev`, port `6770`, and the `paseo-dev:` external scheme. Its Editable menu reads Shelf settings and the signing public key from `~/.editable-paseo` and stores downloaded releases and rollback state under `~/.paseo-dev/editable`. Set `EDITABLE_PASEO_HOME` at launch to use a separate, self-contained Shelf configuration and release store. The app's picker sends source locations to the Workshop agent. Personal TestFlight builds can opt in to Expo OTA updates.
+- Owns: `packages/desktop/src/editable/`, `packages/app/src/editable/`, `packages/app/babel-editable-source.cjs`, `packages/desktop/src/daemon/daemon-release-loader.mts`, `packages/desktop/electron-builder.dev.yml`, `packages/desktop/build/paseo-dev-profile.json`, and the companion `editable-paseo` repo (`paseo-ed` CLI + Cloudflare Worker Cloud Shelf).
+- Wires into:
+  - Desktop: `packages/desktop/src/main.ts`, `preload.ts`, `daemon/daemon-manager.ts`, `features/menu.ts`, `features/auto-updater.ts`, `window/renderer-recovery.ts`, `agent-navigation.ts`, `integrations/cli-install/install.ts`, `bin/paseo`, `electron-builder.yml`, `scripts/after-pack.js`, `scripts/after-sign.js`, `e2e/packaged-app-smoke.js`.
+  - Server: `packages/server/scripts/supervisor-entrypoint.ts`, `packages/server/src/server/paseo-env.ts`.
+  - App: `packages/app/src/app/_layout.tsx`, `components/left-sidebar.tsx`, `i18n/resources/en.ts`, `keyboard/{actions,keyboard-action-dispatcher,keyboard-shortcuts,route-shortcut,use-shortcuts}.ts`, `babel.config.js`, `public/index.html`, `app.config.js`.
+- Enables live self-editing in regular `/Applications/Paseo.app` whenever `~/.editable-paseo/config.json` exists (reusing `~/.paseo` `:6767` with signed UI and `daemon-1` hot-swaps, quarantine/fallback recovery, isolated Workshop daemon on `:6769`, click-time rich context, and a `0600` Unix-socket live inspector queried by `paseo-ed app`). Also preserves the isolated side-by-side `Paseo Dev.app` sandbox (`~/.paseo-dev`, `:6770`, `paseo-dev:`). Personal TestFlight builds can opt in to signed Expo OTA releases. See [Editable Paseo](editable-paseo.md) for full architecture, CoW/`.warm` pool mechanics, rebuild steps, and gotchas.
 
 ### Inbox and project navigation
 
