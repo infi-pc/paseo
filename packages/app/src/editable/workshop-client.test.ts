@@ -20,8 +20,13 @@ const request = "  Use a smaller label.  ";
 
 function fixture() {
   const client = {
+    addProject: vi.fn().mockResolvedValue({
+      project: { projectId: "workshop-project", projectDisplayName: "repo" },
+    }),
     createAgent: vi.fn().mockResolvedValue({ id: "workshop-agent" }),
+    createWorkspace: vi.fn().mockResolvedValue({ workspace: { id: "branch-workspace" } }),
     fetchAgent: vi.fn(),
+    fetchWorkspaces: vi.fn().mockResolvedValue({ entries: [], pageInfo: { nextCursor: null } }),
     getDirectorySuggestions: vi.fn().mockResolvedValue({
       directories: ["/Users/tester/.editable-paseo/repo"],
       entries: [{ path: "/Users/tester/.editable-paseo/repo", kind: "directory" }],
@@ -34,6 +39,7 @@ function fixture() {
         { provider: "codex", available: true },
       ],
     }),
+    renameProject: vi.fn(),
     sendAgentMessage: vi.fn(),
     updateAgent: vi.fn().mockResolvedValue(undefined),
   };
@@ -208,9 +214,10 @@ it("falls back to auto mode from provider snapshot when auto-review is unavailab
   });
 });
 
-it("spawns the Workshop agent directly inside a pre-created worktree path when provided", async () => {
+it("places separate branch worktrees under the same Workshop project", async () => {
   const { client, input } = fixture();
   const worktreePath = "/Users/tester/.editable-paseo/worktrees/inbox-headers";
+  const secondPath = "/Users/tester/.editable-paseo/worktrees/sidebar-layout";
   expect(
     await sendWorkshopEdit({
       ...input,
@@ -223,17 +230,63 @@ it("spawns the Workshop agent directly inside a pre-created worktree path when p
     agentId: "workshop-agent",
     slug: "inbox-headers",
   });
-  expect(client.getDirectorySuggestions).not.toHaveBeenCalled();
+  expect(client.addProject).toHaveBeenCalledExactlyOnceWith("/Users/tester/.editable-paseo/repo");
+  expect(client.renameProject).toHaveBeenCalledExactlyOnceWith(
+    "workshop-project",
+    "Editable Workshop",
+  );
+  expect(client.createWorkspace).toHaveBeenCalledExactlyOnceWith({
+    source: { kind: "directory", path: worktreePath, projectId: "workshop-project" },
+  });
   expect(client.createAgent).toHaveBeenCalledExactlyOnceWith({
     cwd: worktreePath,
     modeId: "auto-review",
     provider: "codex",
     title: "Use a smaller label.",
+    workspaceId: "branch-workspace",
   });
   expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain(
     "working inside isolated WIP worktree `inbox-headers`",
   );
   expect(client.sendAgentMessage.mock.calls[0]?.[1]).toContain("Do NOT modify files");
+
+  client.addProject.mockResolvedValueOnce({
+    project: {
+      projectId: "workshop-project",
+      projectDisplayName: "My Workshop",
+      projectCustomName: "My Workshop",
+    },
+  });
+  client.fetchWorkspaces.mockResolvedValueOnce({
+    entries: [{ id: "branch-workspace", workspaceDirectory: worktreePath }],
+    pageInfo: { nextCursor: null },
+  });
+  client.createWorkspace.mockResolvedValueOnce({ workspace: { id: "second-workspace" } });
+  await sendWorkshopEdit({ ...input, slug: "sidebar-layout", worktreePath: secondPath });
+  expect(client.addProject).toHaveBeenNthCalledWith(2, "/Users/tester/.editable-paseo/repo");
+  expect(client.renameProject).toHaveBeenCalledTimes(1);
+  expect(client.createWorkspace).toHaveBeenNthCalledWith(2, {
+    source: { kind: "directory", path: secondPath, projectId: "workshop-project" },
+  });
+  expect(client.createAgent).toHaveBeenLastCalledWith(
+    expect.objectContaining({ cwd: secondPath, workspaceId: "second-workspace" }),
+  );
+});
+
+it("reuses a registered branch workspace when an agent needs to be recreated", async () => {
+  const { client, input } = fixture();
+  const worktreePath = "/Users/tester/.editable-paseo/worktrees/inbox-headers";
+  client.fetchWorkspaces.mockResolvedValueOnce({
+    entries: [{ id: "existing-workspace", workspaceDirectory: worktreePath }],
+    pageInfo: { nextCursor: null },
+  });
+
+  await sendWorkshopEdit({ ...input, slug: "inbox-headers", worktreePath });
+
+  expect(client.createWorkspace).not.toHaveBeenCalled();
+  expect(client.createAgent).toHaveBeenCalledWith(
+    expect.objectContaining({ cwd: worktreePath, workspaceId: "existing-workspace" }),
+  );
 });
 
 it("attaches element snapshot JSON and screenshot images when provided", async () => {

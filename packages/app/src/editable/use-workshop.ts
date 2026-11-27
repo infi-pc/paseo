@@ -18,10 +18,9 @@ import type {
   EditableWorkshopConfig,
   EditableWorkshopDaemonStatus,
 } from "./types";
-import { sendWorkshopEdit, slugifyEditRequest } from "./workshop-client";
+import { sendWorkshopEdit, slugifyEditRequest, WORKSHOP_NAME } from "./workshop-client";
 
 const STORAGE_KEY = "paseo.editable.workshop";
-const WORKSHOP_HOST_LABEL = "Editable Workshop";
 const WORKSHOP_START_TIMEOUT_MS = 45_000;
 const WORKSHOP_CONNECT_TIMEOUT_MS = 15_000;
 
@@ -231,7 +230,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         .upsertConnectionFromListen({
           listenAddress: workshopDaemon.listen,
           serverId,
-          hostname: WORKSHOP_HOST_LABEL,
+          hostname: WORKSHOP_NAME,
         })
         .catch(() => undefined);
     }
@@ -365,7 +364,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
         await runtime.upsertConnectionFromListen({
           listenAddress: current.listen,
           serverId: current.serverId,
-          hostname: WORKSHOP_HOST_LABEL,
+          hostname: WORKSHOP_NAME,
         });
       }
       const online = await waitForHostOnline(current.serverId, WORKSHOP_CONNECT_TIMEOUT_MS);
@@ -524,10 +523,12 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
     try {
       let targetHostId = host?.serverId ?? null;
       let targetCwd = cwd.trim() || null;
+      let managedRepoDir: string | null = null;
 
       if (managedWorkshop) {
         const ready = await ensureManagedWorkshopReady();
         targetHostId = ready.serverId;
+        managedRepoDir = ready.repoDir;
         targetCwd = targetCwd ?? ready.repoDir;
       }
 
@@ -536,7 +537,7 @@ export function useWorkshop(options: UseWorkshopOptions = {}) {
       const target: EditableWorkshopConfig = {
         ...config,
         workshopHostId: targetHostId,
-        workshopCwd: worktreePath ?? targetCwd,
+        workshopCwd: worktreePath ? (managedRepoDir ?? targetCwd) : targetCwd,
         workshopAgentId: followUpAgentId,
         lastRequest: trimmedRequest,
       };

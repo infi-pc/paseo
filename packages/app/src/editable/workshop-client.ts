@@ -9,13 +9,18 @@ import {
 } from "./types";
 
 export const DEFAULT_WORKSHOP_CWD = "~/.editable-paseo/repo";
+export const WORKSHOP_NAME = "Editable Workshop";
 
 type WorkshopClient = Pick<
   DaemonClient,
+  | "addProject"
   | "createAgent"
+  | "createWorkspace"
   | "fetchAgent"
+  | "fetchWorkspaces"
   | "getDirectorySuggestions"
   | "listAvailableProviders"
+  | "renameProject"
   | "sendAgentMessage"
 > &
   Partial<Pick<DaemonClient, "getProvidersSnapshot" | "updateAgent">>;
@@ -225,6 +230,38 @@ function deriveProvisionalTitle(request: string): string | undefined {
   return normalized || undefined;
 }
 
+async function ensureWorkshopBranchWorkspace(
+  client: WorkshopClient,
+  repoPath: string,
+  worktreePath: string,
+): Promise<string> {
+  const { project, error } = await client.addProject(repoPath);
+  if (error || !project) throw new Error(error ?? "Unable to register the Workshop project");
+  const { projectId } = project;
+  if (!project.projectCustomName && project.projectDisplayName !== WORKSHOP_NAME) {
+    await client.renameProject(projectId, WORKSHOP_NAME);
+  }
+
+  let cursor: string | undefined;
+  do {
+    const { entries, pageInfo } = await client.fetchWorkspaces({
+      filter: { projectId },
+      page: { limit: 200, cursor },
+    });
+    const existing = entries.find((entry) => entry.workspaceDirectory === worktreePath);
+    if (existing) return existing.id;
+    cursor = pageInfo.nextCursor ?? undefined;
+  } while (cursor);
+
+  const result = await client.createWorkspace({
+    source: { kind: "directory", path: worktreePath, projectId },
+  });
+  if (result.error || !result.workspace) {
+    throw new Error(result.error ?? "Unable to register the Workshop worktree");
+  }
+  return result.workspace.id;
+}
+
 async function ensureWorkshopAgent(input: {
   client: WorkshopClient;
   target: WorkshopTarget;
@@ -249,10 +286,15 @@ async function ensureWorkshopAgent(input: {
   const provider = available.find((entry) => entry.provider === "codex") ?? available[0];
   if (!provider) return { kind: "no-provider" };
 
-  const cwd =
-    input.worktreePath ??
-    (await resolveWorkshopCwd(input.client, input.target.workshopCwd ?? DEFAULT_WORKSHOP_CWD));
+  const repoPath = await resolveWorkshopCwd(
+    input.client,
+    input.target.workshopCwd ?? DEFAULT_WORKSHOP_CWD,
+  );
+  const cwd = input.worktreePath ?? repoPath;
   const modeId = await resolveWorkshopModeId(input.client, provider.provider, cwd);
+  const workspaceId = input.worktreePath
+    ? await ensureWorkshopBranchWorkspace(input.client, repoPath, input.worktreePath)
+    : undefined;
   // Seed a clean provisional title from the user's request so sendAgentMessage does not
   // derive a provisional title from the Workshop system preamble, then switch to automatic
   // naming so <paseo-meta title="..." icon="..." /> names the chat on turn 1.
@@ -261,6 +303,7 @@ async function ensureWorkshopAgent(input: {
     ...(provisionalTitle ? { title: provisionalTitle } : {}),
     provider: provider.provider,
     cwd,
+    ...(workspaceId ? { workspaceId } : {}),
     ...(modeId ? { modeId } : {}),
   });
   await input.client.updateAgent?.(agent.id, { namingMode: "automatic" }).catch(() => undefined);
