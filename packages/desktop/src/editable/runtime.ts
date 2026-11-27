@@ -64,6 +64,7 @@ export class EditableDesktopRuntime {
       isPackaged: boolean;
       devServerUrl: string;
       cloudShelfHome?: string;
+      allowProductionDaemonSwap?: boolean;
       workshopDaemon?: EditableWorkshopDaemonManager;
       openNewWindow: () => Promise<void>;
       warn: (error: unknown) => void;
@@ -77,6 +78,7 @@ export class EditableDesktopRuntime {
     this.daemonController = options.cloudShelfHome
       ? new EditableDaemonController({
           store: this.store,
+          allowProductionSwap: options.allowProductionDaemonSwap,
           warn: options.warn,
         })
       : null;
@@ -207,6 +209,7 @@ export class EditableDesktopRuntime {
       try {
         const res = await this.branchManager.syncAll({
           loadedChannel: this.store.getWindowChannel(win.id),
+          forceGitSync: true,
         });
         return { ok: true, updated: res.updated };
       } catch (error) {

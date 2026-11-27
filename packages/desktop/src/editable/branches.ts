@@ -750,11 +750,18 @@ export class EditableBranchManager {
     };
   }
 
-  async syncAll(options: { loadedChannel: string }): Promise<{ updated: boolean }> {
+  private lastGitSyncAt = 0;
+
+  async syncAll(options: {
+    loadedChannel: string;
+    forceGitSync?: boolean;
+  }): Promise<{ updated: boolean }> {
     if (this.deps.store.safe) return { updated: false };
-    this.syncing ??= this.runSyncAll(options.loadedChannel).finally(() => {
-      this.syncing = null;
-    });
+    this.syncing ??= this.runSyncAll(options.loadedChannel, options.forceGitSync === true).finally(
+      () => {
+        this.syncing = null;
+      },
+    );
     return this.syncing;
   }
 
@@ -772,7 +779,10 @@ export class EditableBranchManager {
     };
   }
 
-  private async runSyncAll(loadedChannel: string): Promise<{ updated: boolean }> {
+  private async runSyncAll(
+    loadedChannel: string,
+    forceGitSync: boolean,
+  ): Promise<{ updated: boolean }> {
     let anyUpdated = false;
     const common = this.syncOptions();
 
@@ -810,6 +820,12 @@ export class EditableBranchManager {
       } catch {
         // Ignore individual WIP channel fetch failures
       }
+    }
+
+    const now = Date.now();
+    if (forceGitSync || now - this.lastGitSyncAt >= 60_000) {
+      this.lastGitSyncAt = now;
+      await this.runCli(["git-sync", "--json"]).catch(() => null);
     }
 
     return { updated: anyUpdated };

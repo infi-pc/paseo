@@ -156,6 +156,27 @@ describe("EditableDaemonController & daemon hot-swap", () => {
         userHome: fakeUser,
       }),
     ).not.toThrow();
+
+    // Production opt-in allows official Editable Paseo on ~/.paseo (:6767), while still blocking workshop (:6769)
+    expect(() =>
+      assertIsolatedDevDaemonHome({
+        isDev: false,
+        allowProductionSwap: true,
+        paseoHome: path.join(fakeUser, ".paseo"),
+        paseoListen: "127.0.0.1:6767",
+        userHome: fakeUser,
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      assertIsolatedDevDaemonHome({
+        isDev: false,
+        allowProductionSwap: true,
+        paseoHome: path.join(fakeUser, ".paseo-workshop"),
+        paseoListen: "127.0.0.1:6769",
+        userHome: fakeUser,
+      }),
+    ).toThrow(/protected/);
   });
 
   it("swaps running dev daemon cleanly, skips restart when digest already matches, and quarantines + rolls back on crash", async () => {
