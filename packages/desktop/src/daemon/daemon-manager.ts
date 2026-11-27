@@ -335,20 +335,18 @@ export async function startDesktopDaemon(options?: {
     options?.override !== undefined
       ? options.override
       : (daemonLaunchHooks.resolveEditableDaemonLaunch?.() ?? null);
-  const entrypoint = launchOverride
-    ? { entryPath: launchOverride.entryPath, execArgv: [] }
-    : resolveDaemonRunnerEntrypoint();
-  const baseEnv = launchOverride
-    ? buildEditableDaemonEnv(process.env, launchOverride)
-    : process.env;
-  const invocation = createNodeEntrypointInvocation({
-    entrypoint,
-    argvMode: "node-script",
-    args: [],
-    baseEnv,
-    editableDaemon: Boolean(launchOverride),
-  });
-  try {
+  const launch = async (release: EditableDaemonLaunchOverride | null): Promise<void> => {
+    const entrypoint = release
+      ? { entryPath: release.entryPath, execArgv: [] }
+      : resolveDaemonRunnerEntrypoint();
+    const baseEnv = release ? buildEditableDaemonEnv(process.env, release) : process.env;
+    const invocation = createNodeEntrypointInvocation({
+      entrypoint,
+      argvMode: "node-script",
+      args: [],
+      baseEnv,
+      editableDaemon: Boolean(release),
+    });
     await startDaemonInstance({
       home,
       timeoutMs: options?.timeoutMs ?? 30_000,
@@ -361,13 +359,31 @@ export async function startDesktopDaemon(options?: {
         daemonLaunchHooks.onEditableDaemonStarted?.({
           home,
           instance,
-          digest: launchOverride?.digest ?? null,
-          channel: launchOverride?.channel ?? "prod",
+          digest: release?.digest ?? null,
+          channel: release?.channel ?? "prod",
         });
       },
     });
+  };
+  const launchUntilReady = async (release: EditableDaemonLaunchOverride | null): Promise<void> => {
+    try {
+      await launch(release);
+    } catch (error) {
+      if (!(error instanceof DaemonInstanceError && error.code === "DAEMON_NOT_READY")) throw error;
+    }
+  };
+
+  try {
+    await launchUntilReady(launchOverride);
   } catch (error) {
-    if (!(error instanceof DaemonInstanceError && error.code === "DAEMON_NOT_READY")) throw error;
+    // FORK(editable): a saved daemon may predate support for this desktop's launch path.
+    // Explicit swaps manage their own recovery. A pending launch still owns its startup.
+    if (!launchOverride || options?.override !== undefined) throw error;
+    logDesktopDaemonLifecycle("saved Editable daemon failed to start, trying bundled daemon", {
+      digest: launchOverride.digest,
+      error: error instanceof Error ? error.message.split("\n", 1)[0] : String(error),
+    });
+    await launchUntilReady(null);
   }
   return resolveDesktopDaemonStatus();
 }
