@@ -3,8 +3,14 @@ import { app } from "electron";
 import log from "electron-log/main";
 // FORK(editable): the dev bundle must never claim the production CLI path.
 import { isDevInstance } from "../../editable/dev-profile.js";
-import { resolveCliInstallSourcePath } from "./path.js";
-import { getBundledCliShimPath, getCliTargetPath, getLocalBinDir } from "./paths.js";
+import { resolveCliInstallSourcePath, resolveEditableCliInstallSourcePath } from "./path.js";
+import {
+  getBundledCliShimPath,
+  getBundledEditableCliShimPath,
+  getCliTargetPath,
+  getEditableCliTargetPath,
+  getLocalBinDir,
+} from "./paths.js";
 import { ensurePathInShellRc } from "./shell-rc.js";
 
 interface InstallStatus {
@@ -25,6 +31,17 @@ function resolveInstallSourcePath(shimPath: string): string {
     platform: process.platform,
     isPackaged: app.isPackaged,
     executablePath: app.getPath("exe"),
+    shimPath,
+    appImagePath: process.env.APPIMAGE,
+  });
+}
+
+function resolveEditableSourcePath(): string | null {
+  const shimPath = getBundledEditableCliShimPath();
+  if (!shimPath) return null;
+  return resolveEditableCliInstallSourcePath({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
     shimPath,
     appImagePath: process.env.APPIMAGE,
   });
@@ -59,6 +76,15 @@ export async function installCli(): Promise<InstallStatus> {
     await fs.writeFile(targetPath, buildCmdTrampoline(shimPath), "utf-8");
   } else {
     await fs.symlink(resolveInstallSourcePath(shimPath), targetPath);
+    // FORK(editable): also install bundled paseo-ed symlink when present.
+    const editableSource = resolveEditableSourcePath();
+    if (editableSource && (await pathOrSymlinkExists(editableSource))) {
+      const editableTarget = getEditableCliTargetPath();
+      if (await pathOrSymlinkExists(editableTarget)) {
+        await fs.unlink(editableTarget);
+      }
+      await fs.symlink(editableSource, editableTarget);
+    }
   }
 
   const { shellUpdated } = await ensurePathInShellRc();
@@ -77,16 +103,30 @@ export async function installCli(): Promise<InstallStatus> {
 export async function uninstallCli(): Promise<InstallStatus> {
   if (isDevInstance()) return { installed: false };
   const targetPath = getCliTargetPath();
-  if (await isOwnInstall(targetPath)) {
+  if (await isOwnInstall(targetPath, getBundledCliShimPath())) {
     await fs.unlink(targetPath);
   } else if (await pathOrSymlinkExists(targetPath)) {
     log.warn("[integrations] Left a paseo CLI this app did not install", { targetPath });
   }
+  const editableSource = resolveEditableSourcePath();
+  if (editableSource) {
+    const editableTarget = getEditableCliTargetPath();
+    if (await isOwnSymlink(editableTarget, editableSource)) {
+      await fs.unlink(editableTarget);
+    }
+  }
   return getCliInstallStatus();
 }
 
-async function isOwnInstall(targetPath: string): Promise<boolean> {
-  const shimPath = getBundledCliShimPath();
+async function isOwnSymlink(targetPath: string, expectedSource: string): Promise<boolean> {
+  try {
+    return (await fs.readlink(targetPath)) === expectedSource;
+  } catch {
+    return false;
+  }
+}
+
+async function isOwnInstall(targetPath: string, shimPath: string): Promise<boolean> {
   try {
     if (process.platform === "win32") {
       return (await fs.readFile(targetPath, "utf-8")) === buildCmdTrampoline(shimPath);

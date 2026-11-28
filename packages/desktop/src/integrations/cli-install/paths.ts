@@ -13,6 +13,11 @@ export function getCliTargetPath(): string {
   return path.join(getLocalBinDir(), filename);
 }
 
+// FORK(editable): maintain ~/.local/bin/paseo-ed alongside ~/.local/bin/paseo on POSIX.
+export function getEditableCliTargetPath(): string {
+  return path.join(getLocalBinDir(), "paseo-ed");
+}
+
 export function getBundledCliShimPath(): string {
   return resolveCliShimPath({
     platform: process.platform,
@@ -20,4 +25,19 @@ export function getBundledCliShimPath(): string {
     executablePath: app.getPath("exe"),
     resolveWorkspaceCli: () => createRequire(__filename).resolve("@getpaseo/cli/bin/paseo"),
   });
+}
+
+export function getBundledEditableCliShimPath(): string | null {
+  try {
+    return resolveCliShimPath({
+      platform: process.platform,
+      isPackaged: app.isPackaged,
+      executablePath: app.getPath("exe"),
+      binaryName: "paseo-ed",
+      resolveWorkspaceCli: () =>
+        createRequire(__filename).resolve("@getpaseo/editable-cli/dist/index.js"),
+    });
+  } catch {
+    return null;
+  }
 }

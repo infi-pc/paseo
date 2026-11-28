@@ -30,15 +30,33 @@ export function resolveCliInstallSourcePath(input: {
   return input.executablePath;
 }
 
+// FORK(editable): AppImage mounts are ephemeral and Paseo.AppImage dispatches `paseo`, not `paseo-ed`.
+export function resolveEditableCliInstallSourcePath(input: {
+  platform: NodeJS.Platform;
+  isPackaged: boolean;
+  shimPath: string;
+  appImagePath?: string | null;
+}): string | null {
+  if (input.platform === "win32") {
+    return null;
+  }
+  if (input.platform === "linux" && input.isPackaged && input.appImagePath?.trim()) {
+    return null;
+  }
+  return input.shimPath;
+}
+
 export function resolveCliShimPath(input: {
   platform: NodeJS.Platform;
   isPackaged: boolean;
   executablePath: string;
   resolveWorkspaceCli: () => string;
+  binaryName?: "paseo" | "paseo-ed";
 }): string {
   if (!input.isPackaged) return input.resolveWorkspaceCli();
 
-  const filename = input.platform === "win32" ? "paseo.cmd" : "paseo";
+  const binaryName = input.binaryName ?? "paseo";
+  const filename = input.platform === "win32" && binaryName === "paseo" ? "paseo.cmd" : binaryName;
   if (input.platform === "darwin") {
     const bundle = input.executablePath.replace(/\/Contents\/MacOS\/.+$/, "");
     return path.join(bundle, "Contents", "Resources", "bin", filename);
