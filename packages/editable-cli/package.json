@@ -1,0 +1,26 @@
+{
+  "name": "@getpaseo/editable-cli",
+  "version": "0.17.1",
+  "private": true,
+  "description": "Editable Paseo CLI (paseo-ed) and native APFS clonefile helper",
+  "license": "Apache-2.0",
+  "bin": {
+    "paseo-ed": "./dist/index.js"
+  },
+  "type": "module",
+  "scripts": {
+    "clean": "node ../../scripts/clean-package-dist.mjs",
+    "build": "tsc -p tsconfig.json --incremental false && node scripts/build-native.mjs",
+    "build:clean": "npm run clean && npm run build",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@getpaseo/editable-core": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  }
+}

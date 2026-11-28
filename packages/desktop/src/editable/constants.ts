@@ -2,10 +2,12 @@ import os from "node:os";
 import path from "node:path";
 import { isDevInstance } from "./dev-profile.js";
 
-export const DESKTOP_RUNTIME_VERSION = "desktop-1";
-export const DAEMON_RUNTIME_VERSION = "daemon-1";
-export const DAEMON_ENTRYPOINT_REL_PATH =
-  "node_modules/@getpaseo/server/dist/scripts/supervisor-entrypoint.js";
+export {
+  DAEMON_ENTRYPOINT_REL_PATH,
+  DAEMON_RUNTIME_VERSION,
+  DESKTOP_RUNTIME_VERSION,
+} from "@getpaseo/editable-core";
+
 export const EDITABLE_APP_SCHEME = "paseo";
 export const EDITABLE_APP_ORIGIN = `${EDITABLE_APP_SCHEME}://app`;
 

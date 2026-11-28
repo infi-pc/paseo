@@ -20,6 +20,8 @@ import { resolveRegularFile, verifySignedEnvelope } from "./crypto.js";
 import type { EditableDaemonController, EditableDaemonRuntimeState } from "./daemon-swap.js";
 import type { EditableReleaseStore, RendererRelease } from "./release-store.js";
 import {
+  checkOnDiskVersion,
+  EDITABLE_READER_VERSION,
   editableServiceSchema,
   wipIndexSchema,
   type EditableService,
@@ -236,6 +238,7 @@ function readVerifiedWipIndex(homes: string[], publicKey: () => string): WipBran
     try {
       const envelope = JSON.parse(readFileSync(file, "utf8")) as unknown;
       if (!verifySignedEnvelope(envelope, key)) continue;
+      if (!checkOnDiskVersion(envelope.payload, EDITABLE_READER_VERSION).ok) continue;
       const parsed = wipIndexSchema.parse(envelope.payload);
       if (parsed.generation >= bestGen) {
         bestGen = parsed.generation;
@@ -254,6 +257,7 @@ export interface EditableBranchManagerDeps {
   store: EditableReleaseStore;
   daemonController?: EditableDaemonController;
   userHome?: string;
+  resourcesPath?: string;
   cliBin?: string;
   fetchImpl?: typeof fetch;
   execCli?: (args: string[], env: NodeJS.ProcessEnv) => Promise<string>;
@@ -352,16 +356,20 @@ export class EditableBranchManager {
     return load;
   }
 
-  private cliPath(): string {
-    return (
-      this.deps.cliBin ?? path.join(this.deps.userHome ?? os.homedir(), ".local", "bin", "paseo-ed")
-    );
+  resolveCliPath(): string {
+    if (this.deps.cliBin) return this.deps.cliBin;
+    const resourcesPath = this.deps.resourcesPath ?? process.resourcesPath;
+    if (resourcesPath) {
+      const bundled = path.join(resourcesPath, "bin", "paseo-ed");
+      if (existsSync(bundled)) return bundled;
+    }
+    return path.join(this.deps.userHome ?? os.homedir(), ".local", "bin", "paseo-ed");
   }
 
   private async runCli(args: string[]): Promise<string> {
     const env = buildCliEnv(this.deps.configHome, this.deps.userHome ?? os.homedir());
     if (this.deps.execCli) return this.deps.execCli(args, env);
-    const { stdout } = await execFileAsync(this.cliPath(), args, {
+    const { stdout } = await execFileAsync(this.resolveCliPath(), args, {
       env,
       maxBuffer: 32 * 1024 * 1024,
       timeout: 300_000,

@@ -15,7 +15,7 @@ function npmStep(name, args) {
 for (const name of ["protocol", "client", "highlight", "relay", "plugin"]) {
   npmStep(`build-${name}`, ["run", `build:${name}`]);
 }
-for (const name of ["server", "cli", "expo-two-way-audio"]) {
+for (const name of ["server", "cli", "expo-two-way-audio", "editable-core", "editable-cli"]) {
   npmStep(`build-${name}`, ["run", "build", `--workspace=@getpaseo/${name}`]);
 }
 for (const name of ["typecheck", "lint", "format:check"]) npmStep(name, ["run", name]);
@@ -50,6 +50,8 @@ for (const name of [
   "client",
   "highlight",
   "builtin-plugins",
+  "editable-core",
+  "editable-cli",
   "app",
   "desktop",
 ]) {

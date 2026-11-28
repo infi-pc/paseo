@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import {
+  checkOnDiskVersion,
+  EDITABLE_READER_VERSION,
+  EDITABLE_STATE_SCHEMA_VERSION,
+  IncompatibleStateError,
+  type EditableReleaseSurface,
+} from "@getpaseo/editable-core";
 import type { CloudChannelCandidate } from "./cloud-sync.js";
 import {
   DAEMON_ENTRYPOINT_REL_PATH,
@@ -11,7 +18,6 @@ import {
 } from "./constants.js";
 import { resolveRegularFile, verifyReleaseDirectory, verifySignedEnvelope } from "./crypto.js";
 import { validatePreviewUrl } from "./preview.js";
-import type { EditableReleaseSurface } from "./release-manifest.js";
 import {
   channelManifestSchema,
   deviceStateSchema,
@@ -76,7 +82,8 @@ function readJson(filename: string): unknown {
 
 function initialState(): DeviceState {
   return {
-    schemaVersion: 1,
+    schemaVersion: EDITABLE_STATE_SCHEMA_VERSION,
+    minReaderVersion: EDITABLE_READER_VERSION,
     activeDigest: null,
     lastKnownGoodDigest: null,
     quarantinedDigests: [],
@@ -118,7 +125,15 @@ export class EditableReleaseStore {
 
   private initialize(): void {
     try {
-      this.state = deviceStateSchema.parse(readJson(path.join(this.home, "device-state.json")));
+      const raw = readJson(path.join(this.home, "device-state.json"));
+      const version = checkOnDiskVersion(raw, EDITABLE_READER_VERSION);
+      if (!version.ok) {
+        this.warn(new IncompatibleStateError(version));
+        this.stateReadable = false;
+        // Fail closed to bundled renderer + bundled daemon without clobbering newer state.
+        return;
+      }
+      this.state = deviceStateSchema.parse(raw);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
         this.warn(error);
@@ -148,13 +163,21 @@ export class EditableReleaseStore {
   }
 
   private save(state: DeviceState): void {
+    if (!this.stateReadable) {
+      throw new Error("Cannot overwrite unreadable or newer editable device state");
+    }
+    const persisted: DeviceState = {
+      ...state,
+      schemaVersion: EDITABLE_STATE_SCHEMA_VERSION,
+      minReaderVersion: EDITABLE_READER_VERSION,
+    };
     const filename = path.join(this.home, "device-state.json");
     const temporary = `${filename}.${randomUUID()}.tmp`;
     mkdirSync(this.home, { recursive: true, mode: 0o700 });
     try {
-      writeFileSync(temporary, `${JSON.stringify(state)}\n`, { flag: "wx", mode: 0o600 });
+      writeFileSync(temporary, `${JSON.stringify(persisted)}\n`, { flag: "wx", mode: 0o600 });
       renameSync(temporary, filename);
-      this.state = state;
+      this.state = persisted;
     } finally {
       rmSync(temporary, { force: true });
     }
@@ -231,6 +254,8 @@ export class EditableReleaseStore {
     try {
       const envelope = readJson(filename);
       if (!verifySignedEnvelope(envelope, this.publicKey())) return null;
+      const version = checkOnDiskVersion(envelope.payload, EDITABLE_READER_VERSION);
+      if (!version.ok) return null;
       const parsed = channelManifestSchema.parse(envelope.payload);
       if (parsed.channel !== channel) return null;
       const target = parsed.surfaces[surface];
@@ -478,6 +503,10 @@ export class EditableReleaseStore {
     const envelope = readJson(filename);
     if (!verifySignedEnvelope(envelope, this.publicKey())) {
       throw new Error("Invalid renderer channel signature");
+    }
+    const version = checkOnDiskVersion(envelope.payload, EDITABLE_READER_VERSION);
+    if (!version.ok) {
+      throw new IncompatibleStateError(version);
     }
     const channel = channelManifestSchema.parse(envelope.payload);
     const target = channel.surfaces["electron-web"];

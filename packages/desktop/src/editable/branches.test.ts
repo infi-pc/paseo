@@ -526,4 +526,35 @@ describe("EditableBranchManager", () => {
     expect(branch?.diffStat?.breakdown?.tests).toEqual({ additions: 2, deletions: 0 });
     expect(branch?.diffStat?.breakdown?.docs).toEqual({ additions: 1, deletions: 0 });
   });
+
+  it("prefers bundled Resources/bin/paseo-ed over ~/.local/bin/paseo-ed when present", () => {
+    const root = makeTempDir();
+    const home = path.join(root, "editable");
+    const builtIn = path.join(root, "builtin");
+    const resourcesPath = path.join(root, "Resources");
+    const userHome = path.join(root, "user-home");
+    mkdirSync(builtIn, { recursive: true });
+    mkdirSync(path.join(resourcesPath, "bin"), { recursive: true });
+    const bundledBin = path.join(resourcesPath, "bin", "paseo-ed");
+    writeFileSync(bundledBin, "#!/bin/sh\n", "utf8");
+
+    const store = new EditableReleaseStore({ builtInDistDir: builtIn, home });
+    const withBundled = new EditableBranchManager({
+      home,
+      configHome: home,
+      store,
+      resourcesPath,
+      userHome,
+    });
+    expect(withBundled.resolveCliPath()).toBe(bundledBin);
+
+    const withoutBundled = new EditableBranchManager({
+      home,
+      configHome: home,
+      store,
+      resourcesPath: path.join(root, "missing-resources"),
+      userHome,
+    });
+    expect(withoutBundled.resolveCliPath()).toBe(path.join(userHome, ".local", "bin", "paseo-ed"));
+  });
 });

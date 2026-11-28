@@ -4,16 +4,15 @@ Editable Paseo lets you inspect and modify this personal Paseo fork while using 
 
 ## Architecture and repository topology
 
-Two repositories cooperate at runtime:
+Editable Paseo lives directly inside the Paseo fork monorepo (`infi-pc/paseo`, branch `paseo-customizations`):
 
-1. **Paseo fork (`infi-pc/paseo`, branch `paseo-customizations`)**
-   - Upstream mirror `main` stays read-only (see [Maintaining the fork](fork.md)).
-   - `~/.editable-paseo/repo` is a dedicated **detached-HEAD** clone tracking `paseo-customizations`. **Never edit files directly inside `~/.editable-paseo/repo`** and keep its `HEAD` detached so `paseo-ed ship` can advance `paseo-customizations` cleanly.
-   - Every editing session gets an isolated worktree under `~/.editable-paseo/worktrees/<slug>` on branch `ed/wip/<slug>`.
-2. **Standalone CLI and Cloud Shelf (`~/www/playground/editable-paseo`, private repo `infi-pc/editable-paseo`)**
-   - `packages/core` — canonical JSON, Ed25519 signing/verification, safe tar.gz packing/extraction, Paseo impact classifier, monotonic state persistence.
-   - `packages/cli` — `paseo-ed` CLI (symlinked at `~/.local/bin/paseo-ed`), including the native macOS `clonefile(2)` helper (`packages/cli/native/clonefile.c`).
-   - `packages/cloud-shelf` — Cloudflare Worker + R2 bucket hosting immutable signed archives, channel pointers, `wip-index.json`, and iOS Expo OTA manifests.
+- Upstream mirror `main` stays read-only (see [Maintaining the fork](fork.md)).
+- `~/.editable-paseo/repo` is a dedicated **detached-HEAD** clone tracking `paseo-customizations`. **Never edit files directly inside `~/.editable-paseo/repo`** and keep its `HEAD` detached so `paseo-ed ship` can advance `paseo-customizations` cleanly.
+- Every editing session gets an isolated worktree under `~/.editable-paseo/worktrees/<slug>` on branch `ed/wip/<slug>`.
+- Monorepo packages & infrastructure:
+  - `packages/editable-core` (`@getpaseo/editable-core`, private) — single source of truth shared by Desktop and `paseo-ed`: Zod schemas, versioned recovery contract (`schemaVersion`/`minReaderVersion`), canonical JSON, Ed25519 signing/verification, safe tar.gz packing/extraction, Cloud Shelf sync, Paseo impact classifier, and monotonic state persistence.
+  - `packages/editable-cli` (`@getpaseo/editable-cli`, private) — `paseo-ed` CLI, including the native macOS `clonefile(2)` helper (`packages/editable-cli/native/clonefile.c`). Bundled inside `Paseo.app/Contents/Resources/bin/paseo-ed` (with `clonefile-darwin` unpacked from `app.asar`), which Desktop prefers automatically over `~/.local/bin/paseo-ed`.
+  - `infra/cloud-shelf` (standalone outside root npm `workspaces`) — Cloudflare Worker + R2 bucket hosting immutable signed archives, channel pointers, `wip-index.json`, and iOS Expo OTA manifests.
 
 ### Runtime directories
 
@@ -76,6 +75,7 @@ Two repositories cooperate at runtime:
 
 ### Quarantine and recovery
 
+- **Versioned recovery contract (`schemaVersion` / `minReaderVersion`):** On-disk state files (`device-state.json`, `config.json`, signed channel/release manifests) carry `schemaVersion` and `minReaderVersion`. If a newer `paseo-ed` or future app version writes state requiring a newer reader (`minReaderVersion > EDITABLE_READER_VERSION`), the Desktop Recovery Kernel fails closed to the bundled renderer + bundled daemon without crashing and without overwriting `device-state.json`.
 - If a hot-swapped daemon fails startup or health checks, Desktop records its digest in `device-state.json` under `quarantinedDaemonDigests` and automatically falls back to `lastKnownGoodDaemonDigest` or the bundled daemon inside `Paseo.app`.
 - When loading a UI-only WIP branch, `usableProdDaemonPointer()` in `packages/desktop/src/editable/branches.ts` ignores quarantined `prod` daemon pointers so a previously quarantined `prod` daemon cannot block UI branch switching.
 - **Important:** When a fix lands in daemon launch/supervisor code (such as `supervisor-entrypoint.ts`), publish a fresh signed `daemon` release to `prod` (`paseo-ed build-daemon` + `paseo-ed sign-publish --channel prod --upload`) so older incompatible daemon artifacts are replaced on Cloud Shelf.

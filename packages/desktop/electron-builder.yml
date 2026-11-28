@@ -31,6 +31,7 @@ asarUnpack:
   - "**/node_modules/typescript/**/*"
   - dist/daemon/node-entrypoint-runner.js
   - dist/daemon/daemon-release-loader.mjs
+  - node_modules/@getpaseo/editable-cli/dist/bin/**/*
   - node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*
 extraResources:
   # Preserve physical compiler inputs, including .d.ts files omitted from packaged node_modules.
@@ -56,6 +57,8 @@ mac:
   extraResources:
     - from: bin/paseo
       to: bin/paseo
+    - from: bin/paseo-ed
+      to: bin/paseo-ed
     - from: assets/icon.png
       to: icon.png
   target:
@@ -70,6 +73,8 @@ linux:
   extraResources:
     - from: bin/paseo
       to: bin/paseo
+    - from: bin/paseo-ed
+      to: bin/paseo-ed
     - from: assets/icon.png
       to: icon.png
   target:

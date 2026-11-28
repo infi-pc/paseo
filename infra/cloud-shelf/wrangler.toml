@@ -1,0 +1,17 @@
+name = "editable-paseo-shelf"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+
+[[r2_buckets]]
+binding = "ARTIFACTS"
+bucket_name = "editable-paseo-artifacts"
+
+# Keep the bucket private. Store these values using `wrangler secret put`:
+# UPLOAD_TOKEN (required) authorizes artifact and channel PUTs.
+# READ_TOKEN (optional) protects raw channel GETs.
+#
+# For Expo, publish the exact signed JSON bytes directly to R2 at
+# releases/ios-ota/<releaseDigest>/expo-manifest.json, with custom metadata
+# "expo-signature". Publish the bundle and assets at assets/<lowercase-sha256>
+# under the same release prefix, with HTTP content types. The Expo manifest
+# must point to their Worker URLs. Publish these before advancing the channel.

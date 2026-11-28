@@ -20,15 +20,16 @@ function writeExecutable(filePath: string, contents: string): void {
   chmodSync(filePath, 0o755);
 }
 
-function createFakeMacBundle(options: { includeHelper: boolean }): {
+function createFakeMacBundle(options: { includeHelper: boolean; binName?: "paseo" | "paseo-ed" }): {
   root: string;
   shimPath: string;
 } {
+  const binName = options.binName ?? "paseo";
   const root = mkdtempSync(join(tmpdir(), "paseo-cli-shim-test-"));
   const appPath = join(root, "Paseo.app");
   const contentsPath = join(appPath, "Contents");
   const resourcesPath = join(contentsPath, "Resources");
-  const shimPath = join(resourcesPath, "bin", "paseo");
+  const shimPath = join(resourcesPath, "bin", binName);
   const mainPath = join(contentsPath, "MacOS", "Paseo");
   const helperPath = join(
     contentsPath,
@@ -41,7 +42,7 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
 
   mkdirSync(dirname(shimPath), { recursive: true });
   mkdirSync(dirname(mainPath), { recursive: true });
-  copyFileSync(join(packageRoot, "bin", "paseo"), shimPath);
+  copyFileSync(join(packageRoot, "bin", binName), shimPath);
   chmodSync(shimPath, 0o755);
 
   writeExecutable(mainPath, "#!/bin/sh\necho main-executable\n");
@@ -52,7 +53,7 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
       helperPath,
       [
         "#!/bin/sh",
-        'printf "helper env=%s/%s cli=%s\\n" "$ELECTRON_RUN_AS_NODE" "$PASEO_NODE_ENV" "$PASEO_CLI"',
+        'printf "helper env=%s/%s cli=%s ed=%s\\n" "$ELECTRON_RUN_AS_NODE" "$PASEO_NODE_ENV" "${PASEO_CLI:-}" "${PASEO_ED_CLI:-}"',
         'printf "args=%s\\n" "$*"',
         "",
       ].join("\n"),
@@ -148,8 +149,42 @@ describe("desktop packaging", () => {
     };
     const deps = pkg.dependencies ?? {};
 
-    for (const required of ["@getpaseo/cli", "@getpaseo/server"]) {
+    for (const required of [
+      "@getpaseo/cli",
+      "@getpaseo/editable-cli",
+      "@getpaseo/editable-core",
+      "@getpaseo/server",
+    ]) {
       expect(deps[required], `${required} must be declared in dependencies`).toBe("*");
+    }
+  });
+
+  it("bundles paseo-ed and unpacks its native clonefile binary in both builder configs", () => {
+    for (const file of ["electron-builder.yml", "electron-builder.dev.yml"]) {
+      const config = readFileSync(join(packageRoot, file), "utf8");
+      expect(config, file).toContain("node_modules/@getpaseo/editable-cli/dist/bin/**/*");
+      expect(config, file).toContain("from: bin/paseo-ed");
+      expect(config, file).toContain("to: bin/paseo-ed");
+    }
+  });
+
+  it("launches the packaged macOS paseo-ed CLI through Helper instead of the main app executable", () => {
+    if (process.platform === "win32") return;
+
+    const bundle = createFakeMacBundle({ includeHelper: true, binName: "paseo-ed" });
+    try {
+      const result = spawnSync(bundle.shimPath, ["status", "--json"], { encoding: "utf8" });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("helper env=1/production ");
+      expect(result.stdout).toContain(`ed=${bundle.shimPath}`);
+      expect(result.stdout).toContain("node-entrypoint-runner.js");
+      expect(result.stdout).toContain("node-script");
+      expect(result.stdout).toContain("@getpaseo/editable-cli/dist/index.js");
+      expect(result.stdout).toContain("status --json");
+      expect(result.stdout).not.toContain("main-executable");
+    } finally {
+      rmSync(bundle.root, { recursive: true, force: true });
     }
   });
 

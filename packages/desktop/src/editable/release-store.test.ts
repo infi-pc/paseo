@@ -172,4 +172,96 @@ describe("editable release store", () => {
     expect(store.useRecoveryRenderer().releaseDigest).toBe(null);
     expect(store.reloadChannel({ fromMenu: true }).releaseDigest).toBe(a.digest);
   });
+
+  it("persists schemaVersion and minReaderVersion in device-state.json", async () => {
+    const a = fixture.release("release A");
+    fixture.setChannel(a.digest, 1);
+    const store = new EditableReleaseStore(fixture);
+    expect(store.activeRelease.releaseDigest).toBe(a.digest);
+
+    const saved = JSON.parse(await readFile(path.join(fixture.home, "device-state.json"), "utf8"));
+    expect(saved).toMatchObject({
+      schemaVersion: 1,
+      minReaderVersion: 1,
+      activeDigest: a.digest,
+      activeGeneration: 1,
+    });
+  });
+
+  it("fails closed to bundled renderer and daemon without clobbering newer minReaderVersion state", async () => {
+    const a = fixture.release("release A");
+    fixture.setChannel(a.digest, 1);
+    const statePath = path.join(fixture.home, "device-state.json");
+    const futurePayload = JSON.stringify(
+      {
+        schemaVersion: 2,
+        minReaderVersion: 99,
+        activeDigest: a.digest,
+        activeDaemonDigest: a.digest,
+        lastKnownGoodDigest: a.digest,
+        quarantinedDigests: [],
+        previewUrl: null,
+        activeGeneration: 5,
+        futureField: { preserved: true },
+      },
+      null,
+      2,
+    );
+    await writeFile(statePath, futurePayload, "utf8");
+
+    const warnings: unknown[] = [];
+    const store = new EditableReleaseStore({
+      ...fixture,
+      warn: (err) => warnings.push(err),
+    });
+
+    expect(store.activeRelease.releaseDigest).toBeNull();
+    expect(store.activeDaemonDigest).toBeNull();
+    expect(await (await protocol(store)("paseo://app/")).text()).toBe("built-in");
+    expect(warnings.some((w) => String(w).includes("reader version >= 99"))).toBe(true);
+    expect(() => store.switchRelease(a.digest)).toThrow(
+      "Cannot read editable renderer device state",
+    );
+    expect(() => store.reloadChannel({ fromMenu: true })).toThrow(
+      "Cannot read editable renderer device state",
+    );
+    expect(() => store.switchDaemonRelease(a.digest)).toThrow(
+      "Cannot read editable renderer device state",
+    );
+    expect(store.getStatus(1).availableDigest).toBeNull();
+    expect(await readFile(statePath, "utf8")).toBe(futurePayload);
+  });
+
+  it("ignores a signed channel requiring a newer reader version without crashing startup", async () => {
+    const a = fixture.release("release A");
+    const futureChannel = fixture.signed({
+      schemaVersion: 2,
+      minReaderVersion: 2,
+      kind: "channel",
+      channel: "prod",
+      generation: 10,
+      updatedAt: "2026-01-01T00:00:00Z",
+      surfaces: {
+        "electron-web": {
+          releaseDigest: a.digest,
+          sourceSha: "a".repeat(40),
+          runtimeVersion: "desktop-1",
+          archiveUrl: "https://example.test/release.tar.gz",
+          manifestUrl: "https://example.test/manifest.json",
+          summary: "future release",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      },
+    });
+    await writeFile(fixture.channelPath, JSON.stringify(futureChannel), "utf8");
+
+    const warnings: unknown[] = [];
+    const store = new EditableReleaseStore({
+      ...fixture,
+      warn: (err) => warnings.push(err),
+    });
+    expect(store.activeRelease.releaseDigest).toBeNull();
+    expect(store.getChannelPointer("prod")).toBeNull();
+    expect(warnings.some((w) => String(w).includes("reader version >= 2"))).toBe(true);
+  });
 });

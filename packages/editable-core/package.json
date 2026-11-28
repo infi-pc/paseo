@@ -1,0 +1,29 @@
+{
+  "name": "@getpaseo/editable-core",
+  "version": "0.17.1",
+  "private": true,
+  "description": "Shared Editable Paseo schemas, Ed25519 crypto, archive verification, impact classifier, and versioned recovery state",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "clean": "node ../../scripts/clean-package-dist.mjs",
+    "build": "tsc -p tsconfig.json --incremental false",
+    "build:clean": "npm run clean && npm run build",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  }
+}
