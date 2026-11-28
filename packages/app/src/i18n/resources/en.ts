@@ -189,7 +189,6 @@ export const en = {
     },
   },
   inboxSections: {
-    running: "Running",
     inbox: "Inbox",
     snoozed: "Snoozed",
     sessions: "Sessions",

@@ -68,7 +68,7 @@ export function groupMainFolderWorkspaces<T extends { workspaceKind: string }>(
   ];
 }
 
-export type InboxSection = "running" | "inbox" | "snoozed";
+export type InboxSection = "inbox" | "snoozed";
 export interface SidebarSession {
   id: string;
   serverId: string;
@@ -165,17 +165,8 @@ function contributeDescendantWork(
   }
 }
 
-export function workspaceSections(
-  workspace: SidebarWorkspaceEntry,
-  sessions: readonly SidebarSession[],
-): InboxSection[] {
-  const running =
-    sessions.some((session) => session.running) ||
-    workspace.hasRunningScripts ||
-    (workspace.statusBucket === "running" && !sessions.some((session) => session.blocked));
-  if (workspace.snooze) return running ? ["running", "snoozed"] : ["snoozed"];
-  const inbox = sessions.some((session) => !session.running) || !running;
-  return [...(running ? ["running" as const] : []), ...(inbox ? ["inbox" as const] : [])];
+export function workspaceSection(workspace: SidebarWorkspaceEntry): InboxSection {
+  return workspace.snooze ? "snoozed" : "inbox";
 }
 
 export function sessionIsVisible(

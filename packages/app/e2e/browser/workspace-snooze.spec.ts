@@ -260,7 +260,7 @@ test("unsnooze succeeds even when sending fails, and the draft remains retryable
   }
 });
 
-test("a mixed workspace has distinct Running and Inbox sessions and snooze keeps work visible", async ({
+test("a mixed workspace keeps both sessions together in Inbox and Snoozed", async ({
   page,
 }, testInfo) => {
   const workspace = await seedWorkspace({ repoPrefix: "inbox-mixed-" });
@@ -287,7 +287,14 @@ test("a mixed workspace has distinct Running and Inbox sessions and snooze keeps
     );
     await gotoAppShell(page, workspace);
     await selectSidebarInbox(page);
-    await expect(row(page, workspace.workspaceId)).toHaveCount(2);
+    await expect(row(page, workspace.workspaceId)).toHaveCount(1);
+    await expect(page.getByTestId("sidebar-section-running")).toHaveCount(0);
+    await expect(
+      page
+        .getByTestId("sidebar-section-inbox")
+        .locator("..")
+        .getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`),
+    ).toBeVisible();
     await expect(page.getByTestId(`sidebar-session-${getServerId()}-${idle.id}`)).toHaveCount(1);
     await expect(page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`)).toHaveCount(1);
     await page.screenshot({ path: testInfo.outputPath("inbox-mixed-running.png") });
@@ -298,14 +305,19 @@ test("a mixed workspace has distinct Running and Inbox sessions and snooze keeps
     });
     await expect(row(page, workspace.workspaceId)).toHaveCount(1);
     await expect(page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`)).toBeVisible();
-    await expect(page.getByTestId(`sidebar-session-${getServerId()}-${idle.id}`)).toHaveCount(0);
-    await expect(page.getByTestId("sidebar-section-snoozed")).toBeVisible();
+    await expect(page.getByTestId(`sidebar-session-${getServerId()}-${idle.id}`)).toBeVisible();
+    await expect(
+      page
+        .getByTestId("sidebar-section-snoozed")
+        .locator("..")
+        .getByTestId(`sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`),
+    ).toBeVisible();
     await page.getByTestId(`sidebar-session-${getServerId()}-${agent.id}`).click();
     await composerLocator(page).fill("Send after this turn ends");
     await composerLocator(page).press("Enter");
     await expect(page.getByTestId("snoozed-send-dialog")).toBeVisible();
     await workspace.client.cancelAgent(agent.id);
-    await expect(row(page, workspace.workspaceId)).toHaveCount(0);
+    await expect(row(page, workspace.workspaceId)).toHaveCount(1);
     await page
       .getByTestId("snoozed-send-dialog")
       .getByText("Keep snoozed and send", { exact: true })
@@ -368,7 +380,7 @@ for (const scenario of ["cancel preserves draft", "finished turn sends immediate
         await expect(page.getByRole("button", { name: "Send queued message now" })).toHaveCount(0);
       } else {
         await workspace.client.cancelAgent(agent.id);
-        await expect(row(page, workspace.workspaceId)).toHaveCount(0);
+        await expect(row(page, workspace.workspaceId)).toHaveCount(1);
         await dialog.getByText("Keep snoozed and send", { exact: true }).click();
         await expect(composer).toHaveValue("");
         await expect(row(page, workspace.workspaceId)).toHaveCount(1);

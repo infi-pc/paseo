@@ -159,7 +159,7 @@ describe("WorkspaceSessionRows and WorkspaceLeadingSessionToggle", () => {
     const onRowPress = vi.fn();
     const { container, rerenderHover } = renderHarness({
       workspace,
-      sessions: [makeSession()],
+      sessions: [makeSession({ running: true })],
       section: "inbox",
       isHovered: false,
       onRowPress,
@@ -236,11 +236,11 @@ describe("WorkspaceSessionRows and WorkspaceLeadingSessionToggle", () => {
     expect(container.querySelector('[data-testid="leading-icon"]')).toBeNull();
   });
 
-  it("renders only the icon with no toggle when the workspace has no matching sessions", () => {
+  it("renders only the icon with no toggle when the workspace has no sessions", () => {
     const workspace = makeWorkspace();
     const { container } = renderHarness({
       workspace,
-      sessions: [makeSession({ running: true })],
+      sessions: [],
       section: "inbox",
       isHovered: true,
     });

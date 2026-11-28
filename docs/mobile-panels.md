@@ -23,10 +23,9 @@ context recorded for that visit, even if you browsed other projects afterward. O
 navigation centrally so shortcuts, links, notifications, and browser history follow the same rule.
 In-place preview replacements count as tab navigation. Choosing a workspace still closes the compact drawer.
 
-Every unarchived user workspace in the selected host/filter scope remains in Running, Inbox,
-or Snoozed. Mixed workspaces appear in Running and Inbox with different session shortcuts.
-Reading or aging never removes a workspace; continuing work, snoozing, and archiving determine
-placement. Snoozed work remains visible in Running while it executes.
+Every unarchived user workspace in the selected host/filter scope appears in Inbox or Snoozed.
+Keep running sessions with their workspace so starting or finishing a turn does not change its section.
+Reading and aging affect session shortcuts without removing the workspace.
 
 Indented shortcuts identify host sessions, including sessions without a local tab. Recent (48-hour),
 unread, blocked, running, and selected sessions qualify. Keep qualifying children through the current
@@ -36,8 +35,7 @@ Session expansion is a per-device preference, separate from read state and works
 
 Use turn start time while work runs and last session activity otherwise; streamed tokens and git
 refreshes must not shuffle rows. Pins remain in activity order in Inbox; projects retain their pinned
-section. Duplicate workspace rows share one keyboard-number target. Snoozed workspaces remain
-reachable in the collapsed global section and visible in projects; see
+section. Snoozed workspaces remain reachable in Snoozed and visible in projects. See
 [workspace snoozing](agent-lifecycle.md#workspace-snoozing) for wake and notification behavior.
 
 Desktop project icons use the persisted sidebar project order. Reserve space for Add project and

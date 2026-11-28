@@ -409,7 +409,7 @@ child's lifecycle, because the track is where a failed child stays visible.
 
 Snoozing moves a workspace to Snoozed and mutes completion/error alerts, including script and
 terminal attention. Attention/read updates still synchronize; wake does not replay muted alerts.
-Running work stays visible. Opening, reading, or typing does not unsnooze. An explicit user send
+Running work stays visible in Snoozed. Opening, reading, or typing does not unsnooze. An explicit user send
 or enqueue offers Unsnooze and send, Keep snoozed and send, or Cancel. Automatic queue drains
 keep the snooze. The choice applies to the displayed snooze revision and the whole workspace.
 
